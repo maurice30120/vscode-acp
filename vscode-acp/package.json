@@ -81,6 +81,10 @@
         "title": "ACP: Send Prompt"
       },
       {
+        "command": "acp.quickPrompt",
+        "title": "ACP: Quick Prompt"
+      },
+      {
         "command": "acp.cancelTurn",
         "title": "ACP: Cancel Current Turn",
         "icon": "$(debug-stop)"
@@ -216,6 +220,11 @@
         "mac": "cmd+shift+a"
       },
       {
+        "command": "acp.quickPrompt",
+        "key": "ctrl+alt+o",
+        "mac": "cmd+alt+o"
+      },
+      {
         "command": "acp.cancelTurn",
         "key": "escape",
         "when": "acp.turnInProgress"
@@ -258,6 +267,11 @@
                 "--acp",
                 "--experimental-skills"
               ],
+              "env": {}
+            },
+            "Mistral Vibe": {
+              "command": "bash",
+              "args": ["-lc", "vibe-acp"],
               "env": {}
             },
             "Auggie CLI": {

@@ -124,6 +124,30 @@ La cle principale est `acp.agents` (objet de configurations). Exemple :
 }
 ```
 
+> 💡 **Exemple : Mistral Vibe**
+>
+> Vibe expose un outil `vibe-acp` permettant de se connecter via l'Agent Client Protocol.
+> Avant de l'utiliser, installez et configurez `vibe` avec vos clés API selon la [documentation officielle](https://github.com/mistralai/mistral-vibe/blob/main/docs/acp-setup.md).
+>
+> Vous pouvez ensuite déclarer un agent comme ceci :
+>
+> ```json
+> {
+>   "acp.agents": {
+>     "Mistral Vibe": {
+>       "command": "bash",
+>       "args": ["-lc", "vibe-acp"],
+>       "env": {
+>         "MISTRAL_API_KEY": "..."  // facultatif si déjà exporté
+>       }
+>     }
+>   }
+> }
+> ```
+>
+> Dans VS Code (ou `.vscode/settings.json`), le même snippet fonctionne ; un exemple est déjà présent dans ce dépôt.
+> Consultez le lien ci‑dessus pour d'autres éditeurs (Zed, JetBrains, Neovim, etc.).
+
 ### Parametres importants
 
 - `acp.autoApprovePermissions` : `ask` ou `allowAll`

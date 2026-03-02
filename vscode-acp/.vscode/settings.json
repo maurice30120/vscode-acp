@@ -7,7 +7,9 @@
         "-lc",
         "vibe-acp"
       ],
-      "env": {}
+      "env": {
+        "MISTRAL_API_KEY": ""  // optional, can also be set in the shell environment
+      }
     }
   }
 }

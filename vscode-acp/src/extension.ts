@@ -186,6 +186,19 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.executeCommand('acp-chat.focus');
   });
 
+  // Prompt rapide via raccourci clavier (Option+Cmd+O)
+  const quickPromptCmd = vscode.commands.registerCommand('acp.quickPrompt', async () => {
+    await vscode.commands.executeCommand('acp-chat.focus');
+    const text = await vscode.window.showInputBox({
+      prompt: 'Send a quick prompt to the active agent',
+      placeHolder: 'Type your message...',
+      title: 'ACP Quick Prompt',
+    });
+    const trimmed = text?.trim();
+    if (!trimmed) { return; }
+    await chatWebviewProvider.sendPromptFromExtension(trimmed);
+  });
+
   // Annuler le tour en cours
   const cancelTurnCmd = vscode.commands.registerCommand('acp.cancelTurn', async () => {
     const activeId = sessionManager.getActiveSessionId();
@@ -344,8 +357,28 @@ export function activate(context: vscode.ExtensionContext): void {
     sendEvent('agent/removed', { agentName: name });
   });
 
-  // Attacher un fichier
+  // Attacher un fichier — si un éditeur actif existe, attacher le fichier courant et
+  // inclure la sélection actuelle dans le prompt; sinon ouvrir le dialogue de fichier.
   const attachFileCmd = vscode.commands.registerCommand('acp.attachFile', async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (editor && editor.document && editor.document.uri) {
+      const uri = editor.document.uri;
+      const sel = editor.selection;
+      let selectionInfo: any = undefined;
+      if (!sel.isEmpty) {
+        const text = editor.document.getText(sel);
+        selectionInfo = {
+          startLine: sel.start.line + 1,
+          startCharacter: sel.start.character + 1,
+          endLine: sel.end.line + 1,
+          endCharacter: sel.end.character + 1,
+          text,
+        };
+      }
+      chatWebviewProvider.attachFile(uri, selectionInfo);
+      return;
+    }
+
     const uris = await vscode.window.showOpenDialog({
       canSelectMany: false,
       openLabel: 'Attach',
@@ -389,6 +422,7 @@ export function activate(context: vscode.ExtensionContext): void {
     disconnectAgentCmd,
     openChatCmd,
     sendPromptCmd,
+    quickPromptCmd,
     cancelTurnCmd,
     restartAgentCmd,
     showLogCmd,

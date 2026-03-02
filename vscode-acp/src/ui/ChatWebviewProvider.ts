@@ -283,6 +283,19 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
+   * Permet a l'extension host d'envoyer un prompt rapide via le webview.
+   */
+  async sendPromptFromExtension(text: string): Promise<void> {
+    const trimmed = text?.trim();
+    if (!trimmed) { return; }
+
+    this._hasChatContent = true;
+    this.view?.show?.(true);
+    this.postMessage({ type: 'externalUserMessage', text: trimmed });
+    await this.handleSendPrompt(trimmed);
+  }
+
+  /**
    * Genere le HTML complet rendu dans le webview.
    */
   private getHtmlContent(webview: vscode.Webview): string {
@@ -1701,6 +1714,24 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
           }
           break;
 
+        case 'externalUserMessage':
+          addMessage('user', msg.text);
+          break;
+
+        case 'file-attached': {
+          const name = msg.name || msg.path || 'attached file';
+          if (msg.selection && msg.selection.text) {
+            const sel = msg.selection;
+            const header = name + ' [' + sel.startLine + ':' + sel.startCharacter + '-' + sel.endLine + ':' + sel.endCharacter + ']\\n';
+            promptInput.value = header + sel.text + '\\n\\n' + (promptInput.value || '');
+          } else {
+            promptInput.value = name + ' (' + msg.path + ')\\n\\n' + (promptInput.value || '');
+          }
+          if (inputArea) inputArea.classList.remove('disabled');
+          promptInput.focus();
+          break;
+        }
+
         case 'promptStart':
           setProcessing(true);
           currentAssistantEl = null;
@@ -1956,13 +1987,17 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
   /**
    * Attache une URI de fichier et notifie le webview pour l'inclure au prochain prompt.
    */
-  attachFile(uri: vscode.Uri): void {
+  attachFile(uri: vscode.Uri, selection?: { startLine?: number; startCharacter?: number; endLine?: number; endCharacter?: number; text?: string } | null): void {
     if (this.view) {
-      this.view.webview.postMessage({
+      const payload: any = {
         type: 'file-attached',
         path: uri.fsPath,
-        name: uri.fsPath.split(/[\\/]/).pop() || uri.fsPath,
-      });
+        name: uri.fsPath.split(/[\\/\\]/).pop() || uri.fsPath,
+      };
+      if (selection) {
+        payload.selection = selection;
+      }
+      this.view.webview.postMessage(payload);
       this.view.show?.(true);
     }
   }
