@@ -107,16 +107,79 @@ class MinimalAcpAgent implements Agent {
             log(`mcp ${stdioSrv.name} exited pid=${proc.pid} code=${code} signal=${signal}`);
           });
 
-          proc.stdout.on("data", (chunk) => {
-            const text = chunk.toString();
-            log(`mcp ${stdioSrv.name} stdout: ${text.replace(/\n/g, "\\n")}`);
-          });
-
-          // send a simple ping to the MCP process (newline-delimited JSON)
+          // Create an ND-JSON stream adapter for the spawned MCP process and
+          // forward any parsed MCP messages to the client as session updates.
           try {
-            proc.stdin.write(JSON.stringify({ type: "ping", sessionId }) + "\n");
+            const procReadable = Readable.toWeb(proc.stdout) as ReadableStream<Uint8Array>;
+            const procWritable = Writable.toWeb(proc.stdin) as WritableStream<Uint8Array>;
+            const mcpStream = ndJsonStream(procWritable, procReadable);
+
+            // Async reader: forward each MCP message object to the client
+            (async () => {
+              try {
+                const reader = (mcpStream.readable as ReadableStream<any>).getReader();
+                while (true) {
+                  const { value, done } = await reader.read();
+                  if (done) break;
+                  try {
+                    // Forward raw MCP object as a text chunk so the client can observe it
+                    await this.connection.sessionUpdate({
+                      sessionId,
+                      update: {
+                        sessionUpdate: "agent_message_chunk",
+                        content: {
+                          type: "text",
+                          text: `[mcp ${stdioSrv.name}] ${JSON.stringify(value)}`,
+                        } as any,
+                      },
+                    });
+                  } catch (err) {
+                    log(`failed to forward MCP message: ${String(err)}`);
+                  }
+                }
+              } catch (readErr) {
+                log(`mcp stream read error for ${stdioSrv.name}: ${String(readErr)}`);
+              }
+            })();
+
+            // send a simple ping to the MCP process (newline-delimited JSON)
+            try {
+              proc.stdin.write(JSON.stringify({ type: "ping", sessionId }) + "\n");
+            } catch (e) {
+              log(`failed to write ping to mcp ${stdioSrv.name}: ${String(e)}`);
+            }
           } catch (e) {
-            log(`failed to write ping to mcp ${stdioSrv.name}: ${String(e)}`);
+            log(`failed to attach ND-JSON bridge to mcp ${stdioSrv.name}: ${String(e)}`);
+          }
+
+          // Also add a lightweight line-based parser as a resilient fallback
+          // to ensure ND-JSON lines from the MCP are forwarded to the client.
+          try {
+            let lineBuf = "";
+            proc.stdout.on("data", (chunk) => {
+              lineBuf += chunk.toString();
+              let nl: number;
+              while ((nl = lineBuf.indexOf("\n")) !== -1) {
+                const line = lineBuf.slice(0, nl).trim();
+                lineBuf = lineBuf.slice(nl + 1);
+                if (!line) continue;
+                try {
+                  const obj = JSON.parse(line);
+                  this.connection.sessionUpdate({
+                    sessionId,
+                    update: {
+                      sessionUpdate: "agent_message_chunk",
+                      content: { type: "text", text: `[mcp ${stdioSrv.name}] ${JSON.stringify(obj)}` } as any,
+                    },
+                  }).then(() => log(`forwarded MCP message from ${stdioSrv.name}`))
+                    .catch((err) => log(`forward error: ${String(err)}`));
+                } catch (parseErr) {
+                  log(`mcp ${stdioSrv.name} non-json stdout: ${line}`);
+                }
+              }
+            });
+          } catch (e) {
+            log(`failed to attach stdout parser to mcp ${stdioSrv.name}: ${String(e)}`);
           }
         } else {
           log(`mcp server type ${(srv as any).type} ignored by minimal agent`);

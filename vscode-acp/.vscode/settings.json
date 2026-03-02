@@ -1,3 +1,13 @@
 {
-	"typescript.tsdk": "node_modules/typescript/lib"
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "acp.agents": {
+    "Vibe ACP (bash)": {
+      "command": "bash",
+      "args": [
+        "-lc",
+        "vibe-acp"
+      ],
+      "env": {}
+    }
+  }
 }
