@@ -1720,10 +1720,23 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
 
         case 'file-attached': {
           const name = msg.name || msg.path || 'attached file';
-          if (msg.selection && msg.selection.text) {
-            const sel = msg.selection;
-            const header = name + ' [' + sel.startLine + ':' + sel.startCharacter + '-' + sel.endLine + ':' + sel.endCharacter + ']\\n';
+          const sel = msg.selection;
+          const cursorLine = sel?.cursorLine ?? sel?.startLine;
+          const cursorCharacter = sel?.cursorCharacter ?? sel?.startCharacter;
+          const cursorTag = (cursorLine && cursorCharacter)
+            ? ' [cursor ' + cursorLine + ':' + cursorCharacter + ']'
+            : '';
+
+          if (sel && sel.text) {
+            const rangeTag = (sel.startLine && sel.startCharacter && sel.endLine && sel.endCharacter)
+              ? ' [' + sel.startLine + ':' + sel.startCharacter + '-' + sel.endLine + ':' + sel.endCharacter + ']'
+              : '';
+            const header = name + rangeTag + cursorTag + '\\n';
             promptInput.value = header + sel.text + '\\n\\n' + (promptInput.value || '');
+          } else if (sel && (cursorLine || cursorCharacter)) {
+            const lineVal = cursorLine ?? '?';
+            const charVal = cursorCharacter ?? '?';
+            promptInput.value = name + ' (' + msg.path + ') [cursor ' + lineVal + ':' + charVal + ']\\n\\n' + (promptInput.value || '');
           } else {
             promptInput.value = name + ' (' + msg.path + ')\\n\\n' + (promptInput.value || '');
           }
@@ -1987,7 +2000,10 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
   /**
    * Attache une URI de fichier et notifie le webview pour l'inclure au prochain prompt.
    */
-  attachFile(uri: vscode.Uri, selection?: { startLine?: number; startCharacter?: number; endLine?: number; endCharacter?: number; text?: string } | null): void {
+  attachFile(
+    uri: vscode.Uri,
+    selection?: { startLine?: number; startCharacter?: number; endLine?: number; endCharacter?: number; text?: string; cursorLine?: number; cursorCharacter?: number } | null,
+  ): void {
     if (this.view) {
       const payload: any = {
         type: 'file-attached',

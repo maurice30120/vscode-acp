@@ -188,15 +188,61 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Prompt rapide via raccourci clavier (Option+Cmd+O)
   const quickPromptCmd = vscode.commands.registerCommand('acp.quickPrompt', async () => {
-    await vscode.commands.executeCommand('acp-chat.focus');
-    const text = await vscode.window.showInputBox({
+    // Capture le contexte avant tout changement de focus
+    const editor = vscode.window.activeTextEditor;
+    let promptPrefix = '';
+    let capturedUri: vscode.Uri | undefined;
+    let capturedSelectionInfo: any = undefined;
+
+    if (editor && editor.document && editor.document.uri) {
+      capturedUri = editor.document.uri;
+      const sel = editor.selection;
+      const cursorLine = sel.active.line + 1;
+      const cursorCharacter = sel.active.character + 1;
+      if (!sel.isEmpty) {
+        const text = editor.document.getText(sel);
+        capturedSelectionInfo = {
+          startLine: sel.start.line + 1,
+          startCharacter: sel.start.character + 1,
+          endLine: sel.end.line + 1,
+          endCharacter: sel.end.character + 1,
+          text,
+          cursorLine,
+          cursorCharacter,
+        };
+      } else {
+        capturedSelectionInfo = { cursorLine, cursorCharacter };
+      }
+
+      const name = capturedUri.fsPath.split(/[\/\\]/).pop() || capturedUri.fsPath;
+      const cursorPos = `${cursorLine}:${cursorCharacter}`;
+      if (capturedSelectionInfo?.text) {
+        const header = `${name} [${capturedSelectionInfo.startLine}:${capturedSelectionInfo.startCharacter}-${capturedSelectionInfo.endLine}:${capturedSelectionInfo.endCharacter}] [cursor ${cursorPos}]`;
+        promptPrefix = `${header}\n${capturedSelectionInfo.text}\n\n`;
+      } else {
+        promptPrefix = `${name} (${capturedUri.fsPath}) [cursor ${cursorPos}]\n\n`;
+      }
+    }
+
+    // Afficher l'input AVANT de changer le focus
+    const userText = await vscode.window.showInputBox({
       prompt: 'Send a quick prompt to the active agent',
       placeHolder: 'Type your message...',
       title: 'ACP Quick Prompt',
     });
-    const trimmed = text?.trim();
-    if (!trimmed) { return; }
-    await chatWebviewProvider.sendPromptFromExtension(trimmed);
+
+    const trimmedUser = userText?.trim() ?? '';
+    if (!trimmedUser) { return; }
+
+    // Maintenant on focus le chat et on envoie
+    await vscode.commands.executeCommand('acp-chat.focus');
+
+    if (capturedUri) {
+      chatWebviewProvider.attachFile(capturedUri, capturedSelectionInfo);
+    }
+
+    const finalPrompt = `${promptPrefix}${trimmedUser}`.trim();
+    await chatWebviewProvider.sendPromptFromExtension(finalPrompt);
   });
 
   // Annuler le tour en cours

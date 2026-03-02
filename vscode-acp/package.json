@@ -46,12 +46,14 @@
         {
           "id": "acp-sessions",
           "name": "Agents",
-          "type": "tree"
+          "type": "tree",
+          "icon": "resources/icon.svg"
         },
         {
           "id": "acp-chat",
           "name": "Chat",
-          "type": "webview"
+          "type": "webview",
+          "icon": "resources/icon.svg"
         }
       ]
     },
@@ -221,8 +223,8 @@
       },
       {
         "command": "acp.quickPrompt",
-        "key": "ctrl+alt+o",
-        "mac": "cmd+alt+o"
+        "key": "ctrl+alt+p",
+        "mac": "cmd+alt+p"
       },
       {
         "command": "acp.cancelTurn",
@@ -271,7 +273,10 @@
             },
             "Mistral Vibe": {
               "command": "bash",
-              "args": ["-lc", "vibe-acp"],
+              "args": [
+                "-lc",
+                "vibe-acp"
+              ],
               "env": {}
             },
             "Auggie CLI": {
