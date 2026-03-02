@@ -1,0 +1,25 @@
+{
+  "name": "vscode-acp-perso",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Serveur ACP minimal (agent) compatible avec vscode-acp",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p .",
+    "check": "tsc -p . --noEmit",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^0.14.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
