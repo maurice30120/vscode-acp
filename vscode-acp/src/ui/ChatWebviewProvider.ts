@@ -377,6 +377,34 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
       background: var(--vscode-button-background);
       color: var(--vscode-button-foreground);
     }
+    .file-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+    .file-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(0,0,0,0.25);
+      border-radius: 100px;
+      padding: 2px 10px;
+      font-size: 0.8em;
+      font-family: var(--vscode-editor-font-family);
+      max-width: 300px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: default;
+    }
+    .cursor-tag {
+      font-size: 0.8em;
+      opacity: 0.75;
+    }
+    .message-text {
+      white-space: pre-wrap;
+    }
     .message.assistant {
       align-self: flex-start;
       background: var(--vscode-editor-background);
@@ -1473,7 +1501,38 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
       hideEmpty();
       const el = document.createElement('div');
       el.className = 'message ' + role;
-      el.textContent = text;
+
+      if (role === 'user') {
+        // Detecte le pattern "filename (path) [cursor L:C]" sur la premiere ligne
+        const nlIdx = text.indexOf('\\n');
+        const firstLine = nlIdx >= 0 ? text.slice(0, nlIdx) : text;
+        const parenOpen = firstLine.indexOf(' (');
+        if (parenOpen > 0) {
+          const fileName = firstLine.slice(0, parenOpen);
+          const rest = nlIdx >= 0 ? text.slice(nlIdx + 1).trimStart() : '';
+
+          // Extrait "[cursor L:C]" s'il est present dans la premiere ligne
+          const cursorMatch = firstLine.match(/\[cursor (\d+:\d+)\]/);
+          const cursorPos = cursorMatch ? cursorMatch[1] : null;
+
+          const badge = document.createElement('span');
+          badge.className = 'file-badge';
+          badge.textContent = '\uD83D\uDCC4 ' + fileName + (cursorPos ? ' \u00B7 ' + cursorPos : '');
+          el.appendChild(badge);
+
+          if (rest) {
+            const bodyEl = document.createElement('div');
+            bodyEl.className = 'message-text';
+            bodyEl.textContent = rest;
+            el.appendChild(bodyEl);
+          }
+        } else {
+          el.textContent = text;
+        }
+      } else {
+        el.textContent = text;
+      }
+
       messagesEl.appendChild(el);
       scrollToBottom();
       return el;

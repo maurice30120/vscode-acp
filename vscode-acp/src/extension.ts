@@ -58,6 +58,44 @@ export function activate(context: vscode.ExtensionContext): void {
     chatWebviewProvider.clearChat();
   });
 
+  // Snapshot permanent de l'editeur actif (mis a jour avant chaque ouverture de fenetre)
+  let editorSnapshot: {
+    uri: vscode.Uri;
+    name: string;
+    cursorLine: number;
+    cursorCharacter: number;
+    selection: { startLine: number; startCharacter: number; endLine: number; endCharacter: number; text: string } | null;
+  } | null = null;
+
+  function captureEditorSnapshot(): void {
+    const ed = vscode.window.activeTextEditor;
+    if (!ed || !ed.document || !ed.document.uri) {
+      return; // garder le dernier snapshot valide
+    }
+    const sel = ed.selection;
+    const cursorLine = sel.active.line + 1;
+    const cursorCharacter = sel.active.character + 1;
+    editorSnapshot = {
+      uri: ed.document.uri,
+      name: ed.document.uri.fsPath.split(/[\/\\]/).pop() || ed.document.uri.fsPath,
+      cursorLine,
+      cursorCharacter,
+      selection: sel.isEmpty ? null : {
+        startLine: sel.start.line + 1,
+        startCharacter: sel.start.character + 1,
+        endLine: sel.end.line + 1,
+        endCharacter: sel.end.character + 1,
+        text: ed.document.getText(sel),
+      },
+    };
+  }
+
+  captureEditorSnapshot();
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(() => captureEditorSnapshot()),
+    vscode.window.onDidChangeTextEditorSelection(() => captureEditorSnapshot()),
+  );
+
   // Propage les changements de mode/modele vers le webview
   sessionManager.on('mode-changed', (_sessionId: string, _modeId: string) => {
     const session = sessionManager.getActiveSession();
@@ -188,39 +226,31 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Prompt rapide via raccourci clavier (Option+Cmd+O)
   const quickPromptCmd = vscode.commands.registerCommand('acp.quickPrompt', async () => {
-    // Capture le contexte avant tout changement de focus
-    const editor = vscode.window.activeTextEditor;
+    // Utilise le snapshot capture avant l'ouverture de la fenetre
+    captureEditorSnapshot();
+    const snap = editorSnapshot;
     let promptPrefix = '';
     let capturedUri: vscode.Uri | undefined;
     let capturedSelectionInfo: any = undefined;
 
-    if (editor && editor.document && editor.document.uri) {
-      capturedUri = editor.document.uri;
-      const sel = editor.selection;
-      const cursorLine = sel.active.line + 1;
-      const cursorCharacter = sel.active.character + 1;
-      if (!sel.isEmpty) {
-        const text = editor.document.getText(sel);
+    if (snap) {
+      capturedUri = snap.uri;
+      const cursorPos = `${snap.cursorLine}:${snap.cursorCharacter}`;
+      if (snap.selection) {
         capturedSelectionInfo = {
-          startLine: sel.start.line + 1,
-          startCharacter: sel.start.character + 1,
-          endLine: sel.end.line + 1,
-          endCharacter: sel.end.character + 1,
-          text,
-          cursorLine,
-          cursorCharacter,
+          startLine: snap.selection.startLine,
+          startCharacter: snap.selection.startCharacter,
+          endLine: snap.selection.endLine,
+          endCharacter: snap.selection.endCharacter,
+          text: snap.selection.text,
+          cursorLine: snap.cursorLine,
+          cursorCharacter: snap.cursorCharacter,
         };
+        const header = `${snap.name} [${snap.selection.startLine}:${snap.selection.startCharacter}-${snap.selection.endLine}:${snap.selection.endCharacter}] [cursor ${cursorPos}]`;
+        promptPrefix = `${header}\n${snap.selection.text}\n\n`;
       } else {
-        capturedSelectionInfo = { cursorLine, cursorCharacter };
-      }
-
-      const name = capturedUri.fsPath.split(/[\/\\]/).pop() || capturedUri.fsPath;
-      const cursorPos = `${cursorLine}:${cursorCharacter}`;
-      if (capturedSelectionInfo?.text) {
-        const header = `${name} [${capturedSelectionInfo.startLine}:${capturedSelectionInfo.startCharacter}-${capturedSelectionInfo.endLine}:${capturedSelectionInfo.endCharacter}] [cursor ${cursorPos}]`;
-        promptPrefix = `${header}\n${capturedSelectionInfo.text}\n\n`;
-      } else {
-        promptPrefix = `${name} (${capturedUri.fsPath}) [cursor ${cursorPos}]\n\n`;
+        capturedSelectionInfo = { cursorLine: snap.cursorLine, cursorCharacter: snap.cursorCharacter };
+        promptPrefix = `${snap.name} (${snap.uri.fsPath}) [cursor ${cursorPos}]\n\n`;
       }
     }
 
@@ -236,10 +266,6 @@ export function activate(context: vscode.ExtensionContext): void {
 
     // Maintenant on focus le chat et on envoie
     await vscode.commands.executeCommand('acp-chat.focus');
-
-    if (capturedUri) {
-      chatWebviewProvider.attachFile(capturedUri, capturedSelectionInfo);
-    }
 
     const finalPrompt = `${promptPrefix}${trimmedUser}`.trim();
     await chatWebviewProvider.sendPromptFromExtension(finalPrompt);
