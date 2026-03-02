@@ -255,10 +255,20 @@ export function activate(context: vscode.ExtensionContext): void {
     }
 
     // Afficher l'input AVANT de changer le focus
+    let inputTitle = 'ACP Quick Prompt';
+    if (snap) {
+      const cursorPos = `${snap.cursorLine}:${snap.cursorCharacter}`;
+      if (snap.selection) {
+        inputTitle = `ACP Quick Prompt — ${snap.name} [${snap.selection.startLine}:${snap.selection.startCharacter}-${snap.selection.endLine}:${snap.selection.endCharacter}] [cursor ${cursorPos}]`;
+      } else {
+        inputTitle = `ACP Quick Prompt — ${snap.name} [cursor ${cursorPos}]`;
+      }
+    }
+
     const userText = await vscode.window.showInputBox({
       prompt: 'Send a quick prompt to the active agent',
       placeHolder: 'Type your message...',
-      title: 'ACP Quick Prompt',
+      title: inputTitle,
     });
 
     const trimmedUser = userText?.trim() ?? '';

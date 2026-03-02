@@ -170,17 +170,24 @@ export class SessionManager extends EventEmitter {
     log(`Disconnecting agent ${agentName}`);
     sendEvent('agent/disconnect', { agentName });
 
+    const wasActive = this.activeSessionId === sessionId;
+
     this.agentManager.killAgent(session.agentId);
     this.connectionManager.removeConnection(session.agentId);
     this.sessions.delete(sessionId);
     this.agentSessions.delete(agentName);
 
-    if (this.activeSessionId === sessionId) {
+    if (wasActive) {
       this.activeSessionId = null;
     }
 
     this.emit('agent-disconnected', agentName);
     this.emit('active-session-changed', null);
+
+    // Si la session de l'agent deconnecte etait active, demander au webview de vider le chat
+    if (wasActive) {
+      this.emit('clear-chat');
+    }
   }
 
   /**
