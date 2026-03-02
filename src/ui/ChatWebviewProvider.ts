@@ -283,7 +283,20 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Generate the HTML content for the webview.
+   * Permet a l'extension host d'envoyer un prompt rapide via le webview.
+   */
+  async sendPromptFromExtension(text: string): Promise<void> {
+    const trimmed = text?.trim();
+    if (!trimmed) { return; }
+
+    this._hasChatContent = true;
+    this.view?.show?.(true);
+    this.postMessage({ type: 'externalUserMessage', text: trimmed });
+    await this.handleSendPrompt(trimmed);
+  }
+
+  /**
+   * Genere le HTML complet rendu dans le webview.
    */
   private getHtmlContent(webview: vscode.Webview): string {
     const nonce = getNonce();
@@ -363,6 +376,34 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
       align-self: flex-end;
       background: var(--vscode-button-background);
       color: var(--vscode-button-foreground);
+    }
+    .file-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+    .file-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(0,0,0,0.25);
+      border-radius: 100px;
+      padding: 2px 10px;
+      font-size: 0.8em;
+      font-family: var(--vscode-editor-font-family);
+      max-width: 300px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: default;
+    }
+    .cursor-tag {
+      font-size: 0.8em;
+      opacity: 0.75;
+    }
+    .message-text {
+      white-space: pre-wrap;
     }
     .message.assistant {
       align-self: flex-start;
@@ -1446,10 +1487,10 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
       modelDropdown.classList.remove('open');
     }
 
-    // Close pickers when clicking outside
+    // Ferme les pickers au clic exterieur
     document.addEventListener('click', () => closePickers());
 
-    // --- Messages ---
+    // --- Gestion des messages ---
     function addMessage(role, text) {
       chatHistory.push({ kind: 'message', role, text });
       saveState();
@@ -1460,7 +1501,38 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
       hideEmpty();
       const el = document.createElement('div');
       el.className = 'message ' + role;
-      el.textContent = text;
+
+      if (role === 'user') {
+        // Detecte le pattern "filename (path) [cursor L:C]" sur la premiere ligne
+        const nlIdx = text.indexOf('\\n');
+        const firstLine = nlIdx >= 0 ? text.slice(0, nlIdx) : text;
+        const parenOpen = firstLine.indexOf(' (');
+        if (parenOpen > 0) {
+          const fileName = firstLine.slice(0, parenOpen);
+          const rest = nlIdx >= 0 ? text.slice(nlIdx + 1).trimStart() : '';
+
+          // Extrait "[cursor L:C]" s'il est present dans la premiere ligne
+          const cursorMatch = firstLine.match(/\[cursor (\d+:\d+)\]/);
+          const cursorPos = cursorMatch ? cursorMatch[1] : null;
+
+          const badge = document.createElement('span');
+          badge.className = 'file-badge';
+          badge.textContent = '\uD83D\uDCC4 ' + fileName + (cursorPos ? ' \u00B7 ' + cursorPos : '');
+          el.appendChild(badge);
+
+          if (rest) {
+            const bodyEl = document.createElement('div');
+            bodyEl.className = 'message-text';
+            bodyEl.textContent = rest;
+            el.appendChild(bodyEl);
+          }
+        } else {
+          el.textContent = text;
+        }
+      } else {
+        el.textContent = text;
+      }
+
       messagesEl.appendChild(el);
       scrollToBottom();
       return el;
@@ -1700,6 +1772,37 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
             showNoSession();
           }
           break;
+
+        case 'externalUserMessage':
+          addMessage('user', msg.text);
+          break;
+
+        case 'file-attached': {
+          const name = msg.name || msg.path || 'attached file';
+          const sel = msg.selection;
+          const cursorLine = sel?.cursorLine ?? sel?.startLine;
+          const cursorCharacter = sel?.cursorCharacter ?? sel?.startCharacter;
+          const cursorTag = (cursorLine && cursorCharacter)
+            ? ' [cursor ' + cursorLine + ':' + cursorCharacter + ']'
+            : '';
+
+          if (sel && sel.text) {
+            const rangeTag = (sel.startLine && sel.startCharacter && sel.endLine && sel.endCharacter)
+              ? ' [' + sel.startLine + ':' + sel.startCharacter + '-' + sel.endLine + ':' + sel.endCharacter + ']'
+              : '';
+            const header = name + rangeTag + cursorTag + '\\n';
+            promptInput.value = header + sel.text + '\\n\\n' + (promptInput.value || '');
+          } else if (sel && (cursorLine || cursorCharacter)) {
+            const lineVal = cursorLine ?? '?';
+            const charVal = cursorCharacter ?? '?';
+            promptInput.value = name + ' (' + msg.path + ') [cursor ' + lineVal + ':' + charVal + ']\\n\\n' + (promptInput.value || '');
+          } else {
+            promptInput.value = name + ' (' + msg.path + ')\\n\\n' + (promptInput.value || '');
+          }
+          if (inputArea) inputArea.classList.remove('disabled');
+          promptInput.focus();
+          break;
+        }
 
         case 'promptStart':
           setProcessing(true);
@@ -1946,7 +2049,7 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
     // Restore previous state before telling extension we're ready
     restoreState();
 
-    // Tell extension we're ready
+    // Informe l'extension que le webview est pret
     vscode.postMessage({ type: 'ready' });
   </script>
 </body>
@@ -1954,15 +2057,22 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Attach a file URI — notify the webview to include it in the next prompt.
+   * Attache une URI de fichier et notifie le webview pour l'inclure au prochain prompt.
    */
-  attachFile(uri: vscode.Uri): void {
+  attachFile(
+    uri: vscode.Uri,
+    selection?: { startLine?: number; startCharacter?: number; endLine?: number; endCharacter?: number; text?: string; cursorLine?: number; cursorCharacter?: number } | null,
+  ): void {
     if (this.view) {
-      this.view.webview.postMessage({
+      const payload: any = {
         type: 'file-attached',
         path: uri.fsPath,
-        name: uri.fsPath.split(/[\\/]/).pop() || uri.fsPath,
-      });
+        name: uri.fsPath.split(/[\\/\\]/).pop() || uri.fsPath,
+      };
+      if (selection) {
+        payload.selection = selection;
+      }
+      this.view.webview.postMessage(payload);
       this.view.show?.(true);
     }
   }

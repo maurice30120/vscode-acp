@@ -1,0 +1,25 @@
+# Normalize line endings
+* text=auto
+
+# Force CRLF for common text files
+*.ts text eol=crlf
+*.js text eol=crlf
+*.json text eol=crlf
+*.md text eol=crlf
+*.yml text eol=crlf
+*.yaml text eol=crlf
+*.sh text eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.svg binary
+*.ico binary
+*.zip binary
+*.gz binary
+.DS_Store binary
+
+# Package lock files are JSON
+package-lock.json text eol=crlf

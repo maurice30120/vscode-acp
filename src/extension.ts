@@ -58,7 +58,45 @@ export function activate(context: vscode.ExtensionContext): void {
     chatWebviewProvider.clearChat();
   });
 
-  // Forward mode/model changes to webview
+  // Persistent snapshot of the active editor (updated before each window open)
+  let editorSnapshot: {
+    uri: vscode.Uri;
+    name: string;
+    cursorLine: number;
+    cursorCharacter: number;
+    selection: { startLine: number; startCharacter: number; endLine: number; endCharacter: number; text: string } | null;
+  } | null = null;
+
+  function captureEditorSnapshot(): void {
+    const ed = vscode.window.activeTextEditor;
+    if (!ed || !ed.document || !ed.document.uri) {
+      return; // keep the last valid snapshot
+    }
+    const sel = ed.selection;
+    const cursorLine = sel.active.line + 1;
+    const cursorCharacter = sel.active.character + 1;
+    editorSnapshot = {
+      uri: ed.document.uri,
+      name: ed.document.uri.fsPath.split(/[\/\\]/).pop() || ed.document.uri.fsPath,
+      cursorLine,
+      cursorCharacter,
+      selection: sel.isEmpty ? null : {
+        startLine: sel.start.line + 1,
+        startCharacter: sel.start.character + 1,
+        endLine: sel.end.line + 1,
+        endCharacter: sel.end.character + 1,
+        text: ed.document.getText(sel),
+      },
+    };
+  }
+
+  captureEditorSnapshot();
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(() => captureEditorSnapshot()),
+    vscode.window.onDidChangeTextEditorSelection(() => captureEditorSnapshot()),
+  );
+
+  // Propagate mode/model changes to the webview
   sessionManager.on('mode-changed', (_sessionId: string, _modeId: string) => {
     const session = sessionManager.getActiveSession();
     if (session?.modes) {
@@ -186,7 +224,64 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.executeCommand('acp-chat.focus');
   });
 
-  // Cancel Turn
+  // Quick prompt via keyboard shortcut (Option+Cmd+O)
+  const quickPromptCmd = vscode.commands.registerCommand('acp.quickPrompt', async () => {
+    // Use the snapshot captured before opening the window
+    captureEditorSnapshot();
+    const snap = editorSnapshot;
+    let promptPrefix = '';
+    let capturedUri: vscode.Uri | undefined;
+    let capturedSelectionInfo: any = undefined;
+
+    if (snap) {
+      capturedUri = snap.uri;
+      const cursorPos = `${snap.cursorLine}:${snap.cursorCharacter}`;
+      if (snap.selection) {
+        capturedSelectionInfo = {
+          startLine: snap.selection.startLine,
+          startCharacter: snap.selection.startCharacter,
+          endLine: snap.selection.endLine,
+          endCharacter: snap.selection.endCharacter,
+          text: snap.selection.text,
+          cursorLine: snap.cursorLine,
+          cursorCharacter: snap.cursorCharacter,
+        };
+        const header = `${snap.name} [${snap.selection.startLine}:${snap.selection.startCharacter}-${snap.selection.endLine}:${snap.selection.endCharacter}] [cursor ${cursorPos}]`;
+        promptPrefix = `${header}\n${snap.selection.text}\n\n`;
+      } else {
+        capturedSelectionInfo = { cursorLine: snap.cursorLine, cursorCharacter: snap.cursorCharacter };
+        promptPrefix = `${snap.name} (${snap.uri.fsPath}) [cursor ${cursorPos}]\n\n`;
+      }
+    }
+
+    // Show the input BEFORE changing focus
+    let inputTitle = 'ACP Quick Prompt';
+    if (snap) {
+      const cursorPos = `${snap.cursorLine}:${snap.cursorCharacter}`;
+      if (snap.selection) {
+        inputTitle = `ACP Quick Prompt — ${snap.name} [${snap.selection.startLine}:${snap.selection.startCharacter}-${snap.selection.endLine}:${snap.selection.endCharacter}] [cursor ${cursorPos}]`;
+      } else {
+        inputTitle = `ACP Quick Prompt — ${snap.name} [cursor ${cursorPos}]`;
+      }
+    }
+
+    const userText = await vscode.window.showInputBox({
+      prompt: 'Send a quick prompt to the active agent',
+      placeHolder: 'Type your message...',
+      title: inputTitle,
+    });
+
+    const trimmedUser = userText?.trim() ?? '';
+    if (!trimmedUser) { return; }
+
+    // Now focus the chat and send
+    await vscode.commands.executeCommand('acp-chat.focus');
+
+    const finalPrompt = `${promptPrefix}${trimmedUser}`.trim();
+    await chatWebviewProvider.sendPromptFromExtension(finalPrompt);
+  });
+
+  // Cancel the current turn
   const cancelTurnCmd = vscode.commands.registerCommand('acp.cancelTurn', async () => {
     const activeId = sessionManager.getActiveSessionId();
     if (activeId) {
@@ -213,6 +308,9 @@ export function activate(context: vscode.ExtensionContext): void {
         },
         async () => {
           await sessionManager.disconnectAgent(agentName);
+          // Clear UI chat history when restarting the agent so the webview
+          // doesn't show messages from the old (now-deleted) session.
+          chatWebviewProvider.clearChat();
           await sessionManager.connectToAgent(agentName);
         },
       );
@@ -344,8 +442,28 @@ export function activate(context: vscode.ExtensionContext): void {
     sendEvent('agent/removed', { agentName: name });
   });
 
-  // Attach File
+  // Attach a file — if an active editor exists, attach the current file and
+  // include the current selection in the prompt; otherwise open the file dialog.
   const attachFileCmd = vscode.commands.registerCommand('acp.attachFile', async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (editor && editor.document && editor.document.uri) {
+      const uri = editor.document.uri;
+      const sel = editor.selection;
+      let selectionInfo: any = undefined;
+      if (!sel.isEmpty) {
+        const text = editor.document.getText(sel);
+        selectionInfo = {
+          startLine: sel.start.line + 1,
+          startCharacter: sel.start.character + 1,
+          endLine: sel.end.line + 1,
+          endCharacter: sel.end.character + 1,
+          text,
+        };
+      }
+      chatWebviewProvider.attachFile(uri, selectionInfo);
+      return;
+    }
+
     const uris = await vscode.window.showOpenDialog({
       canSelectMany: false,
       openLabel: 'Attach',
@@ -389,6 +507,7 @@ export function activate(context: vscode.ExtensionContext): void {
     disconnectAgentCmd,
     openChatCmd,
     sendPromptCmd,
+    quickPromptCmd,
     cancelTurnCmd,
     restartAgentCmd,
     showLogCmd,
