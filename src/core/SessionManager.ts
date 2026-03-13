@@ -170,21 +170,28 @@ export class SessionManager extends EventEmitter {
     log(`Disconnecting agent ${agentName}`);
     sendEvent('agent/disconnect', { agentName });
 
+    const wasActive = this.activeSessionId === sessionId;
+
     this.agentManager.killAgent(session.agentId);
     this.connectionManager.removeConnection(session.agentId);
     this.sessions.delete(sessionId);
     this.agentSessions.delete(agentName);
 
-    if (this.activeSessionId === sessionId) {
+    if (wasActive) {
       this.activeSessionId = null;
     }
 
     this.emit('agent-disconnected', agentName);
     this.emit('active-session-changed', null);
+
+    // If the disconnected agent session was active, ask the webview to clear chat
+    if (wasActive) {
+      this.emit('clear-chat');
+    }
   }
 
   /**
-   * Internal: create the ACP session with auth handling.
+   * Internal: create the ACP session and handle required authentication.
    */
   private async createAcpSession(
     agentName: string,
