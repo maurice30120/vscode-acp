@@ -37,6 +37,10 @@ export class SessionManager extends EventEmitter {
 
   /** Maps agentName → activeSessionId for the one-session-per-agent model. */
   private agentSessions: Map<string, string> = new Map();
+  private pendingSessionUpdates: Map<string, unknown[]> = new Map();
+  private readonly sessionUpdateListener = (notification: { sessionId: string; update: unknown }) => {
+    this.applySessionUpdate(notification.sessionId, notification.update);
+  };
 
   constructor(
     private readonly agentManager: AgentManager,
@@ -44,6 +48,55 @@ export class SessionManager extends EventEmitter {
     private readonly sessionUpdateHandler: SessionUpdateHandler,
   ) {
     super();
+    this.sessionUpdateHandler.addListener(this.sessionUpdateListener);
+  }
+
+  private applySessionUpdate(sessionId: string, update: unknown): void {
+    const session = this.sessions.get(sessionId);
+    if (!update || typeof update !== 'object') {
+      return;
+    }
+
+    if (!session) {
+      const pendingUpdates = this.pendingSessionUpdates.get(sessionId) ?? [];
+      pendingUpdates.push(update);
+      this.pendingSessionUpdates.set(sessionId, pendingUpdates);
+      return;
+    }
+
+    const sessionUpdate = update as Record<string, unknown>;
+    switch (sessionUpdate.sessionUpdate) {
+      case 'available_commands_update':
+        session.availableCommands = Array.isArray(sessionUpdate.availableCommands)
+          ? sessionUpdate.availableCommands as AvailableCommand[]
+          : [];
+        break;
+
+      case 'current_mode_update': {
+        const nextModeId =
+          typeof sessionUpdate.currentModeId === 'string'
+            ? sessionUpdate.currentModeId
+            : typeof sessionUpdate.modeId === 'string'
+              ? sessionUpdate.modeId
+              : null;
+        if (session.modes && nextModeId) {
+          session.modes.currentModeId = nextModeId;
+        }
+        break;
+      }
+    }
+  }
+
+  private replayPendingSessionUpdates(sessionId: string): void {
+    const pendingUpdates = this.pendingSessionUpdates.get(sessionId);
+    if (!pendingUpdates || pendingUpdates.length === 0) {
+      return;
+    }
+
+    this.pendingSessionUpdates.delete(sessionId);
+    for (const update of pendingUpdates) {
+      this.applySessionUpdate(sessionId, update);
+    }
   }
 
   /**
@@ -126,6 +179,7 @@ export class SessionManager extends EventEmitter {
       const sessionInfo = await this.createAcpSession(agentName, agentId, connInfo);
 
       this.sessions.set(sessionInfo.sessionId, sessionInfo);
+      this.replayPendingSessionUpdates(sessionInfo.sessionId);
       this.agentSessions.set(agentName, sessionInfo.sessionId);
       this.activeSessionId = sessionInfo.sessionId;
 
@@ -170,21 +224,28 @@ export class SessionManager extends EventEmitter {
     log(`Disconnecting agent ${agentName}`);
     sendEvent('agent/disconnect', { agentName });
 
+    const wasActive = this.activeSessionId === sessionId;
+
     this.agentManager.killAgent(session.agentId);
     this.connectionManager.removeConnection(session.agentId);
     this.sessions.delete(sessionId);
     this.agentSessions.delete(agentName);
 
-    if (this.activeSessionId === sessionId) {
+    if (wasActive) {
       this.activeSessionId = null;
     }
 
     this.emit('agent-disconnected', agentName);
     this.emit('active-session-changed', null);
+
+    // If the disconnected agent session was active, ask the webview to clear chat
+    if (wasActive) {
+      this.emit('clear-chat');
+    }
   }
 
   /**
-   * Internal: create the ACP session with auth handling.
+   * Internal: create the ACP session and handle required authentication.
    */
   private async createAcpSession(
     agentName: string,
@@ -415,9 +476,11 @@ export class SessionManager extends EventEmitter {
   // --- Cleanup ---
 
   dispose(): void {
+    this.sessionUpdateHandler.removeListener(this.sessionUpdateListener);
     this.agentManager.killAll();
     this.connectionManager.dispose();
     this.sessions.clear();
     this.agentSessions.clear();
+    this.pendingSessionUpdates.clear();
   }
 }

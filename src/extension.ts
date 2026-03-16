@@ -7,6 +7,8 @@ import { SessionUpdateHandler } from './handlers/SessionUpdateHandler';
 import { SessionTreeProvider } from './ui/SessionTreeProvider';
 import { StatusBarManager } from './ui/StatusBarManager';
 import { ChatWebviewProvider } from './ui/ChatWebviewProvider';
+import { QuickPromptPanel } from './ui/QuickPromptPanel';
+import { captureEditorSnapshot, type EditorSnapshot } from './ui/EditorSnapshot';
 import { getAgentNames } from './config/AgentConfig';
 import { fetchRegistry } from './config/RegistryClient';
 import { log, logError, disposeChannels, getOutputChannel, getTrafficChannel } from './utils/Logger';
@@ -45,12 +47,19 @@ export function activate(context: vscode.ExtensionContext): void {
     chatWebviewProvider,
     { webviewOptions: { retainContextWhenHidden: true } },
   );
+  const quickPromptPanel = new QuickPromptPanel(
+    context.extensionUri,
+    sessionManager,
+    sessionUpdateHandler,
+    chatWebviewProvider,
+  );
 
   const statusBarManager = new StatusBarManager(sessionManager);
 
   // Notify chat webview when active session changes
   sessionManager.on('active-session-changed', () => {
     chatWebviewProvider.notifyActiveSessionChanged();
+    quickPromptPanel.notifyActiveSessionChanged();
   });
 
   // Clear chat when new conversation is started
@@ -58,11 +67,28 @@ export function activate(context: vscode.ExtensionContext): void {
     chatWebviewProvider.clearChat();
   });
 
+  // Persistent snapshot of active editor (updated before each prompt window open)
+  let editorSnapshot: EditorSnapshot | null = null;
+
+  function refreshEditorSnapshot(): void {
+    const nextSnapshot = captureEditorSnapshot(vscode.window.activeTextEditor);
+    if (nextSnapshot) {
+      editorSnapshot = nextSnapshot;
+    }
+  }
+
+  refreshEditorSnapshot();
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(() => refreshEditorSnapshot()),
+    vscode.window.onDidChangeTextEditorSelection(() => refreshEditorSnapshot()),
+  );
+
   // Forward mode/model changes to webview
   sessionManager.on('mode-changed', (_sessionId: string, _modeId: string) => {
     const session = sessionManager.getActiveSession();
     if (session?.modes) {
       chatWebviewProvider.notifyModesUpdate(session.modes);
+      quickPromptPanel.notifyModesUpdate(session.modes);
     }
   });
 
@@ -70,6 +96,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const session = sessionManager.getActiveSession();
     if (session?.models) {
       chatWebviewProvider.notifyModelsUpdate(session.models);
+      quickPromptPanel.notifyModelsUpdate(session.models);
     }
   });
 
@@ -186,7 +213,13 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.executeCommand('acp-chat.focus');
   });
 
-  // Cancel Turn
+  // Quick prompt keyboard shortcut (Option+Cmd+O)
+  const quickPromptCmd = vscode.commands.registerCommand('acp.quickPrompt', async () => {
+    refreshEditorSnapshot();
+    await quickPromptPanel.show(editorSnapshot);
+  });
+
+  // Cancel current turn
   const cancelTurnCmd = vscode.commands.registerCommand('acp.cancelTurn', async () => {
     const activeId = sessionManager.getActiveSessionId();
     if (activeId) {
@@ -344,8 +377,28 @@ export function activate(context: vscode.ExtensionContext): void {
     sendEvent('agent/removed', { agentName: name });
   });
 
-  // Attach File
+  // Attach file: if an active editor exists, attach current file and
+  // include current selection in prompt; otherwise open file picker.
   const attachFileCmd = vscode.commands.registerCommand('acp.attachFile', async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (editor && editor.document && editor.document.uri) {
+      const uri = editor.document.uri;
+      const sel = editor.selection;
+      let selectionInfo: any = undefined;
+      if (!sel.isEmpty) {
+        const text = editor.document.getText(sel);
+        selectionInfo = {
+          startLine: sel.start.line + 1,
+          startCharacter: sel.start.character + 1,
+          endLine: sel.end.line + 1,
+          endCharacter: sel.end.character + 1,
+          text,
+        };
+      }
+      chatWebviewProvider.attachFile(uri, selectionInfo);
+      return;
+    }
+
     const uris = await vscode.window.showOpenDialog({
       canSelectMany: false,
       openLabel: 'Attach',
@@ -389,6 +442,7 @@ export function activate(context: vscode.ExtensionContext): void {
     disconnectAgentCmd,
     openChatCmd,
     sendPromptCmd,
+    quickPromptCmd,
     cancelTurnCmd,
     restartAgentCmd,
     showLogCmd,
@@ -405,6 +459,7 @@ export function activate(context: vscode.ExtensionContext): void {
         sessionManager.dispose();
         sessionUpdateHandler.dispose();
         chatWebviewProvider.dispose();
+        quickPromptPanel.dispose();
         sessionTreeProvider.dispose();
         disposeChannels();
       },
