@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { log, logError } from '../utils/Logger';
+import { buildSpawnCommandSpec } from '../utils/ShellSpawn';
 
 import type {
   CreateTerminalRequest,
@@ -15,6 +16,8 @@ import type {
 } from '@agentclientprotocol/sdk';
 
 import { spawn, ChildProcess } from 'node:child_process';
+
+const TERMINAL_SPAWN_ERROR_EXIT_CODE = 1;
 
 interface ManagedTerminal {
   id: string;
@@ -34,6 +37,8 @@ interface ManagedTerminal {
  * Uses real child processes for capturing output, with VS Code terminals for display.
  */
 export class TerminalHandler {
+  constructor(private readonly spawnProcess: typeof spawn = spawn) {}
+
   private terminals: Map<string, ManagedTerminal> = new Map();
   private nextId = 1;
 
@@ -50,18 +55,48 @@ export class TerminalHandler {
       }
     }
 
-    const child = spawn(params.command, params.args || [], {
-      cwd: params.cwd || undefined,
-      env,
-      shell: true,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
     let output = '';
     let truncated = false;
+    let child: ChildProcess;
 
-    const appendOutput = (data: Buffer) => {
-      const text = data.toString();
+    try {
+      const spawnSpec = buildSpawnCommandSpec(params.command, params.args || []);
+      child = this.spawnProcess(spawnSpec.file, spawnSpec.args, {
+        cwd: params.cwd || undefined,
+        env,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        ...(spawnSpec.shell ? { shell: true } : {}),
+      });
+    } catch (error) {
+      logError(`createTerminal failed for "${params.command}" (id=${terminalId})`, error);
+      throw error;
+    }
+
+    const writeEmitter = new vscode.EventEmitter<string>();
+    const pty: vscode.Pseudoterminal = {
+      onDidWrite: writeEmitter.event,
+      open() {
+        writeEmitter.fire(`$ ${params.command} ${(params.args || []).join(' ')}\r\n`);
+      },
+      close() { /* no-op */ },
+    };
+    const vsTerminal = vscode.window.createTerminal({
+      name: `ACP: ${params.command}`,
+      pty,
+    });
+
+    const writeToTerminal = (text: string) => {
+      if (text.length > 0) {
+        writeEmitter.fire(text.replace(/\n/g, '\r\n'));
+      }
+    };
+
+    const syncManagedOutput = () => {
+      managed.output = output;
+      managed.truncated = truncated;
+    };
+
+    const appendOutput = (text: string) => {
       output += text;
       // Truncate from beginning if over limit
       const byteLength = Buffer.byteLength(output, 'utf-8');
@@ -80,46 +115,23 @@ export class TerminalHandler {
         output = output.substring(cutPoint);
         truncated = true;
       }
+      syncManagedOutput();
     };
 
-    child.stdout?.on('data', appendOutput);
-    child.stderr?.on('data', appendOutput);
-
+    let resolveExitPromise!: () => void;
+    let exitSettled = false;
+    const finalizeExit = (code: number | null, signal: string | null) => {
+      managed.exitCode = code;
+      managed.exitSignal = signal;
+      managed.exited = true;
+      syncManagedOutput();
+      if (!exitSettled) {
+        exitSettled = true;
+        resolveExitPromise();
+      }
+    };
     const exitPromise = new Promise<void>((resolve) => {
-      child.on('close', (code, signal) => {
-        const managed = this.terminals.get(terminalId);
-        if (managed) {
-          managed.exitCode = code;
-          managed.exitSignal = signal;
-          managed.exited = true;
-        }
-        resolve();
-      });
-      child.on('error', () => {
-        resolve();
-      });
-    });
-
-    // Also create a VS Code terminal for visual output
-    const writeEmitter = new vscode.EventEmitter<string>();
-    const pty: vscode.Pseudoterminal = {
-      onDidWrite: writeEmitter.event,
-      open() {
-        writeEmitter.fire(`$ ${params.command} ${(params.args || []).join(' ')}\r\n`);
-      },
-      close() { /* no-op */ },
-    };
-    const vsTerminal = vscode.window.createTerminal({
-      name: `ACP: ${params.command}`,
-      pty,
-    });
-
-    // Stream output to VS Code terminal
-    child.stdout?.on('data', (data: Buffer) => {
-      writeEmitter.fire(data.toString().replace(/\n/g, '\r\n'));
-    });
-    child.stderr?.on('data', (data: Buffer) => {
-      writeEmitter.fire(data.toString().replace(/\n/g, '\r\n'));
+      resolveExitPromise = resolve;
     });
 
     const managed: ManagedTerminal = {
@@ -134,20 +146,30 @@ export class TerminalHandler {
       exitPromise,
       vsTerminal,
     };
+    this.terminals.set(terminalId, managed);
 
-    // Keep output reference updated
-    const timer = setInterval(() => {
-      managed.output = output;
-      managed.truncated = truncated;
-    }, 100);
-
-    child.on('close', () => {
-      managed.output = output;
-      managed.truncated = truncated;
-      clearInterval(timer);
+    child.stdout?.on('data', (data: Buffer) => {
+      const text = data.toString();
+      appendOutput(text);
+      writeToTerminal(text);
+    });
+    child.stderr?.on('data', (data: Buffer) => {
+      const text = data.toString();
+      appendOutput(text);
+      writeToTerminal(text);
     });
 
-    this.terminals.set(terminalId, managed);
+    child.on('close', (code, signal) => {
+      finalizeExit(code ?? managed?.exitCode ?? null, signal ?? managed?.exitSignal ?? null);
+    });
+    child.on('error', (error) => {
+      logError(`Terminal ${terminalId} process error`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const outputText = `Failed to start command "${params.command}": ${errorMessage}\n`;
+      appendOutput(outputText);
+      writeToTerminal(outputText);
+      finalizeExit(managed?.exitCode ?? TERMINAL_SPAWN_ERROR_EXIT_CODE, managed?.exitSignal ?? null);
+    });
 
     return { terminalId };
   }
