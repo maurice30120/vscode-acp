@@ -1,15 +1,25 @@
+import type {
+  FileSelection,
+  MarkdownRenderItem,
+  MarkdownRenderedItem,
+  ModelsState,
+  ModesState,
+  SessionSnapshot,
+  SessionUpdate,
+} from './chatTypes';
+
 export type HostToWebviewMessage =
-  | { type: 'state'; activeSessionId?: string | null; session?: unknown }
-  | { type: 'sessionUpdate'; update: unknown; sessionId?: string }
+  | { type: 'state'; activeSessionId?: string | null; session?: SessionSnapshot | null }
+  | { type: 'sessionUpdate'; update: SessionUpdate; sessionId?: string }
   | { type: 'promptStart' }
   | { type: 'promptEnd'; stopReason?: string; usage?: unknown }
   | { type: 'clearChat' }
   | { type: 'error'; message?: string }
-  | { type: 'modesUpdate'; modes: unknown }
-  | { type: 'modelsUpdate'; models: unknown }
+  | { type: 'modesUpdate'; modes: ModesState }
+  | { type: 'modelsUpdate'; models: ModelsState }
   | { type: 'externalUserMessage'; text: string }
-  | { type: 'file-attached'; path?: string; name?: string; selection?: unknown }
-  | { type: 'markdownRendered'; items: Array<{ index: number; html: string }> }
+  | { type: 'file-attached'; path?: string; name?: string; selection?: FileSelection }
+  | { type: 'markdownRendered'; items: MarkdownRenderedItem[] }
   | { type: string; [key: string]: unknown };
 
 export type WebviewToHostMessage =
@@ -19,7 +29,7 @@ export type WebviewToHostMessage =
   | { type: 'setMode'; modeId: string }
   | { type: 'setModel'; modelId: string }
   | { type: 'executeCommand'; command: string }
-  | { type: 'renderMarkdown'; items: Array<{ index: number; text: string }> };
+  | { type: 'renderMarkdown'; items: MarkdownRenderItem[] };
 
 type VsCodeApi<State> = {
   postMessage(message: WebviewToHostMessage): void;
