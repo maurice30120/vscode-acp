@@ -12,5 +12,11 @@ export default defineConfig((options) => ({
   dts: true,
   splitting: false,
   minify: options.minify ?? false,
+  skipNodeModulesBundle: false,
+  noExternal: [
+    '@agentclientprotocol/sdk',
+    '@vscode/extension-telemetry',
+    'marked',
+  ],
   external: ['vscode'],
 }));
