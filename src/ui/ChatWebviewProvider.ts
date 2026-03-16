@@ -4,7 +4,7 @@ import type { SessionNotification } from '@agentclientprotocol/sdk';
 
 import { SessionManager } from '../core/SessionManager';
 import { SessionUpdateHandler, SessionUpdateListener } from '../handlers/SessionUpdateHandler';
-import { logError } from '../utils/Logger';
+import { log, logError } from '../utils/Logger';
 import { sendEvent } from '../utils/TelemetryManager';
 
 type WebviewRuntime = 'legacy' | 'react-shell';
@@ -53,6 +53,7 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
       this.handleSessionUpdate(update);
     };
     this.sessionUpdateHandler.addListener(this.updateListener);
+    log('ChatWebviewProvider: session update listener registered');
   }
 
   private renderMarkdown(text: string): string {
@@ -133,6 +134,7 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
 
   private handleSessionUpdate(update: SessionNotification): void {
     const activeId = this.sessionManager.getActiveSessionId();
+    log('ChatWebviewProvider.handleSessionUpdate called', update);
     if (update.sessionId !== activeId) {
       return;
     }
