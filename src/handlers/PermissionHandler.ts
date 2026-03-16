@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { log } from '../utils/Logger';
+import { log, logError } from '../utils/Logger';
 import { sendEvent } from '../utils/TelemetryManager';
 
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk';
@@ -7,9 +7,26 @@ import type { RequestPermissionRequest, RequestPermissionResponse } from '@agent
 /**
  * Handles ACP permission requests from agents.
  * Shows VS Code QuickPick for user to select from agent-provided options.
+ * Requests are queued so concurrent permission prompts do not clobber each other.
  */
 export class PermissionHandler {
+  private queue: Promise<void> = Promise.resolve();
+
   async requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
+    const title = params.toolCall?.title || 'Permission Request';
+    const result = this.queue.then(() => this.handlePermission(params));
+    this.queue = result.then(() => undefined, () => undefined);
+
+    return result.catch(error => {
+      logError(`requestPermission failed for "${title}"`, error);
+      sendEvent('permission/responded', { permissionType: title, outcome: 'error' });
+      return {
+        outcome: { outcome: 'cancelled' },
+      };
+    });
+  }
+
+  private async handlePermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
     const config = vscode.workspace.getConfiguration('acp');
     const autoApprove = config.get<string>('autoApprovePermissions', 'none');
 
