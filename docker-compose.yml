@@ -1,0 +1,12 @@
+services:
+  acp-agents:
+    container_name: acp-agents
+    build: .
+    # working_dir: /workspace
+    working_dir: /Users/dhuyet/Documents
+    environment:
+      MISTRAL_API_KEY: "replace-with-your-mistral-api-key"
+    volumes:
+      - /Users/dhuyet/Documents:/Users/dhuyet/Documents
+      - ${HOME}/.codex:/root/.codex
+    command: ["sleep", "infinity"]

@@ -2,7 +2,7 @@ import { spawn, ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { log, logError } from '../utils/Logger';
 import { sendEvent, sendError } from '../utils/TelemetryManager';
-import { buildSpawnCommandSpec } from '../utils/ShellSpawn';
+import { ProcessLauncher } from '../utils/ProcessLauncher';
 import type { AgentConfigEntry } from '../config/AgentConfig';
 
 export interface AgentInstance {
@@ -19,15 +19,24 @@ export class AgentManager extends EventEmitter {
   private agents: Map<string, AgentInstance> = new Map();
   private nextId = 1;
 
+  constructor(private readonly launcher: ProcessLauncher) {
+    super();
+  }
+
   /**
    * Spawn an agent as a child process with stdin/stdout piped.
    */
-  spawnAgent(name: string, config: AgentConfigEntry): AgentInstance {
+  spawnAgent(name: string, config: AgentConfigEntry, cwd?: string): AgentInstance {
     const id = `agent_${this.nextId++}`;
     log(`Spawning agent "${name}" (${id}): ${config.command} ${(config.args || []).join(' ')}`);
 
     const child = (() => {
-      const spawnSpec = buildSpawnCommandSpec(config.command, config.args || [], {
+      const spawnSpec = this.launcher.buildSpawnSpec({
+        command: config.command,
+        args: config.args || [],
+        cwd,
+        env: config.env,
+      }, {
         onUnsupportedShell: (userShell) => {
           log(`User shell "${userShell}" is not POSIX-compatible, falling back to bash/sh`);
         },
@@ -43,7 +52,8 @@ export class AgentManager extends EventEmitter {
 
       return spawn(spawnSpec.file, spawnSpec.args, {
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, ...(config.env || {}) },
+        ...(spawnSpec.cwd ? { cwd: spawnSpec.cwd } : {}),
+        env: spawnSpec.env,
         ...(spawnSpec.shell ? { shell: true } : {}),
       });
     })();

@@ -46,7 +46,7 @@ describe('App', () => {
     render(<App />);
 
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Refactor this' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Send lol' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
     expect(vscodeApiMock.postMessage).toHaveBeenCalledWith({
       type: 'sendPrompt',

@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { EventEmitter } from 'node:events';
 
 import { TerminalHandler } from '../handlers/TerminalHandler';
+import type { ProcessLauncher } from '../utils/ProcessLauncher';
 
 class FakeChildProcess extends EventEmitter {
   stdout = new EventEmitter();
@@ -26,7 +27,16 @@ suite('TerminalHandler', () => {
       dispose() { /* no-op */ },
     }) as vscode.Terminal;
 
-    const handler = new TerminalHandler(() => fakeChild as any);
+    const launcher = {
+      buildSpawnSpec: () => ({
+        file: 'missing-command',
+        args: ['--flag'],
+        env: process.env,
+        mode: 'host',
+      }),
+    } as unknown as ProcessLauncher;
+
+    const handler = new TerminalHandler(launcher, () => fakeChild as any);
     const { terminalId } = await handler.createTerminal({
       sessionId: 'session-1',
       command: 'missing-command',

@@ -7,9 +7,10 @@ import { RequestError } from '@agentclientprotocol/sdk';
 import { AgentManager } from './AgentManager';
 import { ConnectionManager, ConnectionInfo } from './ConnectionManager';
 import { SessionUpdateHandler } from '../handlers/SessionUpdateHandler';
-import { getAgentConfigs } from '../config/AgentConfig';
+import { getAgentConfigs, resolveSessionWorkingDirectory } from '../config/AgentConfig';
 import { log, logError } from '../utils/Logger';
 import { sendEvent, sendError } from '../utils/TelemetryManager';
+import { ProcessLauncher } from '../utils/ProcessLauncher';
 
 export interface SessionInfo {
   sessionId: string;
@@ -46,6 +47,7 @@ export class SessionManager extends EventEmitter {
     private readonly agentManager: AgentManager,
     private readonly connectionManager: ConnectionManager,
     private readonly sessionUpdateHandler: SessionUpdateHandler,
+    private readonly launcher: ProcessLauncher,
   ) {
     super();
     this.sessionUpdateHandler.addListener(this.sessionUpdateListener);
@@ -129,10 +131,13 @@ export class SessionManager extends EventEmitter {
     log(`SessionManager: connecting to agent "${agentName}"`);
     sendEvent('agent/connect.start', { agentName });
     const connectStartTime = Date.now();
+    const cwd = resolveSessionWorkingDirectory();
 
     try {
+      await this.launcher.validateDockerRuntime(cwd);
+
       // Spawn the agent process
-      const agentInstance = this.agentManager.spawnAgent(agentName, config);
+      const agentInstance = this.agentManager.spawnAgent(agentName, config, cwd);
       const agentId = agentInstance.id;
 
       // Listen for agent errors/close
@@ -176,7 +181,7 @@ export class SessionManager extends EventEmitter {
       }
 
       // Create ACP session (with auth handling)
-      const sessionInfo = await this.createAcpSession(agentName, agentId, connInfo);
+      const sessionInfo = await this.createAcpSession(agentName, agentId, connInfo, cwd);
 
       this.sessions.set(sessionInfo.sessionId, sessionInfo);
       this.replayPendingSessionUpdates(sessionInfo.sessionId);
@@ -251,8 +256,8 @@ export class SessionManager extends EventEmitter {
     agentName: string,
     agentId: string,
     connInfo: ConnectionInfo,
+    cwd: string,
   ): Promise<SessionInfo> {
-    const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
     let sessionResponse: NewSessionResponse;
     try {
       sessionResponse = await connInfo.connection.newSession({

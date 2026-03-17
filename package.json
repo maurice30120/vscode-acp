@@ -352,7 +352,17 @@
         "acp.defaultWorkingDirectory": {
           "type": "string",
           "default": "",
-          "description": "Default working directory for agent sessions. Leave empty to use the current workspace folder."
+          "description": "Default working directory for agent sessions. Leave empty to use the current workspace folder. In Docker mode, this path must exist inside the target container at the same absolute location."
+        },
+        "acp.docker.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run ACP agents and terminal commands inside an existing Docker container using docker exec."
+        },
+        "acp.docker.container": {
+          "type": "string",
+          "default": "",
+          "description": "Docker container name or ID to use when ACP Docker mode is enabled. The workspace must be mounted at the same absolute path inside the container."
         },
         "acp.logTraffic": {
           "type": "boolean",

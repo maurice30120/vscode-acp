@@ -10,6 +10,7 @@ import { TerminalHandler } from '../handlers/TerminalHandler';
 import { PermissionHandler } from '../handlers/PermissionHandler';
 import { SessionUpdateHandler } from '../handlers/SessionUpdateHandler';
 import { log, logError, logTraffic } from '../utils/Logger';
+import { ProcessLauncher } from '../utils/ProcessLauncher';
 import { version as extensionVersion } from '../../package.json';
 
 export interface ConnectionInfo {
@@ -27,6 +28,7 @@ export class ConnectionManager {
 
   constructor(
     private readonly sessionUpdateHandler: SessionUpdateHandler,
+    private readonly launcher: ProcessLauncher,
   ) {}
 
   /**
@@ -52,7 +54,7 @@ export class ConnectionManager {
 
     // Create handlers
     const fsHandler = new FileSystemHandler();
-    const terminalHandler = new TerminalHandler();
+    const terminalHandler = new TerminalHandler(this.launcher);
     const permissionHandler = new PermissionHandler();
 
     // Create client implementation

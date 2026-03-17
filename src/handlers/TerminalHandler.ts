@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { log, logError } from '../utils/Logger';
-import { buildSpawnCommandSpec } from '../utils/ShellSpawn';
+import { ProcessLauncher } from '../utils/ProcessLauncher';
 
 import type {
   CreateTerminalRequest,
@@ -37,7 +37,10 @@ interface ManagedTerminal {
  * Uses real child processes for capturing output, with VS Code terminals for display.
  */
 export class TerminalHandler {
-  constructor(private readonly spawnProcess: typeof spawn = spawn) {}
+  constructor(
+    private readonly launcher: ProcessLauncher,
+    private readonly spawnProcess: typeof spawn = spawn,
+  ) {}
 
   private terminals: Map<string, ManagedTerminal> = new Map();
   private nextId = 1;
@@ -48,22 +51,30 @@ export class TerminalHandler {
 
     log(`createTerminal: ${params.command} ${(params.args || []).join(' ')} (id=${terminalId})`);
 
-    const env: Record<string, string> = { ...process.env } as Record<string, string>;
-    if (params.env) {
-      for (const v of params.env) {
-        env[v.name] = v.value;
-      }
-    }
-
     let output = '';
     let truncated = false;
     let child: ChildProcess;
 
     try {
-      const spawnSpec = buildSpawnCommandSpec(params.command, params.args || []);
-      child = this.spawnProcess(spawnSpec.file, spawnSpec.args, {
+      const env: Record<string, string> = {};
+      if (params.env) {
+        for (const v of params.env) {
+          env[v.name] = v.value;
+        }
+      }
+
+      const spawnSpec = this.launcher.buildSpawnSpec({
+        command: params.command,
+        args: params.args || [],
         cwd: params.cwd || undefined,
         env,
+      }, {
+        useHostCwd: true,
+      });
+
+      child = this.spawnProcess(spawnSpec.file, spawnSpec.args, {
+        ...(spawnSpec.cwd ? { cwd: spawnSpec.cwd } : {}),
+        env: spawnSpec.env,
         stdio: ['pipe', 'pipe', 'pipe'],
         ...(spawnSpec.shell ? { shell: true } : {}),
       });

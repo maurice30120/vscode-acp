@@ -31,6 +31,7 @@ A [Visual Studio Code extension](https://marketplace.visualstudio.com/items?item
 
 - Node.js 18+ (for spawning agent processes)
 - An ACP-compatible agent installed or available via `npx`
+- Docker is optional, but required when using `acp.docker.*` to run agents inside an existing container
 
 ## Pre-configured Agents
 
@@ -56,8 +57,50 @@ You can add custom agent configurations in settings.
 |---------|---------|-------------|
 | `acp.agents` | *(9 agents)* | Agent configurations. Each key is the agent name, value has `command`, `args`, and `env`. |
 | `acp.autoApprovePermissions` | `ask` | How agent permission requests are handled: `ask` or `allowAll`. |
-| `acp.defaultWorkingDirectory` | `""` | Default working directory for agent sessions. Empty uses current workspace. |
+| `acp.defaultWorkingDirectory` | `""` | Default working directory for agent sessions. Empty uses current workspace. In Docker mode, this path must exist inside the container at the same absolute location. |
+| `acp.docker.enabled` | `false` | Run ACP agents and ACP terminal commands inside an existing Docker container via `docker exec`. |
+| `acp.docker.container` | `""` | Docker container name or ID used when Docker mode is enabled. |
 | `acp.logTraffic` | `true` | Log all ACP protocol traffic to the ACP Traffic output channel. |
+
+## Docker Execution
+
+The extension can run ACP agents and ACP terminal commands inside an existing Docker container.
+
+- The extension does not create or start containers for you
+- `acp.docker.enabled` must be `true`
+- `acp.docker.container` must point to a running container
+- Your workspace, or `acp.defaultWorkingDirectory`, must be mounted inside that container at the same absolute path as on the host
+- File reads and writes still happen through VS Code on the host filesystem in this first version
+
+When Docker mode is enabled, the extension validates that:
+
+- the Docker CLI is available
+- the configured container is running
+- the resolved working directory exists inside the container
+
+### Docker Compose Example
+
+Start the agent container with Docker Compose:
+
+```bash
+docker compose up -d
+```
+
+The tracked [`docker-compose.yml`](/Users/dhuyet/Documents/POC/vscode-acp-perso/docker-compose.yml) is configured to:
+
+- build the local `Dockerfile`
+- keep the container alive with `sleep infinity`
+- mount the workspace at `/workspace`
+- mount `${HOME}/.codex` into `/root/.codex` so Codex CLI uses host authentication
+- inject `MISTRAL_API_KEY` directly from the inline Compose environment
+
+Edit the `MISTRAL_API_KEY` placeholder in `docker-compose.yml` before starting the container.
+
+Stop the container with:
+
+```bash
+docker compose down
+```
 
 ## Commands
 
@@ -143,6 +186,7 @@ Communication with agents uses the ACP protocol (JSON-RPC 2.0 over stdio).
 - Agents must be available via the system PATH or `npx`
 - Some agents may require additional authentication setup
 - File attachment feature is not yet functional
+- Docker mode is not supported on Windows in this version
 
 ## Links
 

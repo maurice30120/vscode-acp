@@ -6,7 +6,7 @@ import { SessionUpdateHandler } from '../handlers/SessionUpdateHandler';
 suite('SessionManager', () => {
 	test('replays early available_commands_update after the session is registered', () => {
 		const sessionUpdateHandler = new SessionUpdateHandler();
-		const sessionManager = new SessionManager({} as any, {} as any, sessionUpdateHandler);
+		const sessionManager = new SessionManager({} as any, {} as any, sessionUpdateHandler, {} as any);
 
 		sessionUpdateHandler.handleUpdate({
 			sessionId: 'session-1',

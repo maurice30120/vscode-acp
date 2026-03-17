@@ -50,7 +50,7 @@ export default function InputArea({
   placeholder,
   handleCancel,
   handleSend,
-  sendLabel = 'Send lol',
+  sendLabel = 'Send',
 }: InputAreaProps): JSX.Element {
   return (
     <div

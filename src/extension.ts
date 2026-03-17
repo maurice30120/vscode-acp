@@ -13,6 +13,7 @@ import { getAgentNames } from './config/AgentConfig';
 import { fetchRegistry } from './config/RegistryClient';
 import { log, logError, disposeChannels, getOutputChannel, getTrafficChannel } from './utils/Logger';
 import { initTelemetry, sendEvent } from './utils/TelemetryManager';
+import { ProcessLauncher } from './utils/ProcessLauncher';
 
 export function activate(context: vscode.ExtensionContext): void {
   log('ACP Client extension activating...');
@@ -23,12 +24,14 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // --- Core services ---
   const sessionUpdateHandler = new SessionUpdateHandler();
-  const agentManager = new AgentManager();
-  const connectionManager = new ConnectionManager(sessionUpdateHandler);
+  const processLauncher = new ProcessLauncher();
+  const agentManager = new AgentManager(processLauncher);
+  const connectionManager = new ConnectionManager(sessionUpdateHandler, processLauncher);
   const sessionManager = new SessionManager(
     agentManager,
     connectionManager,
     sessionUpdateHandler,
+    processLauncher,
   );
 
   // --- UI ---

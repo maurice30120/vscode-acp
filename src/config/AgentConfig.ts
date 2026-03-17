@@ -14,12 +14,21 @@ export interface AgentConfigEntry {
   displayName?: string;
 }
 
+export interface DockerConfigEntry {
+  enabled: boolean;
+  container: string;
+}
+
+function getAcpConfiguration(): vscode.WorkspaceConfiguration {
+  return vscode.workspace.getConfiguration('acp');
+}
+
 /**
  * Read agent configurations from VS Code settings.
  * Returns a map of agent name → config.
  */
 export function getAgentConfigs(): Record<string, AgentConfigEntry> {
-  const config = vscode.workspace.getConfiguration('acp');
+  const config = getAcpConfiguration();
   const agents = config.get<Record<string, AgentConfigEntry>>('agents', {});
   return agents;
 }
@@ -36,4 +45,25 @@ export function getAgentNames(): string[] {
  */
 export function getAgentConfig(name: string): AgentConfigEntry | undefined {
   return getAgentConfigs()[name];
+}
+
+export function getDockerConfig(): DockerConfigEntry {
+  const config = getAcpConfiguration();
+  return {
+    enabled: config.get<boolean>('docker.enabled', false),
+    container: config.get<string>('docker.container', '').trim(),
+  };
+}
+
+export function getDefaultWorkingDirectory(): string {
+  return getAcpConfiguration().get<string>('defaultWorkingDirectory', '').trim();
+}
+
+export function resolveSessionWorkingDirectory(): string {
+  const configured = getDefaultWorkingDirectory();
+  if (configured) {
+    return configured;
+  }
+
+  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
 }
