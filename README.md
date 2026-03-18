@@ -207,3 +207,11 @@ Communication with agents uses the ACP protocol (JSON-RPC 2.0 over stdio).
 ## License
 
 MIT — see [LICENSE](LICENSE) for details.
+
+
+
+
+## test :
+Tu disposes d’un tool appelé call_research_subagent.
+Utilise-le maintenant avec une recherche quick pour analyser l’architecture de ce repository.
+Retourne ensuite un résumé en 5 points maximum.

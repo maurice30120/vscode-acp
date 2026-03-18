@@ -1,6 +1,6 @@
 {
-	"typescript.tsdk": "node_modules/typescript/lib",
-	"acp.docker.enabled": true,
-	"acp.docker.container": "acp-agents",
-	"acp.defaultWorkingDirectory": "/workspace"
+  "acp.docker.enabled": true,
+  "acp.docker.container": "acp-agents",
+  "acp.defaultWorkingDirectory": "",
+  "acp.subAgents.researchAgentName": "Codex CLI"
 }

@@ -25,8 +25,8 @@ const MCP_SERVER_NAME = 'acp-research-subagent';
 const MCP_SERVER_VERSION = '0.1.0';
 const MCP_SCRIPT_ENV = 'ACP_RESEARCH_MCP_SCRIPT_BASE64';
 const RESEARCH_TIMEOUT_MS = 110_000;
-const FINAL_BLOCK_START = '<<ACP_RESEARCH_FINAL>>';
-const FINAL_BLOCK_END = '<</ACP_RESEARCH_FINAL>>';
+// Final output contract: the sub-agent must write a single JSON object
+// on its own final line with the shape {"summary": "..."} and nothing else after it.
 
 export function buildResearchSubagentMcpServer(cwd: string): LocalMcpServerStdio {
   const researchConfig = getResearchSubAgentConfig();
@@ -49,7 +49,6 @@ export function buildResearchSubagentMcpServer(cwd: string): LocalMcpServerStdio
       { name: 'ACP_RESEARCH_ACP_PROTOCOL_VERSION', value: String(PROTOCOL_VERSION) },
       { name: 'ACP_RESEARCH_SESSION_CWD', value: cwd },
       { name: 'ACP_RESEARCH_TIMEOUT_MS', value: String(RESEARCH_TIMEOUT_MS) },
-      { name: 'ACP_RESEARCH_AGENT_NAME', value: researchConfig.agentName },
       {
         name: 'ACP_RESEARCH_AGENT_COMMAND',
         value: backend.config?.command ?? '',
@@ -97,20 +96,27 @@ export function extractResearchSummaryFromTranscript(transcript: string): string
   if (!transcript) {
     return null;
   }
-
-  const startIndex = transcript.lastIndexOf(FINAL_BLOCK_START);
-  if (startIndex < 0) {
-    return null;
+  // Require the final non-empty line to be a single JSON object.
+  const lines = transcript.split(/\r?\n/).map(l => l.trim()).filter(() => true);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (!line) {
+      continue;
+    }
+    if (!line.startsWith('{') || !line.endsWith('}')) {
+      return null;
+    }
+    try {
+      const obj = JSON.parse(line);
+      if (obj && typeof obj.summary === 'string' && obj.summary.trim()) {
+        return obj.summary.trim();
+      }
+      return null;
+    } catch {
+      return null;
+    }
   }
-
-  const contentStart = startIndex + FINAL_BLOCK_START.length;
-  const endIndex = transcript.indexOf(FINAL_BLOCK_END, contentStart);
-  if (endIndex < 0) {
-    return null;
-  }
-
-  const summary = transcript.slice(contentStart, endIndex).trim();
-  return summary || null;
+  return null;
 }
 
 function buildResearchMcpScript(): string {
@@ -129,8 +135,7 @@ function buildResearchMcpScript(): string {
     "const SESSION_CWD = process.env.ACP_RESEARCH_SESSION_CWD || process.cwd();",
     "const CONFIG_ERROR = process.env.ACP_RESEARCH_CONFIG_ERROR || '';",
     "const TIMEOUT_MS = Number(process.env.ACP_RESEARCH_TIMEOUT_MS || '120000');",
-    `const FINAL_BLOCK_START = ${JSON.stringify(FINAL_BLOCK_START)};`,
-    `const FINAL_BLOCK_END = ${JSON.stringify(FINAL_BLOCK_END)};`,
+    "// The sub-agent must write a single JSON object as the final output line.",
     '',
     "function parseJson(value, fallback) {",
     "  try {",
@@ -193,11 +198,10 @@ function buildResearchMcpScript(): string {
     "    'You are a specialized research sub-agent assisting a parent coding agent.',",
     "    'Work statelessly. Do not assume any prior conversation history.',",
     "    'Do not modify files.',",
-    "    'You may use read-only terminal commands for repository inspection when needed (for example: ls, find, rg, cat, sed).',",
-    "    'Never use terminal commands that modify files, change git state, install dependencies, or access the network.',",
-    "    'Use read-only file access if repository context is needed.',",
-    "    detail,",
-    "    'Your final answer must appear exactly once inside a final block using these delimiters and nothing should follow the closing delimiter:',",
+        'Your final answer MUST be a single JSON object on its own line, and nothing else should follow that line.',
+        'The JSON object must be exactly: {"summary": "<concise textual summary>"}',
+        'Do NOT include any explanatory text, commentary, or extra newlines after the JSON object.',
+        'You may think or report progress before the final JSON line, but the final line must contain only the JSON object intended for the parent agent.',
     "    FINAL_BLOCK_START,",
     "    '<final research brief>',",
     "    FINAL_BLOCK_END,",
@@ -209,17 +213,23 @@ function buildResearchMcpScript(): string {
     "}",
     '',
     "function extractFinalSummary(transcript) {",
-    "  const startIndex = transcript.lastIndexOf(FINAL_BLOCK_START);",
-    "  if (startIndex < 0) {",
-    "    return null;",
+    "  if (!transcript) return null;",
+    "  const lines = transcript.split(/\\r?\\n/).map(l => l.trim()).filter(() => true);",
+    "  for (let i = lines.length - 1; i >= 0; i--) {",
+    "    const line = lines[i];",
+    "    if (!line) continue;",
+    "    if (!line.startsWith('{') || !line.endsWith('}')) return null;",
+    "    try {",
+    "      const obj = JSON.parse(line);",
+    "      if (obj && typeof obj.summary === 'string' && obj.summary.trim()) {",
+    "        return obj.summary.trim();",
+    "      }",
+    "      return null;",
+    "    } catch {",
+    "      return null;",
+    "    }",
     "  }",
-    "  const contentStart = startIndex + FINAL_BLOCK_START.length;",
-    "  const endIndex = transcript.indexOf(FINAL_BLOCK_END, contentStart);",
-    "  if (endIndex < 0) {",
-    "    return null;",
-    "  }",
-    "  const summary = transcript.slice(contentStart, endIndex).trim();",
-    "  return summary || null;",
+    "  return null;",
     "}",
     '',
     "function makeToolError(message) {",

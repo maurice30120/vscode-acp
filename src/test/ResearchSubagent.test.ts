@@ -61,23 +61,20 @@ suite('ResearchSubagent', () => {
   });
 
   test('extracts only the final marked block from a sub-agent transcript', () => {
-    const transcript = [
-      'Je vais d\'abord inspecter les fichiers pertinents.',
-      'Puis je résumerai le résultat.',
-      '<<ACP_RESEARCH_FINAL>>',
-      'Trouvé: le bug vient d\'une agrégation de chunks intermédiaires.',
-      'Action: renvoyer uniquement le bloc final.',
-      '<</ACP_RESEARCH_FINAL>>',
-      'Texte qui ne devrait pas être inclus.',
-    ].join('\n');
-
-    assert.strictEqual(
-      extractResearchSummaryFromTranscript(transcript),
-      [
-        'Trouvé: le bug vient d\'une agrégation de chunks intermédiaires.',
+    const final = JSON.stringify({
+      summary: [
+        "Trouvé: le bug vient d'une agrégation de chunks intermédiaires.",
         'Action: renvoyer uniquement le bloc final.',
       ].join('\n'),
-    );
+    });
+
+    const transcript = [
+      "Je vais d'abord inspecter les fichiers pertinents.",
+      'Puis je résumerai le résultat.',
+      final,
+    ].join('\n');
+
+    assert.strictEqual(extractResearchSummaryFromTranscript(transcript), JSON.parse(final).summary);
   });
 
   test('returns null when no final marked block exists', () => {

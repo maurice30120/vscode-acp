@@ -63,12 +63,38 @@ export class TerminalHandler {
         }
       }
 
-      const spawnSpec = this.launcher.buildSpawnSpec({
+      // If caller passed a single string that contains spaces and no args,
+      // treat it as an explicit "raw shell command" and run it via the
+      // platform shell (POSIX: /bin/sh -lc, Windows: cmd /c). This makes the
+      // handler tolerant for agents that send a full shell command string.
+      let launchRequest = {
         command: params.command,
         args: params.args || [],
         cwd: params.cwd || undefined,
         env,
-      }, {
+      };
+
+      if ((!params.args || params.args.length === 0) && /\s/.test(String(params.command))) {
+        const isWin = process.platform === 'win32';
+        if (isWin) {
+          launchRequest = {
+            command: 'cmd',
+            args: ['/c', params.command],
+            cwd: params.cwd || undefined,
+            env,
+          };
+        } else {
+          launchRequest = {
+            command: '/bin/sh',
+            args: ['-lc', params.command],
+            cwd: params.cwd || undefined,
+            env,
+          };
+        }
+        log(`createTerminal: treating command as raw shell: ${launchRequest.command} ${(launchRequest.args || []).join(' ')}`);
+      }
+
+      const spawnSpec = this.launcher.buildSpawnSpec(launchRequest, {
         useHostCwd: true,
       });
 
