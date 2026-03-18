@@ -30,25 +30,12 @@
     "copilot"
   ],
   "activationEvents": [
+    "onStartupFinished",
     "onView:acp-sessions",
     "onView:acp-chat",
     "onCommand:acp.connectAgent",
-    "onCommand:acp.newConversation",
-    "onCommand:acp.sendPrompt",
-    "onCommand:acp.quickPrompt",
-    "onCommand:acp.cancelTurn",
-    "onCommand:acp.disconnectAgent",
     "onCommand:acp.openChat",
-    "onCommand:acp.addAgent",
-    "onCommand:acp.removeAgent",
-    "onCommand:acp.showLog",
-    "onCommand:acp.showTraffic",
-    "onCommand:acp.browseRegistry",
-    "onCommand:acp.setMode",
-    "onCommand:acp.setModel",
-    "onCommand:acp.refreshAgents",
-    "onCommand:acp.restartAgent",
-    "onCommand:acp.attachFile"
+    "onCommand:acp.quickPrompt"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -363,6 +350,11 @@
           "type": "string",
           "default": "",
           "description": "Docker container name or ID to use when ACP Docker mode is enabled. The workspace must be mounted at the same absolute path inside the container."
+        },
+        "acp.subAgents.researchAgentName": {
+          "type": "string",
+          "default": "",
+          "description": "Agent name from acp.agents used by the hidden call_research_subagent MCP tool. Leave empty to expose the tool in error mode until configured."
         },
         "acp.logTraffic": {
           "type": "boolean",

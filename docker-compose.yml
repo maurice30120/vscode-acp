@@ -5,7 +5,7 @@ services:
     # working_dir: /workspace
     working_dir: /Users/dhuyet/Documents
     environment:
-      MISTRAL_API_KEY: "replace-with-your-mistral-api-key"
+      MISTRAL_API_KEY: "Ra6BtOilaoRnkxTuiLTQZSw64LIW70CC"
     volumes:
       - /Users/dhuyet/Documents:/Users/dhuyet/Documents
       - ${HOME}/.codex:/root/.codex

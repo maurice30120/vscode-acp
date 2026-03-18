@@ -19,6 +19,10 @@ export interface DockerConfigEntry {
   container: string;
 }
 
+export interface ResearchSubAgentConfigEntry {
+  agentName: string;
+}
+
 function getAcpConfiguration(): vscode.WorkspaceConfiguration {
   return vscode.workspace.getConfiguration('acp');
 }
@@ -52,6 +56,13 @@ export function getDockerConfig(): DockerConfigEntry {
   return {
     enabled: config.get<boolean>('docker.enabled', false),
     container: config.get<string>('docker.container', '').trim(),
+  };
+}
+
+export function getResearchSubAgentConfig(): ResearchSubAgentConfigEntry {
+  const config = getAcpConfiguration();
+  return {
+    agentName: config.get<string>('subAgents.researchAgentName', '').trim(),
   };
 }
 

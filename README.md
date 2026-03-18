@@ -60,7 +60,17 @@ You can add custom agent configurations in settings.
 | `acp.defaultWorkingDirectory` | `""` | Default working directory for agent sessions. Empty uses current workspace. In Docker mode, this path must exist inside the container at the same absolute location. |
 | `acp.docker.enabled` | `false` | Run ACP agents and ACP terminal commands inside an existing Docker container via `docker exec`. |
 | `acp.docker.container` | `""` | Docker container name or ID used when Docker mode is enabled. |
+| `acp.subAgents.researchAgentName` | `""` | Agent name from `acp.agents` used by the hidden `call_research_subagent` MCP tool. Leave empty to expose the tool in error mode until configured. |
 | `acp.logTraffic` | `true` | Log all ACP protocol traffic to the ACP Traffic output channel. |
+
+## Research Sub-Agent Tool
+
+The extension can expose a single MCP tool named `call_research_subagent` to the connected parent agent.
+
+- The tool is injected through `mcpServers` during session creation
+- The tool implementation launches a hidden ACP agent, asks it to perform a stateless research task, and returns the resulting summary as a tool result
+- Configure the hidden backend by setting `acp.subAgents.researchAgentName` to one of your configured `acp.agents`
+- The hidden research agent runs in read-only mode from the client's perspective: file reads are allowed, file writes and terminal access are denied
 
 ## Docker Execution
 

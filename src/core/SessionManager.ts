@@ -11,6 +11,7 @@ import { getAgentConfigs, resolveSessionWorkingDirectory } from '../config/Agent
 import { log, logError } from '../utils/Logger';
 import { sendEvent, sendError } from '../utils/TelemetryManager';
 import { ProcessLauncher } from '../utils/ProcessLauncher';
+import { buildResearchSubagentMcpServer } from '../subagents/ResearchSubagent';
 
 export interface SessionInfo {
   sessionId: string;
@@ -258,11 +259,13 @@ export class SessionManager extends EventEmitter {
     connInfo: ConnectionInfo,
     cwd: string,
   ): Promise<SessionInfo> {
+    const mcpServers = [buildResearchSubagentMcpServer(cwd)];
+
     let sessionResponse: NewSessionResponse;
     try {
       sessionResponse = await connInfo.connection.newSession({
         cwd,
-        mcpServers: [],
+        mcpServers: mcpServers as any,
       });
     } catch (e: any) {
       // Check for auth_required error (code -32000)
@@ -335,7 +338,7 @@ export class SessionManager extends EventEmitter {
       try {
         sessionResponse = await connInfo.connection.newSession({
           cwd,
-          mcpServers: [],
+          mcpServers: mcpServers as any,
         });
       } catch (retryErr) {
         logError('Failed to create session after authentication', retryErr);

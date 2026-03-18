@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 
 import {
   getDockerConfig,
+  getResearchSubAgentConfig,
   resolveSessionWorkingDirectory,
 } from '../config/AgentConfig';
 
@@ -24,6 +25,16 @@ suite('AgentConfig', () => {
     assert.deepStrictEqual(getDockerConfig(), {
       enabled: true,
       container: 'acp-dev',
+    });
+  });
+
+  test('reads research sub-agent settings from configuration', () => {
+    stubConfiguration({
+      'subAgents.researchAgentName': 'Codex CLI',
+    });
+
+    assert.deepStrictEqual(getResearchSubAgentConfig(), {
+      agentName: 'Codex CLI',
     });
   });
 
