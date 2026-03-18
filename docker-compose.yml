@@ -8,5 +8,20 @@ services:
       MISTRAL_API_KEY: "Ra6BtOilaoRnkxTuiLTQZSw64LIW70CC"
     volumes:
       - /Users/dhuyet/Documents:/Users/dhuyet/Documents
+
+      # Persist Codex authentication/session
       - ${HOME}/.codex:/root/.codex
+
+      # Persist Claude Code local state (best effort)
+      - ${HOME}/.claude:/root/.claude
+
+      # Persist Gemini settings/oauth/cache
+      - ${HOME}/.gemini:/root/.gemini
+
+      # Persist OpenCode local state (best effort)
+      - ${HOME}/.config/opencode:/root/.config/opencode
+      - ${HOME}/.opencode:/root/.opencode
+
+      # Persist Copilot local state (best effort)
+      - ${HOME}/.config/github-copilot:/root/.config/github-copilot
     command: ["sleep", "infinity"]

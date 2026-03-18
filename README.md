@@ -100,11 +100,27 @@ The tracked [`docker-compose.yml`](/Users/dhuyet/Documents/POC/vscode-acp-perso/
 
 - build the local `Dockerfile`
 - keep the container alive with `sleep infinity`
-- mount the workspace at `/workspace`
-- mount `${HOME}/.codex` into `/root/.codex` so Codex CLI uses host authentication
-- inject `MISTRAL_API_KEY` directly from the inline Compose environment
+- mount the workspace at the same absolute path as the host
+- persist Codex auth from `${HOME}/.codex` to `/root/.codex`
+- persist Gemini auth/settings from `${HOME}/.gemini` to `/root/.gemini`
+- persist Claude local state from `${HOME}/.claude` to `/root/.claude`
+- persist OpenCode local state from `${HOME}/.config/opencode` and `${HOME}/.opencode`
+- expose API key env vars for Mistral/Claude/Codex/Gemini/OpenCode
 
-Edit the `MISTRAL_API_KEY` placeholder in `docker-compose.yml` before starting the container.
+Set your real secrets in your shell or a local `.env` file before starting the container.
+
+### Auth Persistence By CLI
+
+Use the same pattern as Codex for each CLI: mount its local auth/config folder into the container and provide required API key env vars.
+
+| CLI | Preferred auth persistence in container |
+|-----|-----------------------------------------|
+| GitHub Copilot | best effort mount `${HOME}/.config/github-copilot` -> `/root/.config/github-copilot` |
+| Claude Code | `ANTHROPIC_API_KEY` + optional `${HOME}/.claude` -> `/root/.claude` |
+| Gemini CLI | `${HOME}/.gemini` -> `/root/.gemini` + `GEMINI_API_KEY` or Google env vars |
+| Mistral Vibe | `MISTRAL_API_KEY` env var |
+| Codex CLI | `${HOME}/.codex` -> `/root/.codex` + optional `OPENAI_API_KEY` / `CODEX_API_KEY` |
+| OpenCode | `OPENCODE_API_KEY` + `${HOME}/.config/opencode` -> `/root/.config/opencode` |
 
 Stop the container with:
 
@@ -207,11 +223,3 @@ Communication with agents uses the ACP protocol (JSON-RPC 2.0 over stdio).
 ## License
 
 MIT — see [LICENSE](LICENSE) for details.
-
-
-
-
-## test :
-Tu disposes d’un tool appelé call_research_subagent.
-Utilise-le maintenant avec une recherche quick pour analyser l’architecture de ce repository.
-Retourne ensuite un résumé en 5 points maximum.
