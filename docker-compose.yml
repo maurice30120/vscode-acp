@@ -18,6 +18,9 @@ services:
       # Persist Gemini settings/oauth/cache
       - ${HOME}/.gemini:/root/.gemini
 
+      # Persist Pi local state (best effort)
+      - ${HOME}/.pi:/root/.pi
+
       # Persist OpenCode local state (best effort)
       - ${HOME}/.config/opencode:/root/.config/opencode
       - ${HOME}/.opencode:/root/.opencode

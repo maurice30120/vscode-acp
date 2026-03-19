@@ -48,6 +48,7 @@ The extension comes with default configurations for:
 | Codex CLI | `npx @zed-industries/codex-acp@latest` |
 | OpenCode | `npx opencode-ai@latest acp` |
 | OpenClaw | `npx openclaw acp` |
+| Pi | `npx -y pi-acp` |
 
 You can add custom agent configurations in settings.
 
@@ -55,7 +56,7 @@ You can add custom agent configurations in settings.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `acp.agents` | *(9 agents)* | Agent configurations. Each key is the agent name, value has `command`, `args`, and `env`. |
+| `acp.agents` | *(pre-configured agents)* | Agent configurations. Each entry maps an agent name to its `command`, `args`, and `env`. |
 | `acp.autoApprovePermissions` | `ask` | How agent permission requests are handled: `ask` or `allowAll`. |
 | `acp.defaultWorkingDirectory` | `""` | Default working directory for agent sessions. Empty uses current workspace. In Docker mode, this path must exist inside the container at the same absolute location. |
 | `acp.docker.enabled` | `false` | Run ACP agents and ACP terminal commands inside an existing Docker container via `docker exec`. |
@@ -101,9 +102,11 @@ The tracked [`docker-compose.yml`](/Users/dhuyet/Documents/POC/vscode-acp-perso/
 - build the local `Dockerfile`
 - keep the container alive with `sleep infinity`
 - mount the workspace at the same absolute path as the host
+- preinstall the default ACP agent CLIs for GitHub Copilot, Claude Code, Gemini, Codex, OpenCode, Pi, and Mistral Vibe
 - persist Codex auth from `${HOME}/.codex` to `/root/.codex`
 - persist Gemini auth/settings from `${HOME}/.gemini` to `/root/.gemini`
 - persist Claude local state from `${HOME}/.claude` to `/root/.claude`
+- persist Pi local state from `${HOME}/.pi` to `/root/.pi`
 - persist OpenCode local state from `${HOME}/.config/opencode` and `${HOME}/.opencode`
 - expose API key env vars for Mistral/Claude/Codex/Gemini/OpenCode
 
@@ -120,6 +123,7 @@ Use the same pattern as Codex for each CLI: mount its local auth/config folder i
 | Gemini CLI | `${HOME}/.gemini` -> `/root/.gemini` + `GEMINI_API_KEY` or Google env vars |
 | Mistral Vibe | `MISTRAL_API_KEY` env var |
 | Codex CLI | `${HOME}/.codex` -> `/root/.codex` + optional `OPENAI_API_KEY` / `CODEX_API_KEY` |
+| Pi | `${HOME}/.pi` -> `/root/.pi` |
 | OpenCode | `OPENCODE_API_KEY` + `${HOME}/.config/opencode` -> `/root/.config/opencode` |
 
 Stop the container with:

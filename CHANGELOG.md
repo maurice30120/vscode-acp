@@ -4,6 +4,13 @@ All notable changes to the "vscode-acp" extension will be documented in this fil
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [Unreleased]
+
+### Added
+- **Pi**: Added the Pi coding agent (`npx -y pi-acp`) as a pre-configured ACP agent.
+- **Docker**: Bundle the default ACP agent CLIs in the example container, including Pi, and persist `${HOME}/.pi`.
+- **Docker**: Switch Debian package sources to HTTPS during image build to avoid `apt-get` failures on networks that block plain HTTP.
+
 ## [0.1.3] - 2026-03-01
 
 ### Added

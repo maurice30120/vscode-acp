@@ -14,6 +14,7 @@ import { fetchRegistry } from './config/RegistryClient';
 import { log, logError, disposeChannels, getOutputChannel, getTrafficChannel } from './utils/Logger';
 import { initTelemetry, sendEvent } from './utils/TelemetryManager';
 import { ProcessLauncher } from './utils/ProcessLauncher';
+import { ResearchSubagentTool, TOOL_ID } from './tools/ResearchSubagentTool';
 
 export function activate(context: vscode.ExtensionContext): void {
   log('ACP Client extension activating...');
@@ -58,6 +59,10 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   const statusBarManager = new StatusBarManager(sessionManager);
+
+  // --- Language Model Tool ---
+  const researchToolRegistration = vscode.lm.registerTool(TOOL_ID, new ResearchSubagentTool());
+  context.subscriptions.push(researchToolRegistration);
 
   // Notify chat webview when active session changes
   sessionManager.on('active-session-changed', () => {

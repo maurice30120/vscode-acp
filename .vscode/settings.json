@@ -2,5 +2,5 @@
   "acp.docker.enabled": true,
   "acp.docker.container": "acp-agents",
   "acp.defaultWorkingDirectory": "",
-  "acp.subAgents.researchAgentName": "Codex CLI"
+  "acp.subAgents.researchAgentName": "Mistral Vibe"
 }

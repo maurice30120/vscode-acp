@@ -1,7 +1,7 @@
 {
   "name": "acp-client",
   "displayName": "ACP Client",
-  "description": "Agent Client Protocol client for VS Code — connect to GitHub Copilot, Claude Code, Gemini CLI, Qwen Code, Codex CLI, OpenCode, OpenClaw, and any ACP-compatible AI coding agent",
+  "description": "Agent Client Protocol client for VS Code — connect to GitHub Copilot, Claude Code, Gemini CLI, Qwen Code, Codex CLI, OpenCode, OpenClaw, Pi, and any ACP-compatible AI coding agent",
   "version": "0.1.4",
   "publisher": "maurice30120",
   "license": "MIT",
@@ -16,7 +16,7 @@
     "url": "https://github.com/formulahendry/vscode-acp.git"
   },
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.99.0"
   },
   "categories": [
     "AI",
@@ -237,12 +237,39 @@
         "when": "acp.turnInProgress"
       }
     ],
+    "languageModelTools": [
+      {
+        "name": "acp_call_research_subagent",
+        "tags": ["research", "acp", "subagent"],
+        "toolReferenceName": "research",
+        "displayName": "ACP Research Sub-Agent",
+        "modelDescription": "Delegate a focused research task to a hidden ACP sub-agent. Use this tool to investigate questions, search documentation, explore codebases, or gather information. The sub-agent works statelessly and returns a concise summary. Accepts a 'query' (required) and an optional 'depth' ('quick' or 'thorough').",
+        "icon": "$(search)",
+        "userDescription": "Research a topic using an ACP sub-agent",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "The exact topic or question to investigate."
+            },
+            "depth": {
+              "type": "string",
+              "enum": ["quick", "thorough"],
+              "description": "Research depth. Defaults to quick."
+            }
+          },
+          "required": ["query"]
+        }
+      }
+    ],
     "configuration": {
       "title": "ACP Client",
       "properties": {
         "acp.agents": {
           "type": "object",
-          "description": "Agent configurations. Each key is the agent name, value has command, args, and env.",
+          "description": "Agent configurations. Each entry maps an agent name to its command, args, and env.",
           "default": {
             "GitHub Copilot": {
               "command": "npx",
@@ -289,6 +316,14 @@
                 "acp"
               ],
               "env": {}
+            },
+            "Pi": {
+              "command": "npx",
+              "args": [
+                "-y",
+                "pi-acp"
+              ],
+              "env": {}
             }
           }
         },
@@ -332,14 +367,16 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
+    "copy:research-mcp": "node ./scripts/copy-research-mcp.mjs",
     "build:webview": "vite build --config webview/vite.config.ts",
     "watch:webview": "vite build --watch --config webview/vite.config.ts",
-    "compile:host": "tsup",
+    "compile:host": "tsup && npm run copy:research-mcp",
     "watch:host": "tsup --watch",
-    "package:host": "tsup --minify",
+    "package:host": "tsup --minify && npm run copy:research-mcp",
     "compile": "run-s build:webview compile:host",
     "watch": "run-p watch:webview watch:host",
     "package": "run-s build:webview package:host",
+    "package:vsix": "npm run package && npx vsce package",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "lint": "eslint src webview --max-warnings 0",
@@ -362,7 +399,7 @@
     "@types/node": "^20.0.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@types/vscode": "^1.85.0",
+    "@types/vscode": "^1.99.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "@vitejs/plugin-react": "^6.0.1",

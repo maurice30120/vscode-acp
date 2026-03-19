@@ -34,6 +34,8 @@ suite('ResearchSubagent', () => {
     assert.strictEqual(getEnv(server, 'ACP_RESEARCH_AGENT_COMMAND'), 'npx');
     assert.strictEqual(getEnv(server, 'ACP_RESEARCH_AGENT_ARGS_JSON'), '["research-agent"]');
     assert.strictEqual(getEnv(server, 'ACP_RESEARCH_AGENT_ENV_JSON'), '{"FOO":"bar"}');
+    assert.strictEqual(getEnv(server, 'ACP_DOCKER_ENABLED'), 'false');
+    assert.strictEqual(getEnv(server, 'ACP_DOCKER_CONTAINER'), '');
     assert.strictEqual(getEnv(server, 'ACP_RESEARCH_SESSION_CWD'), '/workspace/app');
     assert.strictEqual(getEnv(server, 'ACP_RESEARCH_TIMEOUT_MS'), '110000');
     assert.strictEqual(getEnv(server, 'ACP_RESEARCH_CONFIG_ERROR'), '');
