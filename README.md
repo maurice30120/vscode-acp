@@ -211,6 +211,52 @@ The extension follows a modular architecture:
 
 Communication with agents uses the ACP protocol (JSON-RPC 2.0 over stdio).
 
+### Architecture Diagram
+
+```mermaid
+graph LR
+  subgraph VSCodeExt["VS Code Extension\n(Extension Host)"]
+    AM[AgentManager]
+    CM[ConnectionManager]
+    SM[SessionManager]
+    AC[AcpClientImpl]
+    HANDLERS["Handlers\n(FileSystem, Terminal, Permission, SessionUpdate)"]
+    UI["UI\n(SessionTreeProvider, ChatWebviewProvider, StatusBar)"]
+    TOOL["ResearchSubagentTool\n(Language Model Tool)"]
+  end
+
+  subgraph WebviewUI["Webview UI\n(React + Vite)"]
+    WV[Webview]
+  end
+
+  ResearchMCP["Research MCP\n(src/subagents/research_mcp.js)"]
+  ACPAgents["ACP Agents\n(Copilot, Claude, Gemini, Codex, OpenCode, Pi, Mistral)"]
+  DockerContainer["Optional Docker container\n(acp-agents)"]
+  AgentRegistry["Agent Registry CDN\n(cdn.agentclientprotocol.com)"]
+  WorkspaceFS["Workspace Filesystem\n(project files)"]
+  TelemetrySvc["Telemetry Service\n(@vscode/extension-telemetry)"]
+  GitHubCI["GitHub Actions CI\n(build / tests / package)"]
+
+  WV <--> VSCodeExt
+  WV -->|postMessage host to extension| VSCodeExt
+  VSCodeExt <-->|spawn & ACP JSON-RPC over stdio| ACPAgents
+  VSCodeExt -->|spawn when LM tool invoked| ResearchMCP
+  ResearchMCP <-->|launch hidden research agent / ACP JSON-RPC| ACPAgents
+  VSCodeExt -->|HTTP GET fetchRegistry| AgentRegistry
+  VSCodeExt -->|fs read / write via FileSystemHandler| WorkspaceFS
+  VSCodeExt -->|docker exec optional| DockerContainer
+  VSCodeExt -->|sendEvent telemetry| TelemetrySvc
+  GitHubCI -->|build / test / package .vsix| VSCodeExt
+```
+
+### Notes & Defaults
+
+- Build artifact: `dist/extension.js` (as referenced by `package.json` -> `main`).
+- Docker: optional — if `acp.docker.enabled` is used, mount the workspace at the same absolute path inside the container; use `docker-compose.yml` as an example but provide secrets via a `.env` (do not commit secrets).
+- Research sub-agent: set `acp.subAgents.researchAgentName: "<your-research-agent>"` (example: `opencode` or `copilot`).
+- API keys: prefer environment variables or a local `.env`; never commit API keys (e.g., `MISTRAL_API_KEY`).
+- Packaging: ensure `scripts/copy-research-mcp.mjs` runs during packaging so that `src/subagents/research_mcp.js` is included in the final VSIX.
+
 ## Known Issues
 
 - Agents must be available via the system PATH or `npx`
