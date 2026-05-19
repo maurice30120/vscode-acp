@@ -340,6 +340,21 @@ export function activate(context: vscode.ExtensionContext): void {
     sessionTreeProvider.refresh();
   });
 
+  // Refresh Sessions (invalidate cached session list for an agent or all)
+  const refreshSessionsCmd = vscode.commands.registerCommand('acp.refreshSessions', async (agentOrItem?: any) => {
+    let agentName: string | undefined;
+    if (typeof agentOrItem === 'string') {
+      agentName = agentOrItem;
+    } else if (agentOrItem?.agentName) {
+      agentName = agentOrItem.agentName;
+    }
+    if (agentName) {
+      sessionTreeProvider.invalidate(agentName);
+    } else {
+      sessionTreeProvider.invalidate();
+    }
+  });
+
   // Add Agent Configuration
   const addAgentCmd = vscode.commands.registerCommand('acp.addAgent', async () => {
     const name = await vscode.window.showInputBox({
@@ -440,6 +455,98 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   });
 
+  // --- Missing UI commands ---
+  // Load more sessions (agent-sourced pagination)
+  const loadMoreSessionsCmd = vscode.commands.registerCommand('acp.loadMoreSessions', async (agentOrItem?: any) => {
+    let agentName: string | undefined;
+    if (typeof agentOrItem === 'string') {
+      agentName = agentOrItem;
+    } else if (agentOrItem?.agentName) {
+      agentName = agentOrItem.agentName;
+    }
+    if (!agentName) { return; }
+    try {
+      await sessionTreeProvider.loadMore(agentName);
+    } catch (e: any) {
+      logError(`Failed to load more sessions for ${agentName}`, e);
+      vscode.window.showErrorMessage(`Failed to load more sessions: ${e?.message || String(e)}`);
+    }
+  });
+
+  // Copy session id
+  const copySessionIdCmd = vscode.commands.registerCommand('acp.copySessionId', async (itemOrArgs?: any) => {
+    let sessionId: string | undefined;
+    if (typeof itemOrArgs === 'string') {
+      sessionId = itemOrArgs;
+    } else if (itemOrArgs?.sessionId) {
+      sessionId = itemOrArgs.sessionId;
+    } else if (Array.isArray(itemOrArgs) && itemOrArgs.length > 0 && itemOrArgs[0].sessionId) {
+      sessionId = itemOrArgs[0].sessionId;
+    }
+    if (!sessionId) { return; }
+    await vscode.env.clipboard.writeText(sessionId);
+    vscode.window.showInformationMessage('Session ID copied to clipboard');
+  });
+
+  // Forget session (remove from local history)
+  const forgetSessionCmd = vscode.commands.registerCommand('acp.forgetSession', async (itemOrArgs?: any) => {
+    if (!historyStore) {
+      vscode.window.showInformationMessage('Session history store not available.');
+      return;
+    }
+    let agentName: string | undefined;
+    let sessionId: string | undefined;
+    if (itemOrArgs?.agentName && itemOrArgs?.sessionId) {
+      agentName = itemOrArgs.agentName;
+      sessionId = itemOrArgs.sessionId;
+    } else if (Array.isArray(itemOrArgs) && itemOrArgs.length > 0) {
+      const first = itemOrArgs[0];
+      agentName = first.agentName;
+      sessionId = first.sessionId;
+    }
+    if (!agentName || !sessionId) {
+      vscode.window.showInformationMessage('No session selected to forget.');
+      return;
+    }
+    const removed = historyStore.forget(agentName, sessionId);
+    if (removed) {
+      vscode.window.showInformationMessage('Session removed from history');
+    } else {
+      vscode.window.showInformationMessage('Session not found in history');
+    }
+    sessionTreeProvider.invalidate(agentName);
+  });
+
+  // Open session (focus chat and connect to agent if needed)
+  const openSessionCmd = vscode.commands.registerCommand('acp.openSession', async (itemOrArgs?: any) => {
+    let agentName: string | undefined;
+    let sessionId: string | undefined;
+    if (itemOrArgs?.agentName && itemOrArgs?.sessionId) {
+      agentName = itemOrArgs.agentName;
+      sessionId = itemOrArgs.sessionId;
+    } else if (Array.isArray(itemOrArgs) && itemOrArgs.length > 0) {
+      const first = itemOrArgs[0];
+      agentName = first.agentName;
+      sessionId = first.sessionId;
+    }
+    // Focus chat view
+    await vscode.commands.executeCommand('acp-chat.focus');
+    if (agentName) {
+      try {
+        // Attempt to connect to the agent (may create/reuse session)
+        await sessionManager.connectToAgent(agentName);
+        const activeId = sessionManager.getActiveSessionId();
+        if (activeId && sessionId && activeId !== sessionId) {
+          // We don't have a formal load API; inform the user.
+          vscode.window.showInformationMessage('Opened chat for agent; session may differ from selected session.');
+        }
+      } catch (e: any) {
+        logError('Failed to open session', e);
+        vscode.window.showErrorMessage(`Failed to open session: ${e?.message || String(e)}`);
+      }
+    }
+  });
+
   // --- Register disposables ---
   context.subscriptions.push(
     treeView,
@@ -459,6 +566,11 @@ export function activate(context: vscode.ExtensionContext): void {
     setModeCmd,
     setModelCmd,
     refreshAgentsCmd,
+    refreshSessionsCmd,
+    loadMoreSessionsCmd,
+    copySessionIdCmd,
+    forgetSessionCmd,
+    openSessionCmd,
     addAgentCmd,
     removeAgentCmd,
     attachFileCmd,
@@ -474,6 +586,17 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     },
   );
+  // Debug: list registered ACP commands to help diagnose missing command errors.
+  // This log is temporary — remove once debugging is complete.
+  void (async () => {
+    try {
+      const cmds = await vscode.commands.getCommands(true);
+      const acpCmds = cmds.filter(c => c.startsWith('acp.'));
+      log(`Registered ACP commands: ${acpCmds.join(', ')}`);
+    } catch (err: unknown) {
+      logError('Failed to list commands', err);
+    }
+  })();
 
   sendEvent('extension/activated', { version: vscode.extensions.getExtension('formulahendry.acp-client')?.packageJSON?.version ?? 'unknown' });
   log('ACP Client extension activated.');
