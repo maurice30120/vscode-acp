@@ -5,6 +5,9 @@ import { SessionUpdateHandler, SessionUpdateListener } from '../handlers/Session
 import type { SessionNotification } from '@agentclientprotocol/sdk';
 import { logError } from '../utils/Logger';
 import { sendEvent } from '../utils/TelemetryManager';
+import { buildPromptWithEditorContext, type EditorContext } from './EditorContext';
+
+type GetEditorContext = () => EditorContext | null;
 
 /**
  * WebviewViewProvider for the ACP chat sidebar.
@@ -16,11 +19,13 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private updateListener: SessionUpdateListener;
   private _hasChatContent = false;
+  private editorContextLinked = false;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly sessionManager: SessionManager,
     private readonly sessionUpdateHandler: SessionUpdateHandler,
+    private readonly getEditorContext: GetEditorContext = () => null,
   ) {
     // Configure marked for safe rendering
     marked.setOptions({
@@ -169,21 +174,33 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
+    const editorContext = this.editorContextLinked ? this.getEditorContext() : null;
+    const finalText = this.editorContextLinked && editorContext
+      ? buildPromptWithEditorContext(text, editorContext)
+      : text;
+
+    if (this.editorContextLinked && !editorContext) {
+      this.postMessage({
+        type: 'error',
+        message: 'No active VS Code editor context.',
+      });
+    }
+
     sendEvent('chat/messageSent', {
       agentName: this.sessionManager.getActiveAgentName() ?? '',
     }, {
-      messageLength: text.length,
+      messageLength: finalText.length,
     });
 
     // Record the first prompt for the history store (used as a label
     // fallback when no title is supplied by the agent).
-    this.sessionManager.recordFirstPrompt(activeId, text);
+    this.sessionManager.recordFirstPrompt(activeId, finalText);
 
     // Tell webview we're processing
     this.postMessage({ type: 'promptStart' });
 
     try {
-      const response = await this.sessionManager.sendPrompt(activeId, text);
+      const response = await this.sessionManager.sendPrompt(activeId, finalText);
       // Render the accumulated assistant text as markdown
       // The webview will have sent us the raw text via promptEnd handling
       this.postMessage({
@@ -358,6 +375,14 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
    */
   get hasChatContent(): boolean {
     return this._hasChatContent;
+  }
+
+  setEditorContextLinked(linked: boolean): void {
+    this.editorContextLinked = linked;
+  }
+
+  get isEditorContextLinked(): boolean {
+    return this.editorContextLinked;
   }
 
   /**

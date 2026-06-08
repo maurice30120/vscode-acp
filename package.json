@@ -129,6 +129,11 @@
         "icon": "$(attach)"
       },
       {
+        "command": "acp.toggleEditorContextLink",
+        "title": "ACP: Toggle Editor Context Link",
+        "icon": "$(link)"
+      },
+      {
         "command": "acp.refreshAgents",
         "title": "Refresh",
         "icon": "$(refresh)"
@@ -176,6 +181,10 @@
         {
           "command": "acp.forgetSession",
           "when": "false"
+        },
+        {
+          "command": "acp.toggleEditorContextLink",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -204,14 +213,19 @@
           "group": "navigation@2"
         },
         {
+          "command": "acp.toggleEditorContextLink",
+          "when": "view == acp-chat",
+          "group": "navigation@3"
+        },
+        {
           "command": "acp.cancelTurn",
           "when": "view == acp-chat && acp.turnInProgress",
-          "group": "navigation@3"
+          "group": "navigation@4"
         },
         {
           "command": "acp.disconnectAgent",
           "when": "view == acp-chat",
-          "group": "navigation@4"
+          "group": "navigation@5"
         },
         {
           "command": "acp.showLog",
