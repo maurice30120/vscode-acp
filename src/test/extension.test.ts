@@ -20,5 +20,6 @@ suite('Extension Test Suite', () => {
 		assert.ok(acpCommands.includes('acp.connectAgent'), 'connectAgent command should exist');
 		assert.ok(acpCommands.includes('acp.newConversation'), 'newConversation command should exist');
 		assert.ok(acpCommands.includes('acp.openChat'), 'openChat command should exist');
+		assert.ok(acpCommands.includes('acp.openSessionWithCurrentContext'), 'openSessionWithCurrentContext command should exist');
 	});
 });

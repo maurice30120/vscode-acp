@@ -26,6 +26,11 @@ function createManager() {
       historyCalls.push({ agentName, sessionId, title });
     },
     setFirstPromptIfMissing: () => undefined,
+    appendUserMessage: () => undefined,
+    appendUserMessageChunk: () => undefined,
+    appendAssistantMessageChunk: () => undefined,
+    buildDiscussionContext: () => null,
+    clearDiscussion: () => undefined,
     touch: () => undefined,
   };
 
@@ -168,5 +173,145 @@ suite('SessionManager', () => {
 
     (manager as any).activeSessionId = null;
     assert.strictEqual(manager.getActiveAgentName(), null);
+  });
+
+  test('sendPrompt prepends shared discussion context once', async () => {
+    const prompts: any[] = [];
+    const agentManager = {
+      killAll: () => undefined,
+    };
+    const connectionManager = {
+      dispose: () => undefined,
+      getConnection: () => ({
+        connection: {
+          prompt: async (payload: any) => {
+            prompts.push(payload.prompt[0].text);
+            return { stopReason: 'end_turn' };
+          },
+        },
+      }),
+    };
+    const manager = new SessionManager(agentManager as any, connectionManager as any, {} as any);
+    (manager as any).sessions.set('s1', {
+      sessionId: 's1',
+      agentId: 'agent-1',
+      agentName: 'Agent A',
+      configOptions: null,
+      availableCommands: [],
+    });
+    (manager as any).pendingSharedDiscussionContext.set('s1', 'Previous context');
+
+    await manager.sendPrompt('s1', 'Continue');
+    await manager.sendPrompt('s1', 'Next');
+
+    assert.strictEqual(prompts[0], 'Previous context\n\nCurrent user prompt:\nContinue');
+    assert.strictEqual(prompts[1], 'Next');
+  });
+
+  test('loadSession can carry active discussion context to loaded session', async () => {
+    const { manager } = createManager();
+    const loadCalls: any[] = [];
+    const touches: string[] = [];
+    const cleared: string[] = [];
+    (manager as any).historyStore = {
+      buildDiscussionContext: (agentName: string, sessionId: string) =>
+        agentName === 'Agent A' && sessionId === 'source' ? 'Previous context' : null,
+      clearDiscussion: (_agentName: string, sessionId: string) => {
+        cleared.push(sessionId);
+      },
+      touch: (_agentName: string, sessionId: string) => {
+        touches.push(sessionId);
+      },
+    };
+    const conn = {
+      initResponse: { agentInfo: { name: 'Agent B' }, agentCapabilities: {} },
+      connection: {
+        loadSession: async (payload: any) => {
+          loadCalls.push(payload);
+          return {};
+        },
+      },
+    };
+    (manager as any).ensureConnected = async () => conn;
+    (manager as any).findAgentIdForConnection = () => 'agent-b-id';
+    (manager as any).capabilities.set('Agent B', { list: false, load: true, resume: false });
+    (manager as any).sessions.set('source', {
+      sessionId: 'source',
+      agentId: 'agent-a-id',
+      agentName: 'Agent A',
+      configOptions: null,
+      availableCommands: [],
+    });
+    (manager as any).activeSessionId = 'source';
+    (manager as any).agentSessions.set('Agent A', 'source');
+    (manager as any).disconnectAgent = async (agentName: string) => {
+      (manager as any).agentSessions.delete(agentName);
+      (manager as any).sessions.delete('source');
+      (manager as any).activeSessionId = null;
+    };
+
+    await manager.loadSession('Agent B', 'target', { shareCurrentContext: true });
+
+    assert.strictEqual(loadCalls.length, 1);
+    assert.deepStrictEqual(cleared, ['target']);
+    assert.deepStrictEqual(touches, ['target']);
+    assert.strictEqual((manager as any).pendingSharedDiscussionContext.get('target'), 'Previous context');
+  });
+
+  test('resumeSession can carry active discussion context to resumed session', async () => {
+    const { manager } = createManager();
+    const resumeCalls: any[] = [];
+    (manager as any).historyStore = {
+      buildDiscussionContext: (agentName: string, sessionId: string) =>
+        agentName === 'Agent A' && sessionId === 'source' ? 'Previous context' : null,
+      touch: () => undefined,
+    };
+    const conn = {
+      initResponse: { agentInfo: { name: 'Agent B' }, agentCapabilities: {} },
+      connection: {
+        resumeSession: async (payload: any) => {
+          resumeCalls.push(payload);
+          return {};
+        },
+      },
+    };
+    (manager as any).ensureConnected = async () => conn;
+    (manager as any).findAgentIdForConnection = () => 'agent-b-id';
+    (manager as any).capabilities.set('Agent B', { list: false, load: false, resume: true });
+    (manager as any).sessions.set('source', {
+      sessionId: 'source',
+      agentId: 'agent-a-id',
+      agentName: 'Agent A',
+      configOptions: null,
+      availableCommands: [],
+    });
+    (manager as any).activeSessionId = 'source';
+    (manager as any).agentSessions.set('Agent A', 'source');
+    (manager as any).disconnectAgent = async (agentName: string) => {
+      (manager as any).agentSessions.delete(agentName);
+      (manager as any).sessions.delete('source');
+      (manager as any).activeSessionId = null;
+    };
+
+    await manager.resumeSession('Agent B', 'target', { shareCurrentContext: true });
+
+    assert.strictEqual(resumeCalls.length, 1);
+    assert.strictEqual((manager as any).pendingSharedDiscussionContext.get('target'), 'Previous context');
+  });
+
+  test('does not share context when target is already active session', () => {
+    const { manager } = createManager();
+    (manager as any).historyStore = {
+      buildDiscussionContext: () => 'Previous context',
+    };
+    (manager as any).sessions.set('same', {
+      sessionId: 'same',
+      agentName: 'Agent A',
+      configOptions: null,
+      availableCommands: [],
+    });
+    (manager as any).activeSessionId = 'same';
+
+    assert.strictEqual(manager.hasShareableDiscussionContext('Agent A', 'same'), false);
   });
 });

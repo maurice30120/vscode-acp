@@ -148,6 +148,11 @@
         "title": "ACP: Open Session"
       },
       {
+        "command": "acp.openSessionWithCurrentContext",
+        "title": "ACP: Open Session With Current Context",
+        "icon": "$(references)"
+      },
+      {
         "command": "acp.loadMoreSessions",
         "title": "ACP: Load More Sessions"
       },
@@ -169,6 +174,10 @@
       "commandPalette": [
         {
           "command": "acp.openSession",
+          "when": "false"
+        },
+        {
+          "command": "acp.openSessionWithCurrentContext",
           "when": "false"
         },
         {
@@ -275,9 +284,14 @@
           "group": "session@1"
         },
         {
+          "command": "acp.openSessionWithCurrentContext",
+          "when": "view == acp-sessions && viewItem =~ /^session/",
+          "group": "inline"
+        },
+        {
           "command": "acp.forgetSession",
           "when": "view == acp-sessions && viewItem == session-local",
-          "group": "session@2"
+          "group": "session@3"
         }
       ]
     },

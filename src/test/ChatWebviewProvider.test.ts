@@ -14,6 +14,7 @@ suite('ChatWebviewProvider', () => {
     const recordedPrompts: string[] = [];
     const messages: any[] = [];
     const touchedSessions: string[] = [];
+    const transcriptUserMessages: string[] = [];
 
     const sessionManager = {
       getActiveSessionId: () => 'session-1',
@@ -21,6 +22,12 @@ suite('ChatWebviewProvider', () => {
       recordFirstPrompt: (_sessionId: string, prompt: string) => {
         recordedPrompts.push(prompt);
       },
+      recordUserMessage: (_sessionId: string, prompt: string) => {
+        transcriptUserMessages.push(prompt);
+      },
+      recordAssistantMessageChunk: () => undefined,
+      recordUserMessageChunk: () => undefined,
+      isLoading: () => false,
       sendPrompt: async (_sessionId: string, prompt: string) => {
         sentPrompts.push(prompt);
         return { stopReason: 'end_turn' };
@@ -50,7 +57,7 @@ suite('ChatWebviewProvider', () => {
     };
     (provider as any).isViewReady = true;
 
-    return { provider, sentPrompts, recordedPrompts, messages, touchedSessions };
+    return { provider, sentPrompts, recordedPrompts, messages, touchedSessions, transcriptUserMessages };
   }
 
   const editorContext: EditorContext = {
@@ -70,12 +77,13 @@ suite('ChatWebviewProvider', () => {
   };
 
   test('sends raw prompt when editor context link is disabled', async () => {
-    const { provider, sentPrompts, recordedPrompts } = createProvider(editorContext);
+    const { provider, sentPrompts, recordedPrompts, transcriptUserMessages } = createProvider(editorContext);
 
     await (provider as any).handleSendPrompt('raw prompt');
 
     assert.deepStrictEqual(sentPrompts, ['raw prompt']);
     assert.deepStrictEqual(recordedPrompts, ['raw prompt']);
+    assert.deepStrictEqual(transcriptUserMessages, ['raw prompt']);
   });
 
   test('sends enriched prompt to agent and records only raw prompt', async () => {

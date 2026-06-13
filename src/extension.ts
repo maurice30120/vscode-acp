@@ -148,7 +148,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const currentAgent = sessionManager.getActiveAgentName();
     if (currentAgent && currentAgent !== agentName && chatWebviewProvider.hasChatContent) {
       const choice = await vscode.window.showWarningMessage(
-        `Switch to ${agentName}? This will disconnect ${currentAgent} and clear the chat history.`,
+        `Switch to ${agentName}? This will disconnect ${currentAgent}, clear the visible chat history, and share the current discussion with the new agent on your next prompt.`,
         'Switch Agent',
         'Cancel',
       );
@@ -330,8 +330,7 @@ export function activate(context: vscode.ExtensionContext): void {
     sessionTreeProvider.invalidate(agentName);
   });
 
-  // Open (load or resume) a previously-existing session.
-  const openSessionCmd = vscode.commands.registerCommand('acp.openSession', async (arg?: any) => {
+  const openSessionFromTree = async (arg: any, shareCurrentContext: boolean): Promise<void> => {
     const agentName: string | undefined = arg?.agentName;
     const sessionId: string | undefined = arg?.sessionId;
     if (!agentName || !sessionId) {
@@ -345,18 +344,25 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
+    const hasShareableContext = shareCurrentContext
+      && sessionManager.hasShareableDiscussionContext(agentName, sessionId);
+
     // Confirm if there's existing chat content with a different active session.
     if (chatWebviewProvider.hasChatContent) {
+      const message = shareCurrentContext
+        ? 'Open a different session with the current context? This will replace the current chat history and share the current discussion with the target session on your next prompt.'
+        : 'Open a different session? This will replace the current chat history.';
       const choice = await vscode.window.showWarningMessage(
-        'Open a different session? This will replace the current chat history.',
-        'Open Session',
+        message,
+        shareCurrentContext ? 'Open With Context' : 'Open Session',
         'Cancel',
       );
-      if (choice !== 'Open Session') { return; }
+      if (choice !== (shareCurrentContext ? 'Open With Context' : 'Open Session')) { return; }
     }
 
     try {
       await vscode.commands.executeCommand('acp-chat.focus');
+      let opened = false;
       // Decide load vs resume based on capabilities. Prefer load (replays
       // history) for the richer experience.
       const caps = sessionManager.getCachedCapabilities(agentName);
@@ -368,21 +374,36 @@ export function activate(context: vscode.ExtensionContext): void {
             cancellable: false,
           },
           async () => {
-            await sessionManager.loadSession(agentName, sessionId);
+            await sessionManager.loadSession(agentName, sessionId, { shareCurrentContext });
           },
         );
+        opened = true;
       } else if (caps?.resume) {
-        await sessionManager.resumeSession(agentName, sessionId);
+        await sessionManager.resumeSession(agentName, sessionId, { shareCurrentContext });
+        opened = true;
         vscode.window.showInformationMessage('Resumed session (history not replayed).');
       } else {
         vscode.window.showErrorMessage(
           `Agent "${agentName}" does not support loading or resuming sessions.`,
         );
       }
+      if (opened && shareCurrentContext && !hasShareableContext) {
+        vscode.window.showInformationMessage('Opened session. No current discussion context was available to share.');
+      }
     } catch (e: any) {
       logError('Failed to open session', e);
       vscode.window.showErrorMessage(`Failed to open session: ${e.message}`);
     }
+  };
+
+  // Open (load or resume) a previously-existing session.
+  const openSessionCmd = vscode.commands.registerCommand('acp.openSession', async (arg?: any) => {
+    await openSessionFromTree(arg, false);
+  });
+
+  // Open a previous session and carry the active session discussion into the next prompt.
+  const openSessionWithCurrentContextCmd = vscode.commands.registerCommand('acp.openSessionWithCurrentContext', async (arg?: any) => {
+    await openSessionFromTree(arg, true);
   });
 
   // Pagination cursor: append the next page to the agent-sourced list.
@@ -532,6 +553,7 @@ export function activate(context: vscode.ExtensionContext): void {
     refreshAgentsCmd,
     refreshSessionsCmd,
     openSessionCmd,
+    openSessionWithCurrentContextCmd,
     loadMoreSessionsCmd,
     copySessionIdCmd,
     forgetSessionCmd,

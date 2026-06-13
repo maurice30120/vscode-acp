@@ -209,6 +209,74 @@ suite('SessionHistoryStore', () => {
     assert.notStrictEqual(after, before);
   });
 
+  test('records discussion messages and merges streamed assistant chunks', () => {
+    const memento = new FakeMemento({
+      version: 1,
+      entries: [
+        {
+          agentName: 'A',
+          cwd: '/repo',
+          sessionId: 's1',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          lastActiveAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    });
+    const store = new SessionHistoryStore(memento as any);
+
+    store.appendUserMessage('A', 's1', 'What changed?');
+    store.appendAssistantMessageChunk('A', 's1', 'We added ');
+    store.appendAssistantMessageChunk('A', 's1', 'tests.');
+
+    const discussion = store.get('A', 's1')?.discussion;
+    assert.deepStrictEqual(discussion, [
+      { role: 'user', text: 'What changed?' },
+      { role: 'assistant', text: 'We added tests.' },
+    ]);
+  });
+
+  test('buildDiscussionContext formats saved discussion for sharing', () => {
+    const memento = new FakeMemento({
+      version: 1,
+      entries: [
+        {
+          agentName: 'A',
+          cwd: '/repo',
+          sessionId: 's1',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          lastActiveAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    });
+    const store = new SessionHistoryStore(memento as any);
+
+    store.appendUserMessage('A', 's1', 'Explain the bug');
+    store.appendAssistantMessageChunk('A', 's1', 'The state was dropped.');
+
+    const context = store.buildDiscussionContext('A', 's1');
+    assert.ok(context?.includes('Previous ACP session discussion'));
+    assert.ok(context?.includes('User: Explain the bug'));
+    assert.ok(context?.includes('Assistant: The state was dropped.'));
+  });
+
+  test('buildDiscussionContext returns null when discussion is empty', () => {
+    const memento = new FakeMemento({
+      version: 1,
+      entries: [
+        {
+          agentName: 'A',
+          cwd: '/repo',
+          sessionId: 's1',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          lastActiveAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    });
+    const store = new SessionHistoryStore(memento as any);
+
+    assert.strictEqual(store.buildDiscussionContext('A', 's1'), null);
+  });
+
   test('forget and forgetAgent remove entries', () => {
     const memento = new FakeMemento({
       version: 1,

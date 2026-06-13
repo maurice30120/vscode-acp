@@ -19,6 +19,13 @@ type WebviewMessage = {
 
 const FILE_SEARCH_LIMIT = 30;
 
+function getTextUpdateContent(updateData: any): string | null {
+  const content = updateData?.content;
+  return content?.type === 'text' && typeof content.text === 'string'
+    ? content.text
+    : null;
+}
+
 /**
  * WebviewViewProvider for the ACP chat sidebar.
  * The extension host owns ACP/session behavior; the React webview owns rendering.
@@ -179,6 +186,18 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
         updatedAt: updateData.updatedAt,
       });
     }
+    if (updateData?.sessionUpdate === 'agent_message_chunk') {
+      const text = getTextUpdateContent(updateData);
+      if (text) {
+        this.sessionManager.recordAssistantMessageChunk(update.sessionId, text);
+      }
+    }
+    if (updateData?.sessionUpdate === 'user_message_chunk' && this.sessionManager.isLoading(update.sessionId)) {
+      const text = getTextUpdateContent(updateData);
+      if (text) {
+        this.sessionManager.recordUserMessageChunk(update.sessionId, text);
+      }
+    }
 
     const activeId = this.sessionManager.getActiveSessionId();
     if (update.sessionId !== activeId) {
@@ -225,6 +244,7 @@ export class ChatWebviewProvider implements vscode.WebviewViewProvider {
 
     // Keep history labels based on the raw user text, not enriched context.
     this.sessionManager.recordFirstPrompt(activeId, text);
+    this.sessionManager.recordUserMessage(activeId, text);
     this.postMessage({ type: 'promptStart' });
 
     try {
