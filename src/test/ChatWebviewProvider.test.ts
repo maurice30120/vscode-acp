@@ -19,6 +19,16 @@ suite('ChatWebviewProvider', () => {
     const sessionManager = {
       getActiveSessionId: () => 'session-1',
       getActiveAgentName: () => 'agent-1',
+      getSession: () => ({
+        sessionId: 'session-1',
+        agentDisplayName: 'Agent One',
+        cwd: workspaceRoot,
+        modes: null,
+        models: null,
+        configOptions: null,
+        availableCommands: [],
+      }),
+      getSessionContextFamily: () => null,
       recordFirstPrompt: (_sessionId: string, prompt: string) => {
         recordedPrompts.push(prompt);
       },
@@ -111,5 +121,25 @@ suite('ChatWebviewProvider', () => {
     assert.ok(messages.some(message => message.type === 'info'));
     assert.ok(messages.some(message => message.type === 'promptStart'));
     assert.ok(messages.some(message => message.type === 'promptEnd'));
+  });
+
+  test('includes context family metadata in session state snapshot', () => {
+    const { provider, messages } = createProvider(null);
+    const sessionManager = (provider as any).sessionManager;
+    sessionManager.getSessionContextFamily = () => ({
+      contextFamilyId: 'ctx-1',
+      contextLinkedFrom: {
+        agentName: 'Agent A',
+        sessionId: 'source',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+      contextLinkedAt: '2026-01-02T00:00:00.000Z',
+    });
+
+    (provider as any).sendCurrentState();
+
+    const stateMessage = messages.find(message => message.type === 'state');
+    assert.strictEqual(stateMessage.session.contextFamily.contextFamilyId, 'ctx-1');
+    assert.strictEqual(stateMessage.session.contextFamily.contextLinkedFrom.agentName, 'Agent A');
   });
 });

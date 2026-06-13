@@ -277,6 +277,103 @@ suite('SessionHistoryStore', () => {
     assert.strictEqual(store.buildDiscussionContext('A', 's1'), null);
   });
 
+  test('linkContextFamily creates a family for source and target', () => {
+    const memento = new FakeMemento({
+      version: 1,
+      entries: [
+        {
+          agentName: 'A',
+          cwd: '/repo',
+          sessionId: 'source',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          lastActiveAt: '2026-01-01T00:00:00.000Z',
+        },
+        {
+          agentName: 'B',
+          cwd: '/repo',
+          sessionId: 'target',
+          createdAt: '2026-01-02T00:00:00.000Z',
+          lastActiveAt: '2026-01-02T00:00:00.000Z',
+        },
+      ],
+    });
+    const store = new SessionHistoryStore(memento as any);
+
+    const targetFamily = store.linkContextFamily('A', 'source', 'B', 'target');
+
+    assert.ok(targetFamily?.contextFamilyId);
+    assert.strictEqual(store.get('A', 'source')?.contextFamilyId, targetFamily?.contextFamilyId);
+    assert.strictEqual(store.get('B', 'target')?.contextFamilyId, targetFamily?.contextFamilyId);
+    assert.deepStrictEqual(store.get('B', 'target')?.contextLinkedFrom && {
+      agentName: store.get('B', 'target')?.contextLinkedFrom?.agentName,
+      sessionId: store.get('B', 'target')?.contextLinkedFrom?.sessionId,
+    }, {
+      agentName: 'A',
+      sessionId: 'source',
+    });
+  });
+
+  test('linkContextFamily inherits an existing family', () => {
+    const memento = new FakeMemento({
+      version: 1,
+      entries: [
+        {
+          agentName: 'A',
+          cwd: '/repo',
+          sessionId: 'source',
+          contextFamilyId: 'ctx-existing',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          lastActiveAt: '2026-01-01T00:00:00.000Z',
+        },
+        {
+          agentName: 'B',
+          cwd: '/repo',
+          sessionId: 'target',
+          createdAt: '2026-01-02T00:00:00.000Z',
+          lastActiveAt: '2026-01-02T00:00:00.000Z',
+        },
+      ],
+    });
+    const store = new SessionHistoryStore(memento as any);
+
+    const targetFamily = store.linkContextFamily('A', 'source', 'B', 'target');
+
+    assert.strictEqual(targetFamily?.contextFamilyId, 'ctx-existing');
+    assert.strictEqual(store.get('B', 'target')?.contextFamilyId, 'ctx-existing');
+  });
+
+  test('context family metadata persists across store reloads', () => {
+    const memento = new FakeMemento({
+      version: 1,
+      entries: [
+        {
+          agentName: 'A',
+          cwd: '/repo',
+          sessionId: 'source',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          lastActiveAt: '2026-01-01T00:00:00.000Z',
+        },
+        {
+          agentName: 'B',
+          cwd: '/repo',
+          sessionId: 'target',
+          createdAt: '2026-01-02T00:00:00.000Z',
+          lastActiveAt: '2026-01-02T00:00:00.000Z',
+        },
+      ],
+    });
+    const store = new SessionHistoryStore(memento as any);
+    const targetFamily = store.linkContextFamily('A', 'source', 'B', 'target');
+
+    const reloaded = new SessionHistoryStore(memento as any);
+
+    assert.strictEqual(
+      reloaded.getContextFamily('B', 'target')?.contextFamilyId,
+      targetFamily?.contextFamilyId,
+    );
+    assert.strictEqual(reloaded.agentHasContextFamily('B', targetFamily!.contextFamilyId, '/repo'), true);
+  });
+
   test('forget and forgetAgent remove entries', () => {
     const memento = new FakeMemento({
       version: 1,

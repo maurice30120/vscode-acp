@@ -11,6 +11,7 @@ import {
 class FakeSessionManager extends EventEmitter {
   public cachedCaps = new Map<string, { list: boolean; load: boolean; resume: boolean }>();
   public activeSessionId: string | null = null;
+  public activeContextFamilyId: string | null = null;
   public connected = new Set<string>();
 
   public listSessionsImpl: (agentName: string, opts: { cwd?: string; cursor?: string }) => Promise<{ sessions: any[]; nextCursor?: string }> = async () => ({ sessions: [] });
@@ -25,6 +26,10 @@ class FakeSessionManager extends EventEmitter {
 
   getActiveSessionId(): string | null {
     return this.activeSessionId;
+  }
+
+  getActiveContextFamilyId(): string | null {
+    return this.activeContextFamilyId;
   }
 
   async ensureConnected(): Promise<void> {
@@ -77,6 +82,7 @@ suite('SessionTreeProvider', () => {
         }
         return [];
       },
+      getContextFamily: () => null,
       onDidChange: () => ({ dispose: () => undefined }),
     };
 
@@ -186,5 +192,82 @@ suite('SessionTreeProvider', () => {
     assert.strictEqual(sessions.length, 2);
     assert.strictEqual(sessions[0].sessionId, 's1');
     assert.strictEqual(sessions[1].sessionId, 's2');
+  });
+
+  test('marks agents and sessions that share the active context family', async () => {
+    const sm = new FakeSessionManager();
+    sm.cachedCaps.set('agent-a', { list: false, load: true, resume: false });
+    sm.cachedCaps.set('agent-b', { list: false, load: true, resume: false });
+    sm.activeSessionId = 's-a';
+    sm.activeContextFamilyId = 'ctx-1';
+
+    const historyStore = {
+      list: (agentName: string, cwd?: string) => {
+        if (cwd !== '/repo') {
+          return [];
+        }
+        if (agentName === 'agent-a') {
+          return [
+            {
+              agentName: 'agent-a',
+              sessionId: 's-a',
+              cwd: '/repo',
+              firstPrompt: 'Prompt A',
+              contextFamilyId: 'ctx-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              lastActiveAt: '2026-01-01T00:00:00.000Z',
+            },
+          ];
+        }
+        if (agentName === 'agent-b') {
+          return [
+            {
+              agentName: 'agent-b',
+              sessionId: 's-b',
+              cwd: '/repo',
+              firstPrompt: 'Prompt B',
+              contextFamilyId: 'ctx-1',
+              contextLinkedFrom: {
+                agentName: 'agent-a',
+                sessionId: 's-a',
+                createdAt: '2026-01-02T00:00:00.000Z',
+              },
+              contextLinkedAt: '2026-01-02T00:00:00.000Z',
+              createdAt: '2026-01-02T00:00:00.000Z',
+              lastActiveAt: '2026-01-02T00:00:00.000Z',
+            },
+          ];
+        }
+        return [];
+      },
+      agentHasContextFamily: (agentName: string, contextFamilyId: string, cwd?: string) =>
+        contextFamilyId === 'ctx-1'
+        && cwd === '/repo'
+        && (agentName === 'agent-a' || agentName === 'agent-b'),
+      getContextFamily: (agentName: string, sessionId: string) =>
+        agentName === 'agent-b' && sessionId === 's-b'
+          ? {
+              contextFamilyId: 'ctx-1',
+              contextLinkedFrom: {
+                agentName: 'agent-a',
+                sessionId: 's-a',
+                createdAt: '2026-01-02T00:00:00.000Z',
+              },
+              contextLinkedAt: '2026-01-02T00:00:00.000Z',
+            }
+          : agentName === 'agent-a' && sessionId === 's-a'
+            ? { contextFamilyId: 'ctx-1' }
+            : null,
+      onDidChange: () => ({ dispose: () => undefined }),
+    };
+
+    const provider = new SessionTreeProvider(sm as any, historyStore as any, () => '/repo');
+    const linkedAgent = new AgentTreeItem('agent-b', false, 1, true);
+    const sessionChildren = await provider.getChildren(linkedAgent);
+    const linkedSession = sessionChildren[0] as SessionTreeItem;
+
+    assert.ok(String(linkedAgent.description).includes('linked context'));
+    assert.ok(String(linkedSession.description).includes('linked'));
+    assert.ok(String(linkedSession.tooltip).includes('Linked from: agent-a'));
   });
 });

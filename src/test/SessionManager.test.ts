@@ -31,6 +31,10 @@ function createManager() {
     appendAssistantMessageChunk: () => undefined,
     buildDiscussionContext: () => null,
     clearDiscussion: () => undefined,
+    get: () => undefined,
+    getContextFamily: () => null,
+    linkContextFamily: () => null,
+    upsertNew: () => undefined,
     touch: () => undefined,
   };
 
@@ -213,6 +217,7 @@ suite('SessionManager', () => {
     const loadCalls: any[] = [];
     const touches: string[] = [];
     const cleared: string[] = [];
+    const linked: Array<{ sourceAgentName: string; sourceSessionId: string; targetAgentName: string; targetSessionId: string }> = [];
     (manager as any).historyStore = {
       buildDiscussionContext: (agentName: string, sessionId: string) =>
         agentName === 'Agent A' && sessionId === 'source' ? 'Previous context' : null,
@@ -221,6 +226,12 @@ suite('SessionManager', () => {
       },
       touch: (_agentName: string, sessionId: string) => {
         touches.push(sessionId);
+      },
+      get: () => undefined,
+      upsertNew: () => undefined,
+      linkContextFamily: (sourceAgentName: string, sourceSessionId: string, targetAgentName: string, targetSessionId: string) => {
+        linked.push({ sourceAgentName, sourceSessionId, targetAgentName, targetSessionId });
+        return { contextFamilyId: 'ctx-1' };
       },
     };
     const conn = {
@@ -256,15 +267,27 @@ suite('SessionManager', () => {
     assert.deepStrictEqual(cleared, ['target']);
     assert.deepStrictEqual(touches, ['target']);
     assert.strictEqual((manager as any).pendingSharedDiscussionContext.get('target'), 'Previous context');
+    assert.deepStrictEqual(linked, [{
+      sourceAgentName: 'Agent A',
+      sourceSessionId: 'source',
+      targetAgentName: 'Agent B',
+      targetSessionId: 'target',
+    }]);
   });
 
   test('resumeSession can carry active discussion context to resumed session', async () => {
     const { manager } = createManager();
     const resumeCalls: any[] = [];
+    const linked: Array<{ sourceAgentName: string; sourceSessionId: string; targetAgentName: string; targetSessionId: string }> = [];
     (manager as any).historyStore = {
       buildDiscussionContext: (agentName: string, sessionId: string) =>
         agentName === 'Agent A' && sessionId === 'source' ? 'Previous context' : null,
       touch: () => undefined,
+      upsertNew: () => undefined,
+      linkContextFamily: (sourceAgentName: string, sourceSessionId: string, targetAgentName: string, targetSessionId: string) => {
+        linked.push({ sourceAgentName, sourceSessionId, targetAgentName, targetSessionId });
+        return { contextFamilyId: 'ctx-1' };
+      },
     };
     const conn = {
       initResponse: { agentInfo: { name: 'Agent B' }, agentCapabilities: {} },
@@ -297,6 +320,126 @@ suite('SessionManager', () => {
 
     assert.strictEqual(resumeCalls.length, 1);
     assert.strictEqual((manager as any).pendingSharedDiscussionContext.get('target'), 'Previous context');
+    assert.deepStrictEqual(linked, [{
+      sourceAgentName: 'Agent A',
+      sourceSessionId: 'source',
+      targetAgentName: 'Agent B',
+      targetSessionId: 'target',
+    }]);
+  });
+
+  test('loadSession shared context is consumed by the first prompt only', async () => {
+    const prompts: string[] = [];
+    const conn = {
+      initResponse: { agentInfo: { name: 'Agent B' }, agentCapabilities: {} },
+      connection: {
+        loadSession: async () => ({}),
+        prompt: async (payload: any) => {
+          prompts.push(payload.prompt[0].text);
+          return { stopReason: 'end_turn' };
+        },
+      },
+    };
+    const manager = new SessionManager(
+      { killAll: () => undefined } as any,
+      {
+        dispose: () => undefined,
+        getConnection: () => conn,
+      } as any,
+      {} as any,
+    );
+    (manager as any).historyStore = {
+      buildDiscussionContext: (agentName: string, sessionId: string) =>
+        agentName === 'Agent A' && sessionId === 'source' ? 'Previous context' : null,
+      clearDiscussion: () => undefined,
+      get: () => undefined,
+      touch: () => undefined,
+      upsertNew: () => undefined,
+      linkContextFamily: () => ({ contextFamilyId: 'ctx-1' }),
+    };
+    (manager as any).ensureConnected = async () => conn;
+    (manager as any).findAgentIdForConnection = () => 'agent-b-id';
+    (manager as any).capabilities.set('Agent B', { list: false, load: true, resume: false });
+    (manager as any).sessions.set('source', {
+      sessionId: 'source',
+      agentId: 'agent-a-id',
+      agentName: 'Agent A',
+      configOptions: null,
+      availableCommands: [],
+    });
+    (manager as any).activeSessionId = 'source';
+    (manager as any).agentSessions.set('Agent A', 'source');
+    (manager as any).disconnectAgent = async (agentName: string) => {
+      (manager as any).agentSessions.delete(agentName);
+      (manager as any).sessions.delete('source');
+      (manager as any).activeSessionId = null;
+    };
+
+    await manager.loadSession('Agent B', 'target', { shareCurrentContext: true });
+    await manager.sendPrompt('target', 'First');
+    assert.strictEqual((manager as any).pendingSharedDiscussionContext.has('target'), false);
+    await manager.sendPrompt('target', 'Second');
+
+    assert.deepStrictEqual(prompts, [
+      'Previous context\n\nCurrent user prompt:\nFirst',
+      'Second',
+    ]);
+  });
+
+  test('resumeSession shared context is consumed by the first prompt only', async () => {
+    const prompts: string[] = [];
+    const conn = {
+      initResponse: { agentInfo: { name: 'Agent B' }, agentCapabilities: {} },
+      connection: {
+        resumeSession: async () => ({}),
+        prompt: async (payload: any) => {
+          prompts.push(payload.prompt[0].text);
+          return { stopReason: 'end_turn' };
+        },
+      },
+    };
+    const manager = new SessionManager(
+      { killAll: () => undefined } as any,
+      {
+        dispose: () => undefined,
+        getConnection: () => conn,
+      } as any,
+      {} as any,
+    );
+    (manager as any).historyStore = {
+      buildDiscussionContext: (agentName: string, sessionId: string) =>
+        agentName === 'Agent A' && sessionId === 'source' ? 'Previous context' : null,
+      touch: () => undefined,
+      upsertNew: () => undefined,
+      linkContextFamily: () => ({ contextFamilyId: 'ctx-1' }),
+    };
+    (manager as any).ensureConnected = async () => conn;
+    (manager as any).findAgentIdForConnection = () => 'agent-b-id';
+    (manager as any).capabilities.set('Agent B', { list: false, load: false, resume: true });
+    (manager as any).sessions.set('source', {
+      sessionId: 'source',
+      agentId: 'agent-a-id',
+      agentName: 'Agent A',
+      configOptions: null,
+      availableCommands: [],
+    });
+    (manager as any).activeSessionId = 'source';
+    (manager as any).agentSessions.set('Agent A', 'source');
+    (manager as any).disconnectAgent = async (agentName: string) => {
+      (manager as any).agentSessions.delete(agentName);
+      (manager as any).sessions.delete('source');
+      (manager as any).activeSessionId = null;
+    };
+
+    await manager.resumeSession('Agent B', 'target', { shareCurrentContext: true });
+    await manager.sendPrompt('target', 'First');
+    assert.strictEqual((manager as any).pendingSharedDiscussionContext.has('target'), false);
+    await manager.sendPrompt('target', 'Second');
+
+    assert.deepStrictEqual(prompts, [
+      'Previous context\n\nCurrent user prompt:\nFirst',
+      'Second',
+    ]);
   });
 
   test('does not share context when target is already active session', () => {

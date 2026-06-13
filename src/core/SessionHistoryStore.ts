@@ -26,11 +26,29 @@ export interface PersistedSessionEntry {
   lastActiveAt: string;
   /** Saved discussion turns for carrying context across agents. */
   discussion?: PersistedDiscussionMessage[];
+  /** Stable identifier shared by sessions derived from the same context. */
+  contextFamilyId?: string;
+  /** Direct source session that provided context to this session. */
+  contextLinkedFrom?: PersistedContextLink;
+  /** ISO timestamp when this session joined its context family. */
+  contextLinkedAt?: string;
 }
 
 export interface PersistedDiscussionMessage {
   role: 'user' | 'assistant';
   text: string;
+}
+
+export interface PersistedContextLink {
+  agentName: string;
+  sessionId: string;
+  createdAt: string;
+}
+
+export interface ContextFamilyInfo {
+  contextFamilyId: string;
+  contextLinkedFrom?: PersistedContextLink;
+  contextLinkedAt?: string;
 }
 
 /**
@@ -84,6 +102,28 @@ export class SessionHistoryStore {
   /** Look up a specific entry by agent + session id. */
   get(agentName: string, sessionId: string): PersistedSessionEntry | undefined {
     return this.entries.find(e => e.agentName === agentName && e.sessionId === sessionId);
+  }
+
+  /** Return persisted context-family metadata for a session, if present. */
+  getContextFamily(agentName: string, sessionId: string): ContextFamilyInfo | null {
+    const entry = this.get(agentName, sessionId);
+    if (!entry?.contextFamilyId) {
+      return null;
+    }
+    return {
+      contextFamilyId: entry.contextFamilyId,
+      contextLinkedFrom: entry.contextLinkedFrom,
+      contextLinkedAt: entry.contextLinkedAt,
+    };
+  }
+
+  /** Return true when an agent has at least one cached session in the family. */
+  agentHasContextFamily(agentName: string, contextFamilyId: string, cwd?: string): boolean {
+    return this.entries.some(e =>
+      e.agentName === agentName
+      && e.contextFamilyId === contextFamilyId
+      && (!cwd || e.cwd === cwd),
+    );
   }
 
   /**
@@ -178,6 +218,40 @@ export class SessionHistoryStore {
     ].join('\n\n');
   }
 
+  /** Mark a target session as derived from a source session's context family. */
+  linkContextFamily(
+    sourceAgentName: string,
+    sourceSessionId: string,
+    targetAgentName: string,
+    targetSessionId: string,
+  ): ContextFamilyInfo | null {
+    if (sourceAgentName === targetAgentName && sourceSessionId === targetSessionId) {
+      return null;
+    }
+
+    const source = this.get(sourceAgentName, sourceSessionId);
+    const target = this.get(targetAgentName, targetSessionId);
+    if (!source || !target) {
+      return null;
+    }
+
+    const now = new Date().toISOString();
+    const contextFamilyId = source.contextFamilyId ?? this.createContextFamilyId(now);
+    source.contextFamilyId = contextFamilyId;
+    source.contextLinkedAt ??= now;
+
+    target.contextFamilyId = contextFamilyId;
+    target.contextLinkedAt = now;
+    target.contextLinkedFrom = {
+      agentName: sourceAgentName,
+      sessionId: sourceSessionId,
+      createdAt: now,
+    };
+
+    this.persist();
+    return this.getContextFamily(targetAgentName, targetSessionId);
+  }
+
   /** Bump `lastActiveAt` to now. Called on prompt end / session update. */
   touch(agentName: string, sessionId: string): void {
     const entry = this.get(agentName, sessionId);
@@ -265,6 +339,10 @@ export class SessionHistoryStore {
     return text.length > MAX_DISCUSSION_MESSAGE_LEN
       ? text.slice(text.length - MAX_DISCUSSION_MESSAGE_LEN)
       : text;
+  }
+
+  private createContextFamilyId(createdAt: string): string {
+    return `ctx-${Date.parse(createdAt).toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   }
 
   private persist(): void {
