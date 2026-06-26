@@ -282,6 +282,30 @@ See [docs/agent-teams.md](docs/agent-teams.md) · French: [doc_fr/agent-teams.md
 
 ---
 
+## Workspace templates
+
+On first activation, the extension can provision missing workspace files from a bundled starter kit:
+
+- `.acp/` — default pipelines, teams, and agent instruction templates
+- `.agents/` — the full skills tree under `.agents/skills/`
+- `.sandcastle/` — Docker scaffold only (`Dockerfile`, `.env.example`, `.gitignore`)
+
+**Non-destructive:** existing files are never overwritten. Extension upgrades do not modify files you already have (v1).
+
+When `.agents/skills` is seeded and `.cursor/skills` is absent, the extension creates a symlink `.cursor/skills` → `.agents/skills` for Cursor CLI discovery.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `acp.workspaceBootstrap.enabled` | `true` | Enable workspace template provisioning |
+| `acp.workspaceBootstrap.autoOnActivation` | `true` | Seed automatically on extension startup |
+| `acp.workspaceBootstrap.includePipelineArchive` | `false` | Also copy archived pipelines from `.acp/pipelines/save/` |
+
+Disable auto-provisioning with `acp.workspaceBootstrap.enabled: false`, or run **ACP: Initialize Workspace Templates** (`acp.bootstrapWorkspace`) to re-scan for missing files.
+
+After changing `.acp/` or `.agents/skills/` in the extension repo, run `npm run sync:workspace-starter` before packaging.
+
+---
+
 ## Agent Skills
 
 The extension can wire repository skills from `.agents/skills/` for **Cursor CLI**, **Codex Sandcastle**, and **Cursor Sandcastle**.
@@ -309,6 +333,9 @@ Per-agent opt-out: set `"skills": false` on the `acp.agents` entry.
 | `acp.skills.directory` | `.agents/skills` | Skills directory to scan |
 | `acp.skills.maxCatalogBytes` | `65536` | Max injected catalog size on first prompt |
 | `acp.skills.agents` | Cursor CLI, Codex/Cursor Sandcastle | Agents that receive skills |
+| `acp.workspaceBootstrap.enabled` | `true` | Provision missing `.acp`, `.agents`, `.sandcastle` templates |
+| `acp.workspaceBootstrap.autoOnActivation` | `true` | Auto-seed on extension startup |
+| `acp.workspaceBootstrap.includePipelineArchive` | `false` | Include `.acp/pipelines/save/` archive when seeding |
 
 ---
 
@@ -364,6 +391,7 @@ Per-agent opt-out: set `"skills": false` on the `acp.agents` entry.
 | `ACP: Set Agent Mode` / `Set Agent Model` | Legacy toolbar pickers |
 | `ACP: Enable / Disable Editor Context Link` | Toggle editor context injection |
 | `ACP: Show Log` | Extension log channel |
+| `ACP: Initialize Workspace Templates` | Seed missing `.acp`, `.agents`, `.sandcastle` files |
 | `ACP: Show Protocol Traffic` | ACP traffic channel |
 | `ACP: Open Debug Snapshot` | Debug trace panel |
 | `ACP: Browse Agent Registry` | Agent registry browser |
@@ -396,10 +424,11 @@ npm install
 ### Build and test
 
 ```bash
+npm run sync:workspace-starter  # Refresh bundled workspace templates
 npm run compile       # One-time build
 npm run watch         # Watch mode
 npm test              # Unit tests (runs pretest + lint first)
-npm run package       # Production bundle
+npm run package       # Production bundle (includes sync:workspace-starter)
 ```
 
 Press **F5** to launch the Extension Development Host.

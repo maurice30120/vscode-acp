@@ -2,7 +2,6 @@ import * as assert from 'assert';
 
 import type { SessionNotification } from '@agentclientprotocol/sdk';
 
-import type { AgentConfigEntry } from '../config/AgentConfig';
 import { defaultGitCommandRunner } from '../git/GitCommandRunner';
 import type { PipelineExecutor } from '../pipeline/PipelineExecutor';
 import { TeamReviewerRerun } from '../pipeline/TeamReviewerRerun';

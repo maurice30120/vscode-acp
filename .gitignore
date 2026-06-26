@@ -11,3 +11,4 @@ out/
 .sandcastle/patches/
 .sandcastle/worktrees/
 .sandcastle/codex-home/
+resources/workspace-starter/

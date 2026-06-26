@@ -284,6 +284,30 @@ Voir [doc_fr/agent-teams.md](doc_fr/agent-teams.md) · English: [docs/agent-team
 
 ---
 
+## Modèles de workspace
+
+À la première activation, l’extension peut provisionner les fichiers workspace manquants depuis un kit de démarrage embarqué :
+
+- `.acp/` — pipelines, équipes et modèles d’instructions agents par défaut
+- `.agents/` — l’arbre complet des skills sous `.agents/skills/`
+- `.sandcastle/` — scaffold Docker uniquement (`Dockerfile`, `.env.example`, `.gitignore`)
+
+**Non destructif :** les fichiers existants ne sont jamais écrasés. Les mises à jour de l’extension ne modifient pas vos fichiers déjà présents (v1).
+
+Quand `.agents/skills` est provisionné et `.cursor/skills` est absent, l’extension crée un symlink `.cursor/skills` → `.agents/skills` pour la découverte Cursor CLI.
+
+| Paramètre | Défaut | Description |
+|-----------|--------|-------------|
+| `acp.workspaceBootstrap.enabled` | `true` | Activer le provisionnement des modèles workspace |
+| `acp.workspaceBootstrap.autoOnActivation` | `true` | Seed automatique au démarrage de l’extension |
+| `acp.workspaceBootstrap.includePipelineArchive` | `false` | Copier aussi les pipelines archivés de `.acp/pipelines/save/` |
+
+Désactiver avec `acp.workspaceBootstrap.enabled: false`, ou lancer **ACP: Initialize Workspace Templates** (`acp.bootstrapWorkspace`) pour re-scanner les fichiers manquants.
+
+Après modification de `.acp/` ou `.agents/skills/` dans le dépôt de l’extension, exécuter `npm run sync:workspace-starter` avant le packaging.
+
+---
+
 ## Agent Skills
 
 L’extension peut brancher les skills du dépôt depuis `.agents/skills/` pour **Cursor CLI**, **Codex Sandcastle** et **Cursor Sandcastle**.
@@ -311,6 +335,9 @@ Désactiver par agent : `"skills": false` dans l’entrée `acp.agents`.
 | `acp.skills.directory` | `.agents/skills` | Répertoire des skills à scanner |
 | `acp.skills.maxCatalogBytes` | `65536` | Taille max du catalogue injecté au 1er message |
 | `acp.skills.agents` | Cursor CLI, Codex/Cursor Sandcastle | Agents qui reçoivent les skills |
+| `acp.workspaceBootstrap.enabled` | `true` | Provisionner les modèles `.acp`, `.agents`, `.sandcastle` manquants |
+| `acp.workspaceBootstrap.autoOnActivation` | `true` | Seed auto au démarrage de l’extension |
+| `acp.workspaceBootstrap.includePipelineArchive` | `false` | Inclure l’archive `.acp/pipelines/save/` lors du seed |
 
 ---
 
@@ -366,6 +393,7 @@ Désactiver par agent : `"skills": false` dans l’entrée `acp.agents`.
 | `ACP: Set Agent Mode` / `Set Agent Model` | Sélecteurs legacy dans la barre d’outils |
 | `ACP: Enable / Disable Editor Context Link` | Activer/désactiver l’injection de contexte éditeur |
 | `ACP: Show Log` | Canal de log de l’extension |
+| `ACP: Initialize Workspace Templates` | Provisionner les fichiers `.acp`, `.agents`, `.sandcastle` manquants |
 | `ACP: Show Protocol Traffic` | Canal trafic ACP |
 | `ACP: Open Debug Snapshot` | Panneau d’instantanés debug |
 | `ACP: Browse Agent Registry` | Navigateur du registre d’agents |
