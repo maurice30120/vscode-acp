@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 
-import type { PipelineDefinition } from '../config/PipelineCatalog';
-import { PipelineService } from '../pipeline/PipelineService';
+import type { PipelineDefinition } from '@acp-client/pipeline';
+import { PipelineService } from '@acp-client/pipeline';
 
 const PLAN_EXECUTE_VERIFY_PIPELINE: PipelineDefinition = {
   version: 2,

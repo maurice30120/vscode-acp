@@ -1,10 +1,17 @@
 {
   "name": "acp-client",
+  "workspaces": [
+    "packages/*"
+  ],
   "displayName": "ACP Client: Universal AI Agent Protocol",
   "description": "Connect VS Code to any AI coding agent via the Agent Client Protocol (ACP). Seamlessly integrate with GitHub Copilot, Claude Code, Gemini, and other ACP-compatible agents.",
   "version": "0.2.1",
   "publisher": "damien-huyet",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0",
+    "vscode": "^1.85.0"
+  },
   "icon": "resources/icon.png",
   "bugs": {
     "url": "https://github.com/maurice30120/vscode-acp/issues"
@@ -13,9 +20,6 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/maurice30120/vscode-acp.git"
-  },
-  "engines": {
-    "vscode": "^1.85.0"
   },
   "categories": [
     "AI",
@@ -551,15 +555,17 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
-    "compile": "webpack",
-    "watch": "webpack --watch",
-    "package": "npm run sync:workspace-starter && webpack --mode production --devtool hidden-source-map",
+    "compile": "npm run build -w @acp-client/pipeline && webpack",
+    "watch": "npm run build -w @acp-client/pipeline && webpack --watch",
+    "package": "npm run sync:workspace-starter && npm run build -w @acp-client/pipeline && webpack --mode production --devtool hidden-source-map",
     "sync:workspace-starter": "node scripts/sync-workspace-starter.mjs",
     "vsx": "npm run sync:workspace-starter && npm run compile && vsce package",
     "clean-tests": "node -e \"require('fs').rmSync('out', { recursive: true, force: true })\"",
-    "compile-tests": "npm run clean-tests && tsc -p tsconfig.compile-tests.json --incremental false",
+    "compile-tests": "npm run clean-tests && npm run build -w @acp-client/pipeline && tsc -p tsconfig.compile-tests.json --incremental false",
     "watch-tests": "tsc -p tsconfig.compile-tests.json -w",
-    "lint": "eslint src --max-warnings 0",
+    "lint": "eslint src packages/acp-pipeline/src packages/acp-pi-extension/src --max-warnings 0",
+    "build:pi": "npm run build -w @acp-client/pi-extension",
+    "test:pi": "npm test -w @acp-client/pi-extension",
     "sandcastle:smoke:codex": "npm run compile && node scripts/sandcastle-smoke.mjs codex apply",
     "sandcastle:smoke:cursor": "npm run compile && node scripts/sandcastle-smoke.mjs cursor reject",
     "pretest": "npm run sync:workspace-starter && npm run compile-tests && npm run compile && npm run lint",
@@ -569,6 +575,7 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.21.1",
+    "@acp-client/pipeline": "file:packages/acp-pipeline",
     "@langchain/core": "^1.1.49",
     "@langchain/langgraph": "^1.4.2",
     "@vscode/codicons": "^0.0.45",

@@ -20,6 +20,13 @@ interface StarterManifest {
   version: string;
 }
 
+const PLUGIN_INSTALLED_SKILLS_GITIGNORE_SECTION = '# Local Codex/plugin-installed skills';
+const PLUGIN_INSTALLED_SKILLS_GITIGNORE_RULES = [
+  '.agents/skills/',
+  '.cursor/skills',
+  'skills-lock.json',
+];
+
 function posixRelative(relPath: string): string {
   return relPath.split(path.sep).join('/');
 }
@@ -133,6 +140,30 @@ async function writeBootstrapVersionIfNeeded(
   await fs.promises.writeFile(bootstrapVersionPath, `${manifest.version}\n`, 'utf8');
 }
 
+async function ensurePluginInstalledSkillsGitIgnore(workspaceCwd: string): Promise<void> {
+  const gitignorePath = path.join(workspaceCwd, '.gitignore');
+  const existing = fs.existsSync(gitignorePath)
+    ? await fs.promises.readFile(gitignorePath, 'utf8')
+    : '';
+  const lines = existing.split(/\r?\n/).filter(line => line.length > 0);
+  const missingRules = PLUGIN_INSTALLED_SKILLS_GITIGNORE_RULES.filter(rule => !lines.includes(rule));
+
+  if (missingRules.length === 0) {
+    return;
+  }
+
+  const nextLines = [...lines];
+  if (nextLines.length > 0) {
+    nextLines.push('');
+  }
+  if (!nextLines.includes(PLUGIN_INSTALLED_SKILLS_GITIGNORE_SECTION)) {
+    nextLines.push(PLUGIN_INSTALLED_SKILLS_GITIGNORE_SECTION);
+  }
+  nextLines.push(...missingRules);
+
+  await fs.promises.writeFile(gitignorePath, `${nextLines.join('\n')}\n`, 'utf8');
+}
+
 export function resolveWorkspaceStarterRoot(
   extensionRoot: string,
   options?: WorkspaceBootstrapOptions,
@@ -176,6 +207,7 @@ export async function syncWorkspaceStarterCore(
     warnings.push(symlinkResult.warning);
   }
 
+  await ensurePluginInstalledSkillsGitIgnore(identity.cwd);
   await writeBootstrapVersionIfNeeded(identity.cwd, manifest, created);
 
   return {

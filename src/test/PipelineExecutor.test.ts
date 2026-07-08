@@ -1,9 +1,11 @@
 import * as assert from 'assert';
 
-import type { PipelinePrimitiveDefinition } from '../config/PipelineCatalog';
-import type { EphemeralAgentRunner } from '../core/EphemeralAgentRunner';
-import { PipelineExecutor } from '../pipeline/PipelineExecutor';
-import { PipelineStepRejectedError } from '../pipeline/PipelineStepCompletion';
+import {
+  PipelineExecutor,
+  PipelineStepRejectedError,
+  type PipelineAgentRunner,
+  type PipelinePrimitiveDefinition,
+} from '@acp-client/pipeline';
 
 const primitive: PipelinePrimitiveDefinition = {
   agent: 'Vibe',
@@ -16,7 +18,6 @@ suite('PipelineExecutor', () => {
   test('runStep delegates to runAcpAgent override when provided', async () => {
     const executor = new PipelineExecutor({
       workspaceCwd: () => '/repo',
-      ephemeralRunner: { run: async () => ({ text: 'unused' }) },
       runAcpAgent: async () => 'from-test-adapter',
     });
 
@@ -28,16 +29,14 @@ suite('PipelineExecutor', () => {
 
   test('runStep uses ephemeral runner when no override', async () => {
     let capturedAgent = '';
-    const runner: EphemeralAgentRunner = {
-      run: async input => {
-        capturedAgent = input.agentName;
-        return { text: 'runner-output' };
-      },
+    const runAgent: PipelineAgentRunner = async input => {
+      capturedAgent = input.agentName;
+      return { text: 'runner-output' };
     };
 
     const executor = new PipelineExecutor({
       workspaceCwd: () => '/repo',
-      ephemeralRunner: runner,
+      runAgent,
     });
 
     const text = await executor.runStep('planner', primitive, 'hello', {
@@ -48,13 +47,9 @@ suite('PipelineExecutor', () => {
   });
 
   test('runStep propagates Sandcastle rejection from runner result', async () => {
-    const runner: EphemeralAgentRunner = {
-      run: async () => ({ text: 'x', promotion: 'rejected' }),
-    };
-
     const executor = new PipelineExecutor({
       workspaceCwd: () => '/repo',
-      ephemeralRunner: runner,
+      runAgent: async () => ({ text: 'x', promotion: 'rejected' }),
     });
 
     await assert.rejects(
@@ -69,7 +64,7 @@ suite('PipelineExecutor', () => {
   test('runStep requires approved plan for workspace side effects', async () => {
     const executor = new PipelineExecutor({
       workspaceCwd: () => '/repo',
-      ephemeralRunner: { run: async () => ({ text: 'x' }) },
+      runAgent: async () => ({ text: 'x' }),
     });
 
     await assert.rejects(

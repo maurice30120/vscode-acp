@@ -6,7 +6,7 @@ import {
   isPipelineStepCancelled,
   isPipelineStepRejected,
   resolvePipelineStepText,
-} from '../pipeline/PipelineStepCompletion';
+} from '@acp-client/pipeline';
 
 suite('PipelineStepCompletion', () => {
   test('resolvePipelineStepText returns string results unchanged', () => {

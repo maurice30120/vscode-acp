@@ -1,0 +1,18 @@
+{
+  "agents": {
+    "Codex CLI": {
+      "command": "npx",
+      "args": ["@zed-industries/codex-acp@latest"],
+      "env": {}
+    },
+    "Pi Agent": {
+      "command": "npx",
+      "args": ["-y", "pi-acp"],
+      "env": {}
+    }
+  },
+  "pipeline": {
+    "enabled": true,
+    "instructionsMaxBytes": 262144
+  }
+}

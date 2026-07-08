@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 
-import { buildReviewerRerunPrompt } from '../pipeline/AgentTeamCompiler';
+import { buildReviewerRerunPrompt } from '@acp-client/pipeline';
 
 suite('AgentTeamCompiler reviewer re-run', () => {
   test('buildReviewerRerunPrompt includes instructions, snapshot, and diff', () => {

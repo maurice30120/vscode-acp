@@ -9,7 +9,7 @@ import type {
   PipelinePlanReadyEvent,
   PipelineSessionUpdateEvent,
   PipelineStatusEvent,
-} from '../pipeline/PipelineEvents';
+} from '@acp-client/pipeline';
 
 export type ConversationWebviewMessage =
   | {

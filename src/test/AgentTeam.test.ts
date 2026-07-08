@@ -3,9 +3,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { validateAgentTeamDefinition } from '../config/AgentTeamConfig';
+import { validateAgentTeamDefinition } from '@acp-client/pipeline';
 import { loadWorkspaceTeamEntries } from '../config/AgentTeamCatalog';
-import { compileTeamToPipeline } from '../pipeline/AgentTeamCompiler';
+import { compileTeamToPipeline } from '@acp-client/pipeline';
 import { InstructionResolver } from '../instructions/InstructionResolver';
 
 const AGENTS = {

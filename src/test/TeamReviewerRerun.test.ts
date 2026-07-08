@@ -2,11 +2,12 @@ import * as assert from 'assert';
 
 import type { SessionNotification } from '@agentclientprotocol/sdk';
 
-import { defaultGitCommandRunner } from '../git/GitCommandRunner';
-import type { PipelineExecutor } from '../pipeline/PipelineExecutor';
-import { TeamReviewerRerun } from '../pipeline/TeamReviewerRerun';
-import type { TeamRunSnapshot } from '../pipeline/TeamRunSnapshotStore';
-import { repoRoot } from './repoRoot';
+import {
+  TeamReviewerRerun,
+  type PipelineDefinition,
+  type PipelineExecutor,
+  type TeamRunSnapshot,
+} from '@acp-client/pipeline';
 
 suite('TeamReviewerRerun', () => {
   const snapshot: TeamRunSnapshot = {
@@ -18,10 +19,27 @@ suite('TeamReviewerRerun', () => {
     completedAt: new Date().toISOString(),
   };
 
-  const agentConfigs = {
-    'Cursor CLI': { command: 'echo' },
-    Vibe: { command: 'echo' },
-    'Cursor Sandcastle': { transport: 'sandcastle', provider: 'cursor', model: 'composer-2' },
+  const teamPipeline: PipelineDefinition = {
+    version: 2,
+    id: 'team-feature-team',
+    title: 'Feature Team',
+    primitives: {},
+    steps: [],
+    metadata: {
+      sourceKind: 'team',
+      sourceFilePath: '.acp/teams/feature-team.yaml',
+      teamId: 'feature-team',
+      roleByStepId: { reviewer: 'reviewer' },
+      agentByRole: {
+        planner: 'Cursor CLI',
+        implementer: 'Cursor Sandcastle',
+        reviewer: 'Cursor CLI',
+        tester: 'Vibe',
+      },
+      instructionsByRole: {
+        reviewer: 'Review the implementation.',
+      },
+    },
   };
 
   function createExecutor(
@@ -31,9 +49,6 @@ suite('TeamReviewerRerun', () => {
   }
 
   test('rerun invokes executor and emits reviewer-rerun session updates', async () => {
-    const originalExec = defaultGitCommandRunner.exec.bind(defaultGitCommandRunner);
-    defaultGitCommandRunner.exec = async () => ({ stdout: 'diff --git a/foo.ts', stderr: '' });
-
     const emitted: Array<{ phase: string; sessionId: string }> = [];
     const executor = createExecutor(async (_agentName, _prompt, options = {}) => {
       options.onSessionUpdate?.({
@@ -43,30 +58,23 @@ suite('TeamReviewerRerun', () => {
       return 'review ok';
     });
 
-    try {
-      const rerun = new TeamReviewerRerun({
-        workspaceCwd: () => repoRoot(),
-        readAgentConfigs: () => agentConfigs,
-        executor,
-        emitSessionUpdate: event => {
-          emitted.push({ phase: event.phase, sessionId: event.sessionId });
-        },
-      });
+    const rerun = new TeamReviewerRerun({
+      getTeamPipelineForAgent: () => teamPipeline,
+      readWorkspaceDiff: async () => 'diff --git a/foo.ts',
+      executor,
+      emitSessionUpdate: event => {
+        emitted.push({ phase: event.phase, sessionId: event.sessionId });
+      },
+    });
 
-      const output = await rerun.rerun(snapshot, 'Feature Team');
-      assert.strictEqual(output, 'review ok');
-      assert.ok(emitted.length > 0);
-      assert.strictEqual(emitted[0]?.phase, 'reviewer-rerun');
-      assert.strictEqual(emitted[0]?.sessionId, 'session-1');
-    } finally {
-      defaultGitCommandRunner.exec = originalExec;
-    }
+    const output = await rerun.rerun(snapshot, 'Feature Team');
+    assert.strictEqual(output, 'review ok');
+    assert.ok(emitted.length > 0);
+    assert.strictEqual(emitted[0]?.phase, 'reviewer-rerun');
+    assert.strictEqual(emitted[0]?.sessionId, 'session-1');
   });
 
   test('cancel aborts in-flight rerun', async () => {
-    const originalExec = defaultGitCommandRunner.exec.bind(defaultGitCommandRunner);
-    defaultGitCommandRunner.exec = async () => ({ stdout: '', stderr: '' });
-
     let started = false;
     const executor = createExecutor(async (_agentName, _prompt, options = {}) => {
       started = true;
@@ -86,28 +94,23 @@ suite('TeamReviewerRerun', () => {
     });
 
     const rerun = new TeamReviewerRerun({
-      workspaceCwd: () => repoRoot(),
-      readAgentConfigs: () => agentConfigs,
+      getTeamPipelineForAgent: () => teamPipeline,
+      readWorkspaceDiff: async () => '',
       executor,
       emitSessionUpdate: () => {},
     });
 
-    try {
-      const promise = rerun.rerun(snapshot, 'Feature Team');
-      while (!started) {
-        await new Promise(resolve => setTimeout(resolve, 5));
-      }
-      rerun.cancel();
-      await assert.rejects(() => promise);
-    } finally {
-      defaultGitCommandRunner.exec = originalExec;
+    const promise = rerun.rerun(snapshot, 'Feature Team');
+    while (!started) {
+      await new Promise(resolve => setTimeout(resolve, 5));
     }
+    rerun.cancel();
+    await assert.rejects(() => promise);
   });
 
   test('missing team metadata throws', async () => {
     const rerun = new TeamReviewerRerun({
-      workspaceCwd: () => repoRoot(),
-      readAgentConfigs: () => agentConfigs,
+      getTeamPipelineForAgent: () => null,
       executor: createExecutor(async () => 'unused'),
       emitSessionUpdate: () => {},
     });

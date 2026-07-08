@@ -1,8 +1,8 @@
 import * as assert from 'assert';
 
-import type { PipelineDefinition } from '../config/PipelineCatalog';
-import { RunAbortedError } from '../core/RunAbortedError';
-import { PipelineRunEngine } from '../pipeline/PipelineRunEngine';
+import type { PipelineDefinition } from '@acp-client/pipeline';
+import { isRunAbortedError, RunAbortedError } from '../core/RunAbortedError';
+import { PipelineRunEngine } from '@acp-client/pipeline';
 
 const PLAN_EXECUTE_VERIFY_PIPELINE: PipelineDefinition = {
   version: 2,
@@ -495,6 +495,7 @@ function createEngine(options: {
         pipelines.find(pipeline => pipeline.title === agentName) ?? null,
       getAgentConfigs: () => ({ Codex: {}, Vibe: {} }),
       runAcpAgent: options.runAcpAgent,
+      isRunAbortedError,
     },
   );
 }

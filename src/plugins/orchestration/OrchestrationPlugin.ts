@@ -1,11 +1,23 @@
 import * as vscode from 'vscode';
+import { PipelineService, serializeCompiledTeamPipeline } from '@acp-client/pipeline';
 
-import { getAgentNames } from '../../config/AgentConfig';
+import {
+  getAgentConfigs,
+  getAgentNames,
+  isSandcastleAgentConfig,
+  type AgentConfigEntry,
+} from '../../config/AgentConfig';
+import { getTeamEntryForAgent } from '../../config/AgentTeamCatalog';
+import {
+  getPipelineDefinitionForAgent,
+  getPipelineDefinitions,
+} from '../../config/PipelineCatalog';
 import { isPipelineEnabled } from '../../config/PipelineConfig';
 import type { SessionManager } from '../../core/SessionManager';
+import { DefaultEphemeralAgentRunner } from '../../core/EphemeralAgentRunner';
+import { isRunAbortedError } from '../../core/RunAbortedError';
+import { defaultGitCommandRunner } from '../../git/GitCommandRunner';
 import type { SandcastlePromotion } from '../../sandcastle/SandcastlePromotion';
-import { serializeCompiledTeamPipeline } from '../../pipeline/AgentTeamCompiler';
-import { PipelineService } from '../../pipeline/PipelineService';
 import type { ChatWebviewController } from '../../ui/ChatWebviewController';
 import type { SessionTreeProvider } from '../../ui/SessionTreeProvider';
 import { classifyAgentError } from '../../core/AgentError';
@@ -28,7 +40,25 @@ export class OrchestrationPlugin implements FeaturePlugin<OrchestrationPluginCon
 
   activate(context: OrchestrationPluginContext): vscode.Disposable {
     const { sessionManager, sessionTreeProvider, chatController, sandcastlePromotion } = context;
-    const pipelineService = new PipelineService(context.workspaceCwd, { sandcastlePromotion });
+    const ephemeralRunner = new DefaultEphemeralAgentRunner(sandcastlePromotion);
+    const pipelineService = new PipelineService(context.workspaceCwd, {
+      getPipelineDefinitions: () => getPipelineDefinitions(context.workspaceCwd(), getAgentConfigs()),
+      getPipelineDefinitionForAgent: agentName =>
+        getPipelineDefinitionForAgent(agentName, context.workspaceCwd(), getAgentConfigs()),
+      getAgentConfigs,
+      runAgent: input => ephemeralRunner.run(input),
+      isAgentSandcastle: (agentName, agentConfigs) => {
+        const config = agentConfigs[agentName] as AgentConfigEntry | undefined;
+        return config ? isSandcastleAgentConfig(config) : false;
+      },
+      getTeamPipelineForAgent: teamAgentName =>
+        getTeamEntryForAgent(teamAgentName, context.workspaceCwd(), getAgentConfigs())?.pipeline ?? null,
+      readWorkspaceDiff: async () => {
+        const result = await defaultGitCommandRunner.exec(context.workspaceCwd(), ['diff', 'HEAD']);
+        return result.stdout.trim();
+      },
+      isRunAbortedError,
+    });
     const runtime = new OrchestrationRuntime(pipelineService, sessionManager, chatController);
     const disposables: vscode.Disposable[] = [];
     disposables.push(runtime.activate());

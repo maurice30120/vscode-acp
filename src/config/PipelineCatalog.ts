@@ -3,70 +3,33 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 import * as yaml from 'js-yaml';
+import {
+  extractTemplateVariables,
+  validatePipelineDefinition,
+  type PipelineDefinition,
+  type PipelineValidationResult,
+} from '@acp-client/pipeline';
 
 import { getValidTeamPipelines } from './AgentTeamCatalog';
 import { isPipelineEnabled } from './PipelineConfig';
-import type { CompiledTeamMetadata } from '../pipeline/AgentTeamCompiler';
 import { resolveWorkspaceIdentity } from '../core/WorkspaceIdentity';
 import { resolveAgent } from './VirtualAgentCatalog';
 import { log } from '../utils/Logger';
-import { extractTemplateVariables, validatePipelineDefinition } from './PipelineValidator';
 
-export type { CompiledTeamMetadata };
+export type {
+  CompiledTeamMetadata,
+  PipelineAgentStepDefinition,
+  PipelineApprovalStepDefinition,
+  PipelineOutputType,
+  PipelineParallelBranchDefinition,
+  PipelineParallelStepDefinition,
+  PipelinePrimitiveDefinition,
+  PipelineSideEffects,
+  PipelineStepDefinition,
+  PipelineDefinition,
+  PipelineValidationResult,
+} from '@acp-client/pipeline';
 export { extractTemplateVariables, validatePipelineDefinition };
-
-export type PipelineOutputType = 'markdown' | 'proposed_plan';
-export type PipelineSideEffects = 'none' | 'workspace';
-
-export interface PipelinePrimitiveDefinition {
-  agent: string;
-  prompt: string;
-  output: PipelineOutputType;
-  sideEffects: PipelineSideEffects;
-}
-
-export interface PipelineAgentStepDefinition {
-  id: string;
-  use: string;
-}
-
-export interface PipelineApprovalStepDefinition {
-  id: string;
-  type: 'approval';
-  input: string;
-}
-
-export interface PipelineParallelBranchDefinition {
-  id: string;
-  use: string;
-}
-
-export interface PipelineParallelStepDefinition {
-  id: string;
-  type: 'parallel';
-  branches: PipelineParallelBranchDefinition[];
-}
-
-export type PipelineStepDefinition =
-  | PipelineAgentStepDefinition
-  | PipelineApprovalStepDefinition
-  | PipelineParallelStepDefinition;
-
-export interface PipelineDefinition {
-  version: 2;
-  id: string;
-  title: string;
-  primitives: Record<string, PipelinePrimitiveDefinition>;
-  steps: PipelineStepDefinition[];
-  source?: 'workspace' | 'team';
-  filePath?: string;
-  metadata?: CompiledTeamMetadata;
-}
-
-export interface PipelineValidationResult {
-  definition?: PipelineDefinition;
-  errors: string[];
-}
 
 const PIPELINE_DIR = path.join('.acp', 'pipelines');
 

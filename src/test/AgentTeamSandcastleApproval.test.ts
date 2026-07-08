@@ -1,9 +1,11 @@
 import * as assert from 'assert';
 
-import type { PipelineDefinition } from '../config/PipelineCatalog';
-import type { CompiledTeamMetadata } from '../pipeline/AgentTeamCompiler';
-import { PipelineService } from '../pipeline/PipelineService';
-import { PipelineRunEngine } from '../pipeline/PipelineRunEngine';
+import {
+  PipelineRunEngine,
+  PipelineService,
+  type CompiledTeamMetadata,
+  type PipelineDefinition,
+} from '@acp-client/pipeline';
 
 const FEATURE_TEAM_PIPELINE: PipelineDefinition = {
   version: 2,
@@ -298,5 +300,7 @@ function createEngineDependencies(options: {
       'Cursor Sandcastle': { transport: 'sandcastle', provider: 'cursor', model: 'composer-2' },
     }),
     runAcpAgent: options.runAcpAgent,
+    isAgentSandcastle: (agentName, agentConfigs) =>
+      (agentConfigs[agentName] as { transport?: string } | undefined)?.transport === 'sandcastle',
   };
 }

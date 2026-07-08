@@ -124,6 +124,26 @@ suite('WorkspaceBootstrap', () => {
     );
   });
 
+  test('adds plugin-installed skills paths to .gitignore during bootstrap', async () => {
+    await syncWorkspaceStarterCore(repoRoot(), workspaceRoot, { starterRoot });
+
+    const gitignore = fs.readFileSync(path.join(workspaceRoot, '.gitignore'), 'utf8');
+    assert.match(gitignore, /# Local Codex\/plugin-installed skills/);
+    assert.match(gitignore, /^\.agents\/skills\/$/m);
+    assert.match(gitignore, /^\.cursor\/skills$/m);
+    assert.match(gitignore, /^skills-lock\.json$/m);
+  });
+
+  test('does not duplicate plugin-installed skills gitignore rules', async () => {
+    await syncWorkspaceStarterCore(repoRoot(), workspaceRoot, { starterRoot });
+    await syncWorkspaceStarterCore(repoRoot(), workspaceRoot, { starterRoot });
+
+    const gitignore = fs.readFileSync(path.join(workspaceRoot, '.gitignore'), 'utf8');
+    assert.strictEqual((gitignore.match(/^\.agents\/skills\/$/gm) ?? []).length, 1);
+    assert.strictEqual((gitignore.match(/^\.cursor\/skills$/gm) ?? []).length, 1);
+    assert.strictEqual((gitignore.match(/^skills-lock\.json$/gm) ?? []).length, 1);
+  });
+
   test('adds missing team file inside an existing empty teams directory', async () => {
     fs.mkdirSync(path.join(workspaceRoot, '.acp', 'teams'), { recursive: true });
 

@@ -12,3 +12,8 @@ out/
 .sandcastle/worktrees/
 .sandcastle/codex-home/
 resources/workspace-starter/
+
+# Local Codex/plugin-installed skills
+.agents/skills/
+.cursor/skills
+skills-lock.json

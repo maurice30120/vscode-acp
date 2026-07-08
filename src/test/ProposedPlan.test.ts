@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 
-import { assertSingleProposedPlan, extractSingleProposedPlan } from '../pipeline/ProposedPlan';
+import { assertSingleProposedPlan, extractSingleProposedPlan } from '@acp-client/pipeline';
 
 suite('ProposedPlan', () => {
   test('extracts exactly one proposed plan block', () => {

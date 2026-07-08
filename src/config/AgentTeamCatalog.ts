@@ -5,13 +5,14 @@ import * as vscode from 'vscode';
 import * as yaml from 'js-yaml';
 
 import {
+  compileTeamToPipeline,
   type AgentTeamDefinition,
+  type CompiledTeamMetadata,
+  type PipelineDefinition,
   type TeamRoleId,
   validateAgentTeamDefinition,
-} from './AgentTeamConfig';
+} from '@acp-client/pipeline';
 import { isPipelineEnabled } from './PipelineConfig';
-import { compileTeamToPipeline, type CompiledTeamMetadata } from '../pipeline/AgentTeamCompiler';
-import type { PipelineDefinition } from './PipelineCatalog';
 import { resolveWorkspaceIdentity } from '../core/WorkspaceIdentity';
 import { resolveAgent } from './VirtualAgentCatalog';
 import {

@@ -11,7 +11,7 @@ import type {
   PipelinePlanReadyEvent,
   PipelineSessionUpdateEvent,
   PipelineStatusEvent,
-} from '../../pipeline/PipelineService';
+} from '@acp-client/pipeline';
 import type { ChatWebviewController } from '../../ui/ChatWebviewController';
 import { logError } from '../../utils/Logger';
 
