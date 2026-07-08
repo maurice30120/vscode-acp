@@ -142,6 +142,45 @@ Base fonctionnelle en place ; l'expérience reste surtout invisible et limitée 
 - Guide dédié `docs/skills.md` (format, settings, agents supportés, limites Sandcastle).
 - Glossaire `src/skills/CONTEXT.md` aligné sur `CONTEXT-MAP.md`.
 
+### Consolidation Pipeline vs Feature Team
+
+Aujourd'hui deux formats d'orchestration coexistent et se chevauchent :
+
+- **Pipelines v2** (`.acp/pipelines/*.yaml`) — format déclaratif complet (`primitives` + `steps`), flexible, ~34 exemples dans `save/`.
+- **Teams v1 / Feature Team** (`.acp/teams/*.yaml`) — format rôle-basé simplifié (`planner` → `approval` → `implementer` → `reviewer` → `tester`) compilé en pipeline v2 au runtime par `AgentTeamCompiler`.
+
+**Constat** : les teams sont un **sous-ensemble strict** des pipelines. Le compilateur (`AgentTeamCompiler`, `buildPlannerPrompt`/`buildImplementerPrompt`/…) génère toujours la même structure de steps et les mêmes prompts à partir d'un format plus limité. Deux mécanismes parallèles pour le même résultat = charge cognitive, duplication de code, deux sources de doc/exemples à maintenir.
+
+**Objectif : comprendre la différence puis ne garder qu'un seul format.**
+
+- Auditer les cas d'usage réels : qui utilise `feature-team.yaml` vs `pev.yaml` ? Le format team apporte-t-il une valeur (ergonomie rôle, instructions par rôle) que le pipeline ne couvre pas ?
+- Décider du format unique : conserver **pipelines v2** comme format canonique (plus expressif) et faire disparaître teams, **ou** promouvoir un format rôle unique (si la valeur ergonomique l'emporte) en abandonnant les pipelines low-level.
+- Quelle que l'issue :
+  - Supprimer l'autre format + son compilateur (`AgentTeamCompiler`, `AgentTeamConfig`, `compileTeamToPipeline`, `serializeCompiledTeamPipeline`, `TeamRunSnapshotStore`, `TeamReviewerRerun`).
+  - Migrer les exemples existants (`.acp/teams/feature-team.yaml`, `.acp/agents/*.md` par rôle) vers le format retenu.
+  - Supprimer la commande `acp.showCompiledTeamPipeline` et le flag associé.
+  - Mettre à jour `docs/agent-teams.md`, les ADR concernés, `CONTEXT-MAP.md`.
+- Documenter la décision dans un ADR (rationale du format retenu, migration).
+
+### Simplifier l'appel
+
+Réduire la friction pour lancer un pipeline/équipe depuis le workspace :
+
+- Un seul point d'entrée dans l'UI (aujourd'hui `runPipeline` + sélection d'agent virtuel) — clarifier le parcours « choisir un workflow → lancer ».
+- Defaults sensibles : agent cible, modèle, cwd hérités de la session courante plutôt qu'à re-spécifier.
+- Lancer un pipeline directement depuis un fichier `.acp/pipelines/*.yaml` ouvert (action inline / CodeLens).
+- Réduire le nombre d'étapes de confirmation avant le premier tour (surtout après consolidation pipeline/team).
+- Aligner l'appel pipeline et l'appel agent simple sur la même surface (un agent = un pipeline à une étape ?).
+
+### Améliorer l'UI
+
+- Timeline pipeline plus lisible : statut par étape, durée, agent utilisé, output repliable, distinction plan approuvé vs modifié.
+- Indication claire du format/origine d'un workflow (pipeline vs team tant que les deux existent, puis source du pipeline unique).
+  - Supprimer tout artefact UI lié à la distinction team/pipeline une fois la consolidation faite.
+- Afficher les rôles/instructions injectés avant lancement (prévisualisation du prompt final).
+- États vides et erreurs explicites : pas de pipeline défini, pipeline invalide, agent manquant, étape en échec.
+- Réduire l'indirection webview → plugin → runtime → `SessionManager` pour faciliter le debug UI et les tests ciblés.
+
 ---
 
 ## Moyen Terme
@@ -166,7 +205,7 @@ Base fonctionnelle en place ; l'expérience reste surtout invisible et limitée 
 ## Pistes Techniques et UX
 
 | Piste | Statut |
-|-------|--------|
+| ------- | -------- |
 | Couverture de tests sur flux critiques | Partiel — bonne base sandcastle/pipelines/sessions ; webview et edge cases à compléter |
 | Persistance locale (workspaces multiples, sessions supprimées, agents indisponibles) | Partiel — `SessionHistoryStore` en place ; cas limites à durcir |
 | Politique de sécurité fichiers / terminal / approvals | Partiel — permissions ACP + auto-approve Sandcastle ; policies déclaratives à venir |
@@ -186,6 +225,8 @@ Base fonctionnelle en place ; l'expérience reste surtout invisible et limitée 
 - Comparer le plan approuvé avec les changements réellement produits par l'implémenteur.
 - Centre de diagnostic : bundle de support filtré depuis les snapshots debug.
 - Politiques de permissions par workspace ou par profil d'agent.
+
+> Les idées spécifiques au plugin pi (`packages/acp-pi-extension`) — visualisation des changes depuis pi, connexion à l'agent via pi, consolidation pipeline/team côté plugin — sont dans `packages/acp-pi-extension/ROADMAP.md`.
 
 ---
 
