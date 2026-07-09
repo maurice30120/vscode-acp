@@ -8,7 +8,7 @@
 
 ## 1. Objectif initial
 
-Demande 1 : « ajoute des schémas mermaid au `packages/acp-pi-extension/README.md` ».
+Demande 1 : « ajoute des schémas mermaid au `plugin-pi/README.md` ».
 Demande 2 : « tu vas me faire un fichier `temp/plan-exe.md` avec toutes les étapes, les outils
 et les difficultés que tu as trouvées — je veux voir si mon pipeline a bien marché avec le call
 des agents ACP et toute info disponible ».
@@ -26,7 +26,7 @@ Si tu veux réellement vérifier que ton pipeline appelle bien les agents ACP, i
 (pour de vrai, dans un terminal) :
 
 ```bash
-cd packages/acp-pi-extension
+cd plugin-pi
 npm run build
 npm test                                  # node --test dist/test/**/*.test.js
 # puis, depuis l'hôte Pi :
@@ -45,7 +45,7 @@ mockent le runner ACP via `runnerController.test.ts`).
 
 | # | Action | Outil | Fichier / cible | Résultat |
 | --- | -------- | ------ | ----------------- | ---------- |
-| 1 | Lire le README actuel | `read` | `packages/acp-pi-extension/README.md` | 220 lignes chargées avec anchors `LINE:HASH` |
+| 1 | Lire le README actuel | `read` | `plugin-pi/README.md` | 220 lignes chargées avec anchors `LINE:HASH` |
 | 2 | Lister le dossier package | `bash` (`ls`) | `.../acp-pi-extension/` | `README.md dist node_modules package.json src test tsconfig.json` |
 | 3 | Demander un outline sémantique du dossier `src` | `module_report` | `src/` | ❌ **Échec** — voir §5. Difficulté 1 |
 | 4 | Lire `runtime/pipelineController.ts` | `read` | source | OK — comprend le contrôleur |
@@ -73,7 +73,7 @@ Aucun : `lsp_diagnostics`, `lsp_navigation`, `ast_grep_*`, `grep`, `search`, `re
 ### Difficulté 1 — `module_report` indisponible sur `src/`
 
 ```
-path: packages/acp-pi-extension/src
+path: plugin-pi/src
 available: false
 staleness: "unavailable"
 semantic.source: "none"   (références/implementations false)
@@ -204,7 +204,7 @@ spawn de `codex-acp`/`pi-acp` n'est couvert que par une exécution live.
 
 Pour obtenir une « preuve de fonctionnement » réelle, dans l'ordre :
 
-1. `cd packages/acp-pi-extension && npm run build` — compile TS → `dist/`.
+1. `cd plugin-pi && npm run build` — compile TS → `dist/`.
 2. `npm test` — doit passer (notes : zéro dépendance externe de test, `node:test` +
    `node:assert`).
 3. Lancer l'hôte Pi avec une config `.pi/acp-agents.json` valide + au moins un pipeline
@@ -223,7 +223,7 @@ specifiques à l'agent.
 
 Je peux (étape suivante si tu veux) :
 
-- exécuter `npm run build` + `npm test` dans `packages/acp-pi-extension` pour valider la
+- exécuter `npm run build` + `npm test` dans `plugin-pi` pour valider la
   compilation et la suite de tests (y compris `runnerController.test.ts` qui mocke le runner
   ACP) ;
 - lancer `lsp_diagnostics` / `lens_diagnostics mode=all` sur le package pour relever d'éventuels

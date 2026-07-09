@@ -1,0 +1,4 @@
+# Local Codex/plugin-installed skills
+.agents/skills/
+.cursor/skills
+skills-lock.json

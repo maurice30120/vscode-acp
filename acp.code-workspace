@@ -1,0 +1,21 @@
+{
+  "folders": [
+    {
+      "name": "root",
+      "path": "root"
+    },
+    {
+      "name": "plugin-vscode",
+      "path": "plugin-vscode"
+    },
+    {
+      "name": "plugin-pi",
+      "path": "plugin-pi"
+    }
+  ],
+  "settings": {
+    "typescript.tsdk": "node_modules/typescript/lib",
+    "acp.pipeline.enabled": true,
+    "acp.sandcastle.promotion": "autoApply"
+  }
+}
