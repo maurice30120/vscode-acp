@@ -5,6 +5,8 @@ title: Ask Codex
 primitives:
   answer:
     agent: Codex CLI
+    skills:
+      - ask-matt
     output: markdown
     sideEffects: none
     prompt: |

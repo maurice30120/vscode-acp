@@ -1,12 +1,11 @@
-suit# @acp-client/pi-extension
+# @acp-client/pi-extension
 
-Extension Pi pour les pipelines ACP. Ce plugin orchestre plusieurs agents ACP externes via des définitions de pipeline déclaratives et des compositions d'équipes d'agents.
+Extension Pi pour les pipelines ACP. Ce plugin orchestre plusieurs agents ACP externes via des définitions de pipeline déclaratives.
 
 ## Ce que ça fait concrètement
 
-- Lit `.pi/acp-agents.json` pour charger les agents ACP configurés (agents natifs lancés en ligne de commande)
+- Lit `.pi/.acp/acp-agents.json` pour charger les agents ACP configurés (agents natifs lancés en ligne de commande)
 - Découvre les **pipelines** dans `.pi/.acp/pipelines/*.yaml` (étapes d'agents séquentielles avec validation humaine)
-- Découvre les **teams** dans `.acp/teams/*.yaml` (compositions d'agents par rôles, compilées en pipelines)
 - Spawn les processus d'agents ACP, se connecte via le SDK ACP, proxy les appels fichiers/terminal/permissions, et gère l'authentification
 - Expose une commande `/pipeline` dans Pi (`list`, `run`, `approve`, `reject`, `cancel`)
 - Enregistre un outil `run_pipeline` pour que le modèle Pi puisse lancer des pipelines tout seul
@@ -19,11 +18,11 @@ Extension Pi pour les pipelines ACP. Ce plugin orchestre plusieurs agents ACP ex
 
 ## Installation
 
-Le plugin s'installe avec l'hôte Pi. Dans ton workspace, il te faut un fichier `.pi/acp-agents.json` et au moins un pipeline ou une team en YAML.
+Le plugin s'installe avec l'hôte Pi. Dans ton workspace, il te faut un fichier `.pi/.acp/acp-agents.json` et au moins un pipeline YAML dans `.pi/.acp/pipelines/`.
 
 ### 1. Configurer les agents ACP
 
-Crée `.pi/acp-agents.json` à la racine du workspace :
+Crée le fichier `.pi/.acp/acp-agents.json` :
 
 ```json
 {
@@ -53,8 +52,9 @@ Crée `.pi/acp-agents.json` à la racine du workspace :
 | `agents.<nom>.args` | Arguments CLI (optionnel) |
 | `agents.<nom>.env` | Variables d'environnement supplémentaires (optionnel) |
 | `agents.<nom>.displayName` | Label affiché dans l'UI (optionnel) |
+| `agents.<nom>.skills` | `false` désactive l'injection de skills pour cet agent (optionnel) |
 | `pipeline.enabled` | Active ou désactive la découverte des pipelines (défaut `true`) |
-| `pipeline.instructionsMaxBytes` | Taille max des fichiers d'instructions pour les teams (défaut 256 Ko) |
+| `pipeline.instructionsMaxBytes` | Taille max des fichiers `promptFile` chargés par les pipelines (défaut 256 Ko) |
 
 ### 2. Définir des pipelines (`.pi/.acp/pipelines/`)
 
@@ -67,6 +67,8 @@ title: Pipeline démo
 primitives:
   planificateur:
     agent: Codex CLI
+    skills:
+      - codebase-design
     prompt: |
       Fais un plan pour cette demande :
       {{userPrompt}}
@@ -74,6 +76,8 @@ primitives:
     sideEffects: none
   implémenteur:
     agent: Pi Agent
+    skills:
+      - tdd
     prompt: |
       Implémente :
       {{steps.approbation.output}}
@@ -91,28 +95,40 @@ steps:
 
 Chaque pipeline déclare des **primitives** (appels d'agents paramétrés avec des prompts template) et des **étapes** qui les enchaînent. Les étapes de type `approval` font une pause pour validation humaine avant de continuer.
 
-### 3. Définir des teams (`.acp/teams/`)
-
-Les teams c'est une abstraction plus haut niveau. Crée un YAML version 1 et des fichiers markdown d'instructions dans `.acp/teams/` :
+Les primitives peuvent aussi utiliser `promptFile` pour externaliser les instructions longues :
 
 ```yaml
-# .acp/teams/equipe-feature.yaml
-version: 1
-id: feature
-title: Équipe Feature
-roles:
+primitives:
   planificateur:
     agent: Codex CLI
-    instructions: planificateur.md
-  implémenteur:
-    agent: Pi Agent
-    instructions: implementeur.md
-  relecteur:
-    agent: Codex CLI
-    instructions: relecteur.md
+    promptFile: .pi/.acp/agents/planner.md
+    prompt: |
+      Demande utilisateur :
+      {{userPrompt}}
+    output: proposed_plan
+    sideEffects: none
 ```
 
-Chaque rôle référence un agent de `acp-agents.json` et un fichier d'`instructions` en markdown (chemin relatif au YAML de team). Les teams sont compilées automatiquement en pipelines.
+Quand `promptFile` et `prompt` sont tous les deux présents, le contenu du fichier est ajouté avant le prompt inline.
+
+### 3. Utiliser des skills par primitive
+
+Les skills se déclarent sur chaque primitive avec `skills: [...]`. Le runner injecte uniquement les skills demandées pour l'étape en cours, depuis `.agents/skills/<name>/SKILL.md`.
+
+```yaml
+primitives:
+  verifier:
+    agent: Codex CLI
+    skills:
+      - unit-tests
+    prompt: |
+      Vérifie l'implémentation :
+      {{steps.implement.output}}
+    output: markdown
+    sideEffects: none
+```
+
+Si `skills` est absent, aucun catalogue de skills n'est injecté. Si l'agent a `"skills": false` dans `.pi/.acp/acp-agents.json`, l'injection est désactivée pour cet agent.
 
 ## Build
 
@@ -140,9 +156,9 @@ npm run build && node --test "dist/test/**/*.test.js"
 
 | Fichier | Ce qui est testé |
 | --- | --- |
-| `test/configCatalog.test.ts` | Parsing de la config, validation des YAML de pipeline, compilation des teams, limite de taille des instructions, fusion des définitions |
+| `test/configCatalog.test.ts` | Parsing de la config, validation des YAML de pipeline, résolution des `promptFile`, limite de taille, catalogue de skills |
 | `test/runnerController.test.ts` | Runner ACP mocké (collecte de texte, annulation/abort), commandes `/pipeline` (`list`, `run` → `approve`) |
-| `test/helpers.ts` | Création de workspaces temporaires, écriture de fixtures (configs, pipelines, teams) |
+| `test/helpers.ts` | Création de workspaces temporaires, écriture de fixtures (configs, pipelines, skills) |
 
 Zero dépendance externe pour les tests — que du `node:test` et `node:assert`.
 
@@ -154,10 +170,10 @@ src/
 ├── types.ts                  Types partagés (PiAcpConfig, Logger, NativeAcpAgentConfig, etc.)
 │
 ├── catalog/                  Découverte de la configuration et des définitions
-│   ├── config.ts             Charge et parse .pi/acp-agents.json
+│   ├── config.ts             Charge et parse .pi/.acp/acp-agents.json
 │   ├── pipelineCatalog.ts    Charge et valide .pi/.acp/pipelines/*.yaml
-│   ├── teamCatalog.ts        Charge .acp/teams/*.yaml, compile en pipelines
-│   └── instructionResolver.ts Résout et valide les fichiers markdown d'instructions des teams
+│   ├── promptFileResolver.ts Résout et compose les fichiers promptFile des pipelines
+│   └── skillCatalog.ts       Charge et filtre le catalogue .agents/skills
 │
 ├── runtime/                  Couche d'intégration avec l'hôte Pi
 │   ├── commands.ts           Commande slash /pipeline (list, run, approve, reject, cancel)
@@ -207,9 +223,8 @@ flowchart TD
   Cm -.->|"auth required"| Auth["authHandler"]
   Auth -.-> Host
 
-  Ctrl -.->|"lit"| Cfg[(".pi/acp-agents.json")]
+  Ctrl -.->|"lit"| Cfg[(".pi/.acp/acp-agents.json")]
   Svc -.->|"lit"| Pipes[(".pi/.acp/pipelines/*.yaml")]
-  Svc -.->|"lit + compile"| Teams[(".acp/teams/*.yaml")]
   Proc -.->|"stdio"| Agent[("Agent ACP externe<br/>(Codex, Pi Agent, …)")]
 ```
 
@@ -217,22 +232,22 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-  Disk[("Workspace<br/>.pi/ · .acp/")]
+  Disk[("Workspace<br/>.pi/.acp · .agents/")]
   Cfg["config.ts"]
   Pipes["pipelineCatalog.ts"]
-  Teams["teamCatalog.ts"]
-  Res["instructionResolver.ts"]
-  Merge(["PipelineDefinition[]<br/>fusionnées"])
+  PromptFiles["promptFileResolver.ts"]
+  Skills["skillCatalog.ts"]
+  Defs(["PipelineDefinition[]"])
 
-  Disk -->|"acp-agents.json"| Cfg
-  Disk -->|"pipelines/*.yaml (v2)"| Pipes
-  Disk -->|"teams/*.yaml (v1)"| Teams
-  Disk -->|"instructions/*.md"| Res
+  Disk -->|".pi/.acp/acp-agents.json"| Cfg
+  Disk -->|".pi/.acp/pipelines/*.yaml (v2)"| Pipes
+  Disk -->|"promptFile *.md"| PromptFiles
+  Disk -->|"skills/*/SKILL.md"| Skills
 
-  Teams -->|"compile rôles → étapes"| Merge
-  Pipes --> Merge
-  Res -.->|"valide + taille max"| Teams
-  Cfg -.->|"agents disponibles"| Merge
+  Pipes --> Defs
+  PromptFiles -.->|"compose prompts"| Pipes
+  Cfg -.->|"agents disponibles"| Pipes
+  Skills -.->|"filtre par primitive"| Defs
 ```
 
 ### Exécution d'un pipeline (avec validation humaine)
@@ -318,8 +333,8 @@ sequenceDiagram
 
 | Package | Rôle |
 | --- | --- |
-| `@acp-client/pipeline` | Moteur d'orchestration de pipelines (définitions, service, compilateur de teams) |
+| `@acp-client/pipeline` | Moteur d'orchestration de pipelines (définitions, service, validation, exécution) |
 | `@agentclientprotocol/sdk` | Protocole ACP (Agent Client Protocol) |
 | `@earendil-works/pi-coding-agent` | ExtensionAPI de l'hôte Pi (commandes, outils, UI) |
-| `js-yaml` | Parsing YAML pour pipelines et teams |
+| `js-yaml` | Parsing YAML pour pipelines |
 | `typebox` | Schéma runtime pour validation des paramètres d'outils |

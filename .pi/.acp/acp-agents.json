@@ -1,13 +1,13 @@
 {
   "agents": {
     "Codex CLI": {
-      "command": "npx",
-      "args": ["@zed-industries/codex-acp@latest"],
+      "command": "codex",
+      "args": [],
       "env": {}
     },
     "Pi Agent": {
-      "command": "npx",
-      "args": ["-y", "pi-acp"],
+      "command": "pi-acp",
+      "args": [],
       "env": {}
     },
     "Vibe": {

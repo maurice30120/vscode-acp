@@ -20,7 +20,7 @@ export function writeFile(
 export function writeDefaultConfig(workspace: string): void {
 	writeFile(
 		workspace,
-		".pi/acp-agents.json",
+		".pi/.acp/acp-agents.json",
 		JSON.stringify(
 			{
 				agents: {

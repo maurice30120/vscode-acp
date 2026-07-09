@@ -5,6 +5,8 @@ title: Plan Execute Verify
 primitives:
   planner:
     agent: Codex CLI
+    skills:
+      - codebase-design
     output: proposed_plan
     sideEffects: none
     prompt: |
@@ -16,6 +18,8 @@ primitives:
 
   implementer:
     agent: Vibe
+    skills:
+      - tdd
     output: markdown
     sideEffects: workspace
     prompt: |
@@ -29,6 +33,8 @@ primitives:
 
   verifier:
     agent: Codex CLI
+    skills:
+      - unit-tests
     output: markdown
     sideEffects: none
     prompt: |

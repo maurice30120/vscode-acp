@@ -3,7 +3,7 @@ import * as path from 'node:path';
 
 import type { NativeAcpAgentConfig, PiAcpConfig } from '../types.js';
 
-const CONFIG_PATH = path.join('.pi', 'acp-agents.json');
+const CONFIG_PATH = path.join('.pi', '.acp', 'acp-agents.json');
 const DEFAULT_INSTRUCTIONS_MAX_BYTES = 256 * 1024;
 
 export function loadPiAcpConfig(workspaceCwd: string): PiAcpConfig {

@@ -18,7 +18,7 @@ Pour le contexte global de l'extension VS Code, voir [`../../ROADMAP.md`](../../
 
 ## Réalisé
 
-- Découverte des agents depuis `.pi/acp-agents.json`.
+- Découverte des agents depuis `.pi/.acp/acp-agents.json`.
 - Pipelines v2 (`.pi/.acp/pipelines/*.yaml`) : primitives + steps, étapes `approval`, validation.
 - Teams v1 (`.acp/teams/*.yaml`) : composition par rôles compilée en pipelines (`teamCatalog`, `instructionResolver`).
 - Spawn + connexion ACP (`agentProcess`, `connectionManager`, `defaultConnector`), proxy fichiers/terminal/permissions.

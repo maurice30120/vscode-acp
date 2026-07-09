@@ -23,7 +23,7 @@ import {
 	writeSkill,
 } from "./helpers.js";
 
-test("loads .pi/acp-agents.json compatible native ACP config", () => {
+test("loads .pi/.acp/acp-agents.json compatible native ACP config", () => {
 	const config = parsePiAcpConfig(
 		JSON.stringify({
 			agents: {
