@@ -5,6 +5,7 @@ import { loadPiAcpConfig, parsePiAcpConfig } from "../src/catalog/config.js";
 import {
 	getPipelineDefinitionForAgent,
 	getPipelineDefinitions,
+	loadPipelineDefinitionsFromRoot,
 	loadWorkspacePipelineDefinitions,
 	parsePipelineYaml,
 } from "../src/catalog/pipelineCatalog.js";
@@ -50,15 +51,17 @@ test("loads .pi/.acp/acp-agents.json compatible native ACP config", () => {
 	assert.equal(config.pipeline.instructionsMaxBytes, 1234);
 });
 
-test("loadPiAcpConfig reports a missing config and keeps pipeline defaults", () => {
+test("loadPiAcpConfig loads the embedded plugin config for an empty workspace", () => {
 	const workspace = createTempWorkspace();
 
 	const config = loadPiAcpConfig(workspace);
 
-	assert.deepEqual(config.agents, {});
+	assert.deepEqual(config.errors, []);
+	assert.equal(config.agents["Codex CLI"].command, "npx");
+	assert.equal(config.agents["Pi Agent"].command, "npx");
 	assert.equal(config.pipeline.enabled, true);
 	assert.equal(config.pipeline.instructionsMaxBytes, 262144);
-	assert.match(config.errors.join("\n"), /Missing Pi ACP config/);
+	assert.match(config.filePath, /plugin-pi[\/\\]\.pi[\/\\]\.acp[\/\\]acp-agents\.json$/);
 });
 
 test("parsePiAcpConfig reports JSON parse errors as empty config", () => {
@@ -187,21 +190,15 @@ test("validates pipeline agent references against Pi config", () => {
 	assert.match(invalid.errors.join("\n"), /Missing Agent/);
 });
 
-test("getPipelineDefinitions returns no pipelines when pipeline support is disabled", () => {
+test("getPipelineDefinitions loads embedded pipelines for an empty workspace", () => {
 	const workspace = createTempWorkspace();
-	writeFile(
-		workspace,
-		".pi/.acp/acp-agents.json",
-		JSON.stringify({
-			agents: { "Codex CLI": { command: "codex" } },
-			pipeline: { enabled: false },
-		}),
-	);
-	writeDemoPipeline(workspace);
 
 	const definitions = getPipelineDefinitions(workspace);
 
-	assert.deepEqual(definitions, []);
+	assert.deepEqual(
+		definitions.map((definition) => definition.id),
+		["async-use-case-review", "plan-execute-verify"],
+	);
 });
 
 test("loads .pi/.acp/pipelines/*.yaml from workspace", () => {
@@ -248,21 +245,28 @@ test("loads .pi/.acp/pipelines/*.yml from workspace", () => {
 
 test("getPipelineDefinitionForAgent resolves by id or title", () => {
 	const workspace = createTempWorkspace();
-	writeDefaultConfig(workspace);
-	writeDemoPipeline(workspace);
 
-	assert.equal(getPipelineDefinitionForAgent(workspace, "demo")?.title, "Demo Pipeline");
-	assert.equal(getPipelineDefinitionForAgent(workspace, "Demo Pipeline")?.id, "demo");
+	assert.equal(
+		getPipelineDefinitionForAgent(workspace, "plan-execute-verify")?.title,
+		"Plan Execute Verify",
+	);
+	assert.equal(
+		getPipelineDefinitionForAgent(workspace, "Plan Execute Verify")?.id,
+		"plan-execute-verify",
+	);
 	assert.equal(getPipelineDefinitionForAgent(workspace, "missing"), null);
 });
 
-test("getPipelineDefinitions ignores .acp/teams/*.yaml", () => {
+test("workspace fixture loader ignores .acp/teams/*.yaml", () => {
 	const workspace = createTempWorkspace();
 	writeDefaultConfig(workspace);
 	writeDemoPipeline(workspace);
 	writeDemoTeam(workspace);
 
-	const definitions = getPipelineDefinitions(workspace);
+	const definitions = loadWorkspacePipelineDefinitions(workspace, {
+		"Codex CLI": { command: "codex" },
+		"Pi Agent": { command: "pi-acp" },
+	});
 
 	assert.deepEqual(
 		definitions.map((definition) => definition.title),
@@ -387,6 +391,40 @@ test("promptFile loads and composes the prompt (promptFile + blank line + prompt
 	// promptFile content and inline prompt separated by a blank line
 	assertIncludes(prompt, "careful planner.\n\nUser request:");
 	assert.equal(definitions[0].primitives.planner.promptFile, undefined);
+});
+
+test("embedded promptFile paths resolve from config root, not workspace root", () => {
+	const workspace = createTempWorkspace();
+	const pluginRoot = createTempWorkspace();
+	writeFile(pluginRoot, ".pi/.acp/agents/planner.md", "Embedded planner.");
+	writeFile(workspace, ".pi/.acp/agents/planner.md", "Workspace planner.");
+	writeFile(
+		pluginRoot,
+		".pi/.acp/pipelines/plan.yaml",
+		[
+			"version: 2",
+			"id: plan",
+			"title: Plan Pipeline",
+			"primitives:",
+			"  planner:",
+			"    agent: Codex CLI",
+			"    promptFile: .pi/.acp/agents/planner.md",
+			"    output: proposed_plan",
+			"steps:",
+			"  - id: planner",
+			"    use: planner",
+			"",
+		].join("\n"),
+	);
+
+	const definitions = loadPipelineDefinitionsFromRoot({
+		workspaceCwd: workspace,
+		configRoot: pluginRoot,
+		agentConfigs: { "Codex CLI": { command: "codex" } },
+	});
+
+	assert.equal(definitions.length, 1);
+	assert.equal(definitions[0].primitives.planner.prompt, "Embedded planner.");
 });
 
 test("directory promptFile renders the pipeline invalid", () => {
@@ -563,7 +601,7 @@ test("promptFile outside the workspace is rejected", () => {
 	});
 
 	assert.equal(resolved.errors.length, 1);
-	assert.match(resolved.errors[0].error, /stay within the workspace/);
+	assert.match(resolved.errors[0].error, /stay within/);
 });
 
 test("loadSkillCatalog parses frontmatter and flags disable-model-invocation", () => {

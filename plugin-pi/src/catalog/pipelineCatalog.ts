@@ -9,6 +9,7 @@ import {
 } from "@acp-client/pipeline";
 
 import { loadPiAcpConfig } from "./config.js";
+import { getPiPluginRoot } from "./pluginRoot.js";
 import { resolvePipelinePromptFiles } from "./promptFileResolver.js";
 import type { Logger, NativeAcpAgentConfig } from "../types.js";
 
@@ -18,7 +19,8 @@ export function getPipelineDefinitions(
 	workspaceCwd: string,
 	logger?: Logger,
 ): PipelineDefinition[] {
-	const config = loadPiAcpConfig(workspaceCwd);
+	const pluginRoot = getPiPluginRoot();
+	const config = loadPiAcpConfig(workspaceCwd, pluginRoot);
 	if (!config.pipeline.enabled) {
 		return [];
 	}
@@ -27,7 +29,13 @@ export function getPipelineDefinitions(
 		logger?.error(error);
 	}
 
-	return loadWorkspacePipelineDefinitions(workspaceCwd, config.agents, logger);
+	return loadPipelineDefinitionsFromRoot({
+		workspaceCwd,
+		configRoot: pluginRoot,
+		agentConfigs: config.agents,
+		instructionsMaxBytes: config.pipeline.instructionsMaxBytes,
+		logger,
+	});
 }
 
 export function getPipelineDefinitionForAgent(
@@ -48,10 +56,28 @@ export function loadWorkspacePipelineDefinitions(
 	agentConfigs: Record<string, NativeAcpAgentConfig>,
 	logger?: Logger,
 ): PipelineDefinition[] {
-	const config = loadPiAcpConfig(workspaceCwd);
-	const maxBytes = config.pipeline.instructionsMaxBytes;
+	return loadPipelineDefinitionsFromRoot({
+		workspaceCwd,
+		configRoot: workspaceCwd,
+		agentConfigs,
+		instructionsMaxBytes: loadPiAcpConfig(workspaceCwd).pipeline.instructionsMaxBytes,
+		logger,
+	});
+}
 
-	const dir = path.join(workspaceCwd, PIPELINE_DIR);
+export interface PipelineDefinitionsFromRootOptions {
+	workspaceCwd: string;
+	configRoot: string;
+	agentConfigs: Record<string, NativeAcpAgentConfig>;
+	instructionsMaxBytes?: number;
+	logger?: Logger;
+}
+
+export function loadPipelineDefinitionsFromRoot(
+	options: PipelineDefinitionsFromRootOptions,
+): PipelineDefinition[] {
+	const maxBytes = options.instructionsMaxBytes ?? 256 * 1024;
+	const dir = path.join(options.configRoot, PIPELINE_DIR);
 	if (!fs.existsSync(dir)) {
 		return [];
 	}
@@ -60,7 +86,7 @@ export function loadWorkspacePipelineDefinitions(
 	try {
 		entries = fs.readdirSync(dir);
 	} catch (e: unknown) {
-		logger?.error(`Failed to read ACP pipeline directory ${dir}`, e);
+		options.logger?.error(`Failed to read ACP pipeline directory ${dir}`, e);
 		return [];
 	}
 
@@ -72,9 +98,9 @@ export function loadWorkspacePipelineDefinitions(
 		const filePath = path.join(dir, entry);
 		try {
 			const text = fs.readFileSync(filePath, "utf8");
-			const result = parsePipelineYaml(text, filePath, agentConfigs);
+			const result = parsePipelineYaml(text, filePath, options.agentConfigs);
 			if (!result.definition) {
-				logger?.error(
+				options.logger?.error(
 					`Ignoring invalid ACP pipeline ${filePath}: ${result.errors.join("; ")}`,
 				);
 				continue;
@@ -83,7 +109,8 @@ export function loadWorkspacePipelineDefinitions(
 			const resolved = resolvePipelinePromptFiles(
 				result.definition.primitives,
 				{
-					workspaceCwd,
+					workspaceCwd: options.workspaceCwd,
+					configRoot: options.configRoot,
 					maxBytes,
 					pipelineFilePath: filePath,
 				},
@@ -92,7 +119,7 @@ export function loadWorkspacePipelineDefinitions(
 				const messages = resolved.errors.map(
 					(item) => `primitive "${item.primitiveId}": ${item.error}`,
 				);
-				logger?.error(
+				options.logger?.error(
 					`Ignoring invalid ACP pipeline ${filePath}: ${messages.join("; ")}`,
 				);
 				continue;
@@ -103,7 +130,7 @@ export function loadWorkspacePipelineDefinitions(
 				primitives: resolved.primitives,
 			});
 		} catch (e: unknown) {
-			logger?.error(`Ignoring unreadable ACP pipeline ${filePath}`, e);
+			options.logger?.error(`Ignoring unreadable ACP pipeline ${filePath}`, e);
 		}
 	}
 	return definitions;

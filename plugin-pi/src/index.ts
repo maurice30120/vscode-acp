@@ -31,7 +31,7 @@ export default function acpPipelinePiExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("pipeline", {
 		description: "List, run, approve, reject, or cancel ACP pipelines",
 		getArgumentCompletions: (prefix) => {
-			const words = ["list", "run", "approve", "reject", "cancel"];
+			const words = ["list", "run", "approve", "reject", "cancel", "verbose", "on", "off", "status"];
 			return words
 				.filter((word) => word.startsWith(prefix.trim()))
 				.map((value) => ({ value, label: value }));
@@ -87,6 +87,7 @@ export { loadPiAcpConfig, parsePiAcpConfig } from "./catalog/config.js";
 export {
 	getPipelineDefinitions,
 	getPipelineDefinitionForAgent,
+	loadPipelineDefinitionsFromRoot,
 	loadWorkspacePipelineDefinitions,
 	parsePipelineYaml,
 } from "./catalog/pipelineCatalog.js";

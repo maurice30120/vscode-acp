@@ -2,7 +2,7 @@
   "folders": [
     {
       "name": "root",
-      "path": "root"
+      "path": "."
     },
     {
       "name": "plugin-vscode",

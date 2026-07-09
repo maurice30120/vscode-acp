@@ -279,8 +279,6 @@ test("EphemeralAcpRunner ignores and does not forward updates from other session
 
 test("/pipeline list reports configured pipelines", async () => {
 	const workspace = createTempWorkspace();
-	writeDefaultConfig(workspace);
-	writeDemoPipeline(workspace);
 
 	const notifications: string[] = [];
 	const controller = new PipelineController(
@@ -297,21 +295,22 @@ test("/pipeline list reports configured pipelines", async () => {
 		controller,
 	);
 
-	assert.match(notifications[0], /\[demo\] Demo Pipeline/);
+	assert.match(notifications[0], /\[plan-execute-verify\] Plan Execute Verify/);
 });
 
 test("/pipeline run then approve executes planner and implementer", async () => {
 	const workspace = createTempWorkspace();
-	writeDefaultConfig(workspace);
-	writeDemoPipeline(workspace);
 
 	const notifications: string[] = [];
 	const messages: Array<{ content: unknown; details?: unknown }> = [];
 	const calls: string[] = [];
 	const runner: PipelineAgentRunner = async (input) => {
 		calls.push(input.agentName);
-		if (input.agentName === "Codex CLI") {
+		if (input.agentName === "Pi Agent") {
 			return "<proposed_plan>Implement the feature.</proposed_plan>";
+		}
+		if (input.agentName === "Vibe") {
+			return "implementation done";
 		}
 		return "implementation done";
 	};
@@ -328,13 +327,123 @@ test("/pipeline run then approve executes planner and implementer", async () => 
 	);
 	const ctx = commandContext(workspace, notifications);
 
-	await handlePipelineCommand("run demo add tests", ctx, controller);
+	await handlePipelineCommand("run plan-execute-verify add tests", ctx, controller);
 	await handlePipelineCommand("approve", ctx, controller);
 
-	assert.deepEqual(calls, ["Codex CLI", "Pi Agent"]);
+	assert.deepEqual(calls, ["Pi Agent", "Vibe", "OpenCode"]);
 	assert.match(notifications.join("\n"), /plan ready/i);
-	assert.equal(messages.length, 2);
-	assert.match(String(messages[1].content), /implementation done/);
+	assert.ok(messages.length >= 2);
+	assert.ok(messages.some((message) => String(message.content).includes("ACP Pipeline Plan")));
+	assert.ok(messages.some((message) => String(message.content).includes("implementation done")));
+});
+
+test("/pipeline verbose toggles runtime verbose mode", async () => {
+	const notifications: string[] = [];
+	const controller = new PipelineController(
+		createTempWorkspace(),
+		{ sendMessage: () => {} } as any,
+		{
+			runner: { run: async () => "unused" },
+		},
+	);
+	const ctx = commandContext(createTempWorkspace(), notifications);
+
+	await handlePipelineCommand("verbose status", ctx, controller);
+	await handlePipelineCommand("verbose on", ctx, controller);
+	await handlePipelineCommand("verbose status", ctx, controller);
+	await handlePipelineCommand("verbose off", ctx, controller);
+
+	assert.match(notifications[0], /disabled/);
+	assert.match(notifications[1], /enabled/);
+	assert.match(notifications[2], /enabled/);
+	assert.match(notifications[3], /disabled/);
+});
+
+test("PipelineController compact activity omits agent message chunks", async () => {
+	const workspace = createTempWorkspace();
+
+	const messages: Array<{ content: unknown; details?: { kind?: string } }> = [];
+	const runner: PipelineAgentRunner = async (input) => {
+		input.onSessionUpdate?.(textChunk("s1", "internal chunk"));
+		if (input.agentName === "Pi Agent") {
+			return "<proposed_plan>Implement the feature.</proposed_plan>";
+		}
+		return "implementation done";
+	};
+	const controller = new PipelineController(
+		workspace,
+		{
+			sendMessage: (message: { content: unknown; details?: { kind?: string } }) => {
+				messages.push(message);
+			},
+		} as any,
+		{
+			runner: { run: runner },
+		},
+	);
+
+	await controller.runPipeline("plan-execute-verify", "add tests");
+
+	assert.ok(messages.some((message) => message.details?.kind === "activity-status"));
+	assert.ok(!messages.some((message) => message.details?.kind === "verbose-session-update"));
+	assert.ok(!messages.some((message) => String(message.content).includes("internal chunk")));
+});
+
+test("PipelineController verbose activity relays session updates", async () => {
+	const workspace = createTempWorkspace();
+
+	const messages: Array<{ content: unknown; details?: { kind?: string } }> = [];
+	const runner: PipelineAgentRunner = async (input) => {
+		input.onSessionUpdate?.(textChunk("s1", "debug chunk"));
+		if (input.agentName === "Pi Agent") {
+			return "<proposed_plan>Implement the feature.</proposed_plan>";
+		}
+		return "implementation done";
+	};
+	const controller = new PipelineController(
+		workspace,
+		{
+			sendMessage: (message: { content: unknown; details?: { kind?: string } }) => {
+				messages.push(message);
+			},
+		} as any,
+		{
+			runner: { run: runner },
+		},
+	);
+	controller.setVerbose(true);
+
+	await controller.runPipeline("plan-execute-verify", "add tests");
+
+	assert.ok(messages.some((message) => message.details?.kind === "verbose-status"));
+	assert.ok(messages.some((message) => message.details?.kind === "verbose-session-update"));
+	assert.ok(messages.some((message) => String(message.content).includes("debug chunk")));
+});
+
+test("PipelineController sends compact heartbeat during long-running activity", async () => {
+	const workspace = createTempWorkspace();
+
+	const messages: Array<{ content: unknown; details?: { kind?: string } }> = [];
+	const runner: PipelineAgentRunner = async () => {
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		return "<proposed_plan>Implement the feature.</proposed_plan>";
+	};
+	const controller = new PipelineController(
+		workspace,
+		{
+			sendMessage: (message: { content: unknown; details?: { kind?: string } }) => {
+				messages.push(message);
+			},
+		} as any,
+		{
+			runner: { run: runner },
+			heartbeatIntervalMs: 5,
+		},
+	);
+
+	await controller.runPipeline("plan-execute-verify", "add tests");
+
+	assert.ok(messages.some((message) => message.details?.kind === "activity-heartbeat"));
 });
 
 test("parseRunArgs prefers the longest configured pipeline name", () => {
@@ -475,6 +584,9 @@ test("registerPipelineCommand registers completions and delegates handler", asyn
 
 	assert.deepEqual(commandRegistration?.getArgumentCompletions("ap"), [
 		{ value: "approve", label: "approve" },
+	]);
+	assert.deepEqual(commandRegistration?.getArgumentCompletions("verb"), [
+		{ value: "verbose", label: "verbose" },
 	]);
 	const notifications: string[] = [];
 	await commandRegistration?.handler(

@@ -2,12 +2,13 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import type { NativeAcpAgentConfig, PiAcpConfig } from '../types.js';
+import { getPiPluginRoot } from './pluginRoot.js';
 
 const CONFIG_PATH = path.join('.pi', '.acp', 'acp-agents.json');
 const DEFAULT_INSTRUCTIONS_MAX_BYTES = 256 * 1024;
 
-export function loadPiAcpConfig(workspaceCwd: string): PiAcpConfig {
-  const filePath = path.join(workspaceCwd, CONFIG_PATH);
+export function loadPiAcpConfig(_workspaceCwd: string, pluginRoot = getPiPluginRoot()): PiAcpConfig {
+  const filePath = path.join(pluginRoot, CONFIG_PATH);
   if (!fs.existsSync(filePath)) {
     return {
       filePath,
@@ -16,7 +17,7 @@ export function loadPiAcpConfig(workspaceCwd: string): PiAcpConfig {
         enabled: true,
         instructionsMaxBytes: DEFAULT_INSTRUCTIONS_MAX_BYTES,
       },
-      errors: [`Missing Pi ACP config: ${CONFIG_PATH}`],
+      errors: [`Missing embedded Pi ACP config: ${CONFIG_PATH}`],
     };
   }
 

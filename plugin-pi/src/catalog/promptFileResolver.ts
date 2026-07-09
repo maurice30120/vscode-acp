@@ -10,6 +10,7 @@ export interface PromptFileResolveError {
 
 export interface PromptFileResolveOptions {
 	workspaceCwd: string;
+	configRoot?: string;
 	maxBytes: number;
 	pipelineFilePath: string;
 }
@@ -19,9 +20,10 @@ export interface PromptFileResolveOptions {
  * final `prompt` text. When both `promptFile` and `prompt` are present the
  * file content is prefixed to the inline prompt, separated by a blank line.
  *
- * Paths are resolved relative to the pipeline YAML file (or the workspace
- * root when the path starts with `.pi/.acp/`). Paths that escape the workspace
- * are rejected. Returns the composed primitives plus any resolution errors.
+ * Paths are resolved relative to the pipeline YAML file (or the config root
+ * when the path starts with `.pi/.acp/`). Paths that escape the selected
+ * config root are rejected. Returns the composed primitives plus any
+ * resolution errors.
  */
 export function resolvePipelinePromptFiles(
 	primitives: Record<string, PipelinePrimitiveDefinition>,
@@ -114,18 +116,18 @@ function resolveSafePath(
 	}
 
 	const pipelineDir = path.dirname(options.pipelineFilePath);
+	const configRoot = path.resolve(options.configRoot ?? options.workspaceCwd);
 	const baseDir = normalizedRelative.startsWith(".pi/.acp/")
-		? options.workspaceCwd
+		? configRoot
 		: pipelineDir;
 	const candidate = path.resolve(baseDir, normalizedRelative);
-	const workspaceRoot = path.resolve(options.workspaceCwd);
-	const relativeToWorkspace = path.relative(workspaceRoot, candidate);
+	const relativeToConfigRoot = path.relative(configRoot, candidate);
 
 	if (
-		relativeToWorkspace.startsWith("..") ||
-		path.isAbsolute(relativeToWorkspace)
+		relativeToConfigRoot.startsWith("..") ||
+		path.isAbsolute(relativeToConfigRoot)
 	) {
-		return { error: "promptFile path must stay within the workspace." };
+		return { error: "promptFile path must stay within the Pi ACP config root." };
 	}
 
 	return { absolutePath: candidate };

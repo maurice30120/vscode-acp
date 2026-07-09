@@ -6,7 +6,7 @@ export function registerPipelineCommand(pi: ExtensionAPI, controller: PipelineCo
   pi.registerCommand('pipeline', {
     description: 'List, run, approve, reject, or cancel ACP pipelines',
     getArgumentCompletions: (prefix) => {
-      const words = ['list', 'run', 'approve', 'reject', 'cancel'];
+      const words = ['list', 'run', 'approve', 'reject', 'cancel', 'verbose', 'on', 'off', 'status'];
       const matches = words.filter(word => word.startsWith(prefix.trim()));
       return matches.map(value => ({ value, label: value }));
     },
@@ -63,8 +63,30 @@ export async function handlePipelineCommand(
       ctx.ui.notify('Pipeline cancelled.', 'info');
       return;
     }
+    case 'verbose': {
+      switch (rest) {
+        case 'on':
+          controller.setVerbose(true);
+          ctx.ui.notify('Pipeline verbose mode enabled.', 'info');
+          return;
+        case 'off':
+          controller.setVerbose(false);
+          ctx.ui.notify('Pipeline verbose mode disabled.', 'info');
+          return;
+        case '':
+        case 'status':
+          ctx.ui.notify(
+            `Pipeline verbose mode is ${controller.isVerbose() ? 'enabled' : 'disabled'}.`,
+            'info',
+          );
+          return;
+        default:
+          ctx.ui.notify('Usage: /pipeline verbose on|off|status', 'warning');
+          return;
+      }
+    }
     default:
-      ctx.ui.notify('Usage: /pipeline list|run|approve|reject|cancel', 'warning');
+      ctx.ui.notify('Usage: /pipeline list|run|approve|reject|cancel|verbose', 'warning');
   }
 }
 
