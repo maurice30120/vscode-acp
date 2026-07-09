@@ -19,7 +19,7 @@ Pour le contexte global de l'extension VS Code, voir [`../../ROADMAP.md`](../../
 ## Réalisé
 
 - Découverte des agents depuis `.pi/acp-agents.json`.
-- Pipelines v2 (`.acp/pipelines/*.yaml`) : primitives + steps, étapes `approval`, validation.
+- Pipelines v2 (`.pi/.acp/pipelines/*.yaml`) : primitives + steps, étapes `approval`, validation.
 - Teams v1 (`.acp/teams/*.yaml`) : composition par rôles compilée en pipelines (`teamCatalog`, `instructionResolver`).
 - Spawn + connexion ACP (`agentProcess`, `connectionManager`, `defaultConnector`), proxy fichiers/terminal/permissions.
 - Runner éphémère (`ephemeralRunner`) : connect → authenticate → prompt → collecte texte, avec abort/cancel.
@@ -34,7 +34,7 @@ Pour le contexte global de l'extension VS Code, voir [`../../ROADMAP.md`](../../
 
 Le plugin supporte aujourd'hui deux formats d'orchestration qui se chevauchent :
 
-- **Pipelines v2** (`.acp/pipelines/*.yaml`) — format déclaratif complet (`primitives` + `steps`), flexible.
+- **Pipelines v2** (`.pi/.acp/pipelines/*.yaml`) — format déclaratif complet (`primitives` + `steps`), flexible.
 - **Teams v1** (`.acp/teams/*.yaml`) — format rôle-basé simplifié (`planner` → `approval` → `implementer` → `reviewer` → `tester`), compilé en pipeline v2 par `teamCatalog` + `compileTeamToPipeline`.
 
 **Constat** : les teams sont un **sous-ensemble strict** des pipelines. Le compilateur génère toujours la même structure de steps et les mêmes prompts à partir d'un format plus limité. Deux mécanismes parallèles pour le même résultat = charge cognitive, duplication de code, deux sources de doc/exemples à maintenir.
@@ -45,7 +45,7 @@ Le plugin supporte aujourd'hui deux formats d'orchestration qui se chevauchent :
 - Décider du format unique : conserver **pipelines v2** comme format canonique (plus expressif) et faire disparaître teams, **ou** promouvoir un format rôle unique (si la valeur ergonomique l'emporte) en abandonnant les pipelines low-level.
 - Quelle que l'issue :
   - Supprimer l'autre format + son compilateur côté plugin (`teamCatalog`, `instructionResolver`, `compileTeamToPipeline` dans `@acp-client/pipeline`).
-  - Migrer les exemples existants (`.acp/teams/`, `.acp/agents/*.md` par rôle) vers le format retenu.
+  - Migrer les exemples existants (`.acp/teams/`, `.pi/.acp/agents/*.md` par rôle) vers le format retenu.
   - Mettre à jour le README du plugin et les ADR concernés.
 - Documenter la décision dans un ADR (rationale du format retenu, migration).
 
@@ -57,7 +57,7 @@ Réduire la friction pour lancer un pipeline depuis Pi :
 
 - Un seul point d'entrée clair : aujourd'hui `/pipeline run <id> "<prompt>"` + approbation manuelle — clarifier le parcours « choisir un workflow → lancer ».
 - Defaults sensibles : agent cible et options hérités du contexte courant plutôt qu'à re-spécifier.
-- Lancer un pipeline directement depuis un fichier `.acp/pipelines/*.yaml` (raccourci / action dans l'UI Pi).
+- Lancer un pipeline directement depuis un fichier `.pi/.acp/pipelines/*.yaml` (raccourci / action dans l'UI Pi).
 - Réduire le nombre d'étapes de confirmation avant le premier tour.
 - Aligner l'appel pipeline et l'appel agent simple sur la même surface.
 

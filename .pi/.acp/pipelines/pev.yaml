@@ -1,5 +1,5 @@
 version: 2
-id: plan-execute-verify
+id: pev
 title: Plan Execute Verify
 
 primitives:
@@ -15,7 +15,7 @@ primitives:
       {{userPrompt}}
 
   implementer:
-    agent: Pi Agent
+    agent: Vibe
     output: markdown
     sideEffects: workspace
     prompt: |

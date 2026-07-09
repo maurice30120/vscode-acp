@@ -1,0 +1,132 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+
+import type { PipelinePrimitiveDefinition } from "@acp-client/pipeline";
+
+export interface PromptFileResolveError {
+	primitiveId: string;
+	error: string;
+}
+
+export interface PromptFileResolveOptions {
+	workspaceCwd: string;
+	maxBytes: number;
+	pipelineFilePath: string;
+}
+
+/**
+ * Resolves `promptFile` for every primitive on a pipeline and composes the
+ * final `prompt` text. When both `promptFile` and `prompt` are present the
+ * file content is prefixed to the inline prompt, separated by a blank line.
+ *
+ * Paths are resolved relative to the pipeline YAML file (or the workspace
+ * root when the path starts with `.pi/.acp/`). Paths that escape the workspace
+ * are rejected. Returns the composed primitives plus any resolution errors.
+ */
+export function resolvePipelinePromptFiles(
+	primitives: Record<string, PipelinePrimitiveDefinition>,
+	options: PromptFileResolveOptions,
+): {
+	primitives: Record<string, PipelinePrimitiveDefinition>;
+	errors: PromptFileResolveError[];
+} {
+	const errors: PromptFileResolveError[] = [];
+	const resolved: Record<string, PipelinePrimitiveDefinition> = {};
+
+	for (const [primitiveId, primitive] of Object.entries(primitives)) {
+		if (!primitive.promptFile) {
+			resolved[primitiveId] = primitive;
+			continue;
+		}
+
+		const outcome = readPromptFile(primitive.promptFile, options);
+		if ("error" in outcome) {
+			errors.push({ primitiveId, error: outcome.error });
+			continue;
+		}
+
+		const inlinePrompt = primitive.prompt ?? "";
+		const composed =
+			inlinePrompt.length > 0
+				? `${outcome.content}\n\n${inlinePrompt}`
+				: outcome.content;
+
+		resolved[primitiveId] = {
+			...primitive,
+			prompt: composed,
+			promptFile: undefined,
+		};
+	}
+
+	return { primitives: resolved, errors };
+}
+
+function readPromptFile(
+	relativePath: string,
+	options: PromptFileResolveOptions,
+): { content: string } | { error: string } {
+	const safePath = resolveSafePath(relativePath, options);
+	if ("error" in safePath) {
+		return safePath;
+	}
+
+	let stat: fs.Stats;
+	try {
+		stat = fs.statSync(safePath.absolutePath);
+	} catch {
+		return { error: `promptFile not found: ${relativePath}` };
+	}
+
+	if (!stat.isFile()) {
+		return { error: `promptFile path is not a file: ${relativePath}` };
+	}
+
+	if (stat.size > options.maxBytes) {
+		return {
+			error: `promptFile exceeds max size (${options.maxBytes} bytes): ${relativePath}`,
+		};
+	}
+
+	try {
+		return { content: fs.readFileSync(safePath.absolutePath, "utf8") };
+	} catch (e: unknown) {
+		const message = e instanceof Error && e.message ? e.message : String(e);
+		return { error: `Failed to read promptFile: ${message}` };
+	}
+}
+
+function resolveSafePath(
+	relativePath: string,
+	options: PromptFileResolveOptions,
+): { absolutePath: string } | { error: string } {
+	if (path.isAbsolute(relativePath)) {
+		return {
+			error: "promptFile path must be relative to the pipeline YAML file.",
+		};
+	}
+
+	const normalizedRelative = path.normalize(relativePath);
+	if (
+		normalizedRelative.startsWith("..") ||
+		path.isAbsolute(normalizedRelative)
+	) {
+		return { error: "promptFile path must stay within the workspace." };
+	}
+
+	const pipelineDir = path.dirname(options.pipelineFilePath);
+	const baseDir = normalizedRelative.startsWith(".pi/.acp/")
+		? options.workspaceCwd
+		: pipelineDir;
+	const candidate = path.resolve(baseDir, normalizedRelative);
+	const workspaceRoot = path.resolve(options.workspaceCwd);
+	const relativeToWorkspace = path.relative(workspaceRoot, candidate);
+
+	if (
+		relativeToWorkspace.startsWith("..") ||
+		path.isAbsolute(relativeToWorkspace)
+	) {
+		return { error: "promptFile path must stay within the workspace." };
+	}
+
+	return { absolutePath: candidate };
+}

@@ -1,0 +1,18 @@
+version: 2
+id: ask
+title: Ask Codex
+
+primitives:
+  answer:
+    agent: Codex CLI
+    output: markdown
+    sideEffects: none
+    prompt: |
+      Answer the user request directly and concisely.
+
+      User request:
+      {{userPrompt}}
+
+steps:
+  - id: answer
+    use: answer

@@ -5,7 +5,7 @@ import type { PipelineController } from './pipelineController.js';
 
 const RUN_PIPELINE_PARAMS = Type.Object({
   pipelineName: Type.Optional(Type.String({
-    description: 'Pipeline title to run. If omitted, the first configured pipeline is used.',
+    description: 'Pipeline id or title to run. If omitted, the first configured pipeline is used.',
   })),
   prompt: Type.String({
     description: 'User request to pass to the ACP pipeline.',

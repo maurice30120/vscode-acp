@@ -86,7 +86,7 @@ export class PipelineController {
       return 'No ACP pipelines found.';
     }
     return definitions
-      .map(definition => `- ${definition.title} (${definition.id})`)
+      .map(definition => `- [${definition.id}] ${definition.title}`)
       .join('\n');
   }
 

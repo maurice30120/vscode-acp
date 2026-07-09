@@ -32,9 +32,12 @@ export async function handlePipelineCommand(
       return;
     }
     case 'run': {
-      const parsed = parseRunArgs(rest, controller.listPipelines().map(definition => definition.title));
+      const parsed = parseRunArgs(
+        rest,
+        controller.listPipelines().flatMap(definition => [definition.id, definition.title]),
+      );
       if (!parsed) {
-        ctx.ui.notify('Usage: /pipeline run <pipelineName> <prompt>', 'warning');
+        ctx.ui.notify('Usage: /pipeline run <pipeline> <prompt>', 'warning');
         return;
       }
       const result = await controller.runPipeline(parsed.pipelineName, parsed.prompt, ctx);
@@ -67,20 +70,20 @@ export async function handlePipelineCommand(
 
 export function parseRunArgs(
   args: string,
-  pipelineTitles: string[],
+  pipelineNames: string[],
 ): { pipelineName: string; prompt: string } | null {
   const trimmed = args.trim();
   if (!trimmed) {
     return null;
   }
 
-  const title = [...pipelineTitles]
+  const name = [...pipelineNames]
     .sort((left, right) => right.length - left.length)
     .find(candidate => trimmed === candidate || trimmed.startsWith(`${candidate} `));
 
-  if (title) {
-    const prompt = trimmed.slice(title.length).trim();
-    return prompt ? { pipelineName: title, prompt } : null;
+  if (name) {
+    const prompt = trimmed.slice(name.length).trim();
+    return prompt ? { pipelineName: name, prompt } : null;
   }
 
   const [pipelineName, prompt] = splitFirstWord(trimmed);

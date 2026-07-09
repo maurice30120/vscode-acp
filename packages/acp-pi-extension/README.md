@@ -5,7 +5,7 @@ Extension Pi pour les pipelines ACP. Ce plugin orchestre plusieurs agents ACP ex
 ## Ce que ça fait concrètement
 
 - Lit `.pi/acp-agents.json` pour charger les agents ACP configurés (agents natifs lancés en ligne de commande)
-- Découvre les **pipelines** dans `.acp/pipelines/*.yaml` (étapes d'agents séquentielles avec validation humaine)
+- Découvre les **pipelines** dans `.pi/.acp/pipelines/*.yaml` (étapes d'agents séquentielles avec validation humaine)
 - Découvre les **teams** dans `.acp/teams/*.yaml` (compositions d'agents par rôles, compilées en pipelines)
 - Spawn les processus d'agents ACP, se connecte via le SDK ACP, proxy les appels fichiers/terminal/permissions, et gère l'authentification
 - Expose une commande `/pipeline` dans Pi (`list`, `run`, `approve`, `reject`, `cancel`)
@@ -56,9 +56,9 @@ Crée `.pi/acp-agents.json` à la racine du workspace :
 | `pipeline.enabled` | Active ou désactive la découverte des pipelines (défaut `true`) |
 | `pipeline.instructionsMaxBytes` | Taille max des fichiers d'instructions pour les teams (défaut 256 Ko) |
 
-### 2. Définir des pipelines (`.acp/pipelines/`)
+### 2. Définir des pipelines (`.pi/.acp/pipelines/`)
 
-Fichiers YAML version 2 dans `.acp/pipelines/`. Exemple `demo.yaml` :
+Fichiers YAML version 2 dans `.pi/.acp/pipelines/`. Exemple `demo.yaml` :
 
 ```yaml
 version: 2
@@ -155,7 +155,7 @@ src/
 │
 ├── catalog/                  Découverte de la configuration et des définitions
 │   ├── config.ts             Charge et parse .pi/acp-agents.json
-│   ├── pipelineCatalog.ts    Charge .acp/pipelines/*.yaml, valide, fusionne avec les teams
+│   ├── pipelineCatalog.ts    Charge et valide .pi/.acp/pipelines/*.yaml
 │   ├── teamCatalog.ts        Charge .acp/teams/*.yaml, compile en pipelines
 │   └── instructionResolver.ts Résout et valide les fichiers markdown d'instructions des teams
 │
@@ -208,7 +208,7 @@ flowchart TD
   Auth -.-> Host
 
   Ctrl -.->|"lit"| Cfg[(".pi/acp-agents.json")]
-  Svc -.->|"lit"| Pipes[(".acp/pipelines/*.yaml")]
+  Svc -.->|"lit"| Pipes[(".pi/.acp/pipelines/*.yaml")]
   Svc -.->|"lit + compile"| Teams[(".acp/teams/*.yaml")]
   Proc -.->|"stdio"| Agent[("Agent ACP externe<br/>(Codex, Pi Agent, …)")]
 ```

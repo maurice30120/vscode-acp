@@ -9,6 +9,11 @@
       "command": "npx",
       "args": ["-y", "pi-acp"],
       "env": {}
+    },
+    "Vibe": {
+      "command": "vibe-acp",
+      "args": [],
+      "env": {}
     }
   },
   "pipeline": {
