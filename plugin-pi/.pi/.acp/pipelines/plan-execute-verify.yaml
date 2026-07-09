@@ -4,7 +4,7 @@ title: Plan Execute Verify
 
 primitives:
   planner:
-    agent: Cursor CLI
+    agent: Pi Agent
     output: proposed_plan
     sideEffects: none
     prompt: |
@@ -28,7 +28,7 @@ primitives:
       {{steps.approval.output}}
 
   verifier:
-    agent: Cursor CLI
+    agent: OpenCode
     output: markdown
     sideEffects: none
     prompt: |
