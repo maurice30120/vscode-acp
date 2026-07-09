@@ -10,6 +10,7 @@ import { defaultAcpConnector } from "../src/acp/defaultConnector.js";
 import { FileSystemHandler } from "../src/acp/fileSystemHandler.js";
 import { PermissionHandler } from "../src/acp/permissionHandler.js";
 import { PiAcpClient } from "../src/acp/piAcpClient.js";
+import { buildSandcastleBridgeProcessConfig } from "../src/acp/sandcastleConnector.js";
 import { filterEnv, validatePath } from "../src/acp/security.js";
 import { SessionUpdateHandler } from "../src/acp/sessionUpdateHandler.js";
 import { TerminalHandler } from "../src/acp/terminalHandler.js";
@@ -96,6 +97,16 @@ test("PermissionHandler cancels when UI is unavailable", async () => {
 	const result = await handler.requestPermission(permissionParams());
 
 	assert.deepEqual(result, { outcome: { outcome: "cancelled" } });
+});
+
+test("PermissionHandler can auto-approve Sandcastle bridge permissions", async () => {
+	const handler = new PermissionHandler(() => undefined, { autoApproveAll: true });
+
+	const result = await handler.requestPermission(permissionParams());
+
+	assert.deepEqual(result, {
+		outcome: { outcome: "selected", optionId: "allow" },
+	});
 });
 
 test("PermissionHandler returns the option selected by Pi UI", async () => {
@@ -331,6 +342,32 @@ test("ConnectionManager throws when process stdio is missing", async () => {
 		() => manager.connect("agent-1", {} as any, createTempWorkspace()),
 		/missing stdio streams/,
 	);
+});
+
+test("buildSandcastleBridgeProcessConfig builds node bridge command args and image env", () => {
+	const config = buildSandcastleBridgeProcessConfig({
+		transport: "sandcastle",
+		provider: "codex",
+		model: "gpt-5",
+		effort: "high",
+		env: {
+			FOO: "bar",
+			ACP_SANDCASTLE_IMAGE: "custom:image",
+		},
+	});
+
+	assert.equal(config.command, process.execPath);
+	assert.match(config.args?.[0] ?? "", /sandcastle[\/\\]bridge\.js$/);
+	assert.deepEqual(config.args?.slice(1), [
+		"--provider",
+		"codex",
+		"--model",
+		"gpt-5",
+		"--effort",
+		"high",
+	]);
+	assert.equal(config.env?.FOO, "bar");
+	assert.equal(config.env?.ACP_SANDCASTLE_IMAGE, "custom:image");
 });
 
 test("ConnectionManager removeConnection and dispose clear tracked clients", () => {

@@ -2,13 +2,19 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { EventEmitter } from 'node:events';
 
-import type { Logger, NativeAcpAgentConfig } from '../types.js';
+import type { Logger } from '../types.js';
+
+export interface ProcessAgentConfig {
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+}
 
 export interface AgentInstance {
   id: string;
   name: string;
   process: ChildProcess;
-  config: NativeAcpAgentConfig;
+  config: ProcessAgentConfig;
 }
 
 export class AgentProcessManager extends EventEmitter {
@@ -19,7 +25,7 @@ export class AgentProcessManager extends EventEmitter {
     super();
   }
 
-  spawnAgent(name: string, config: NativeAcpAgentConfig, cwd?: string): AgentInstance {
+  spawnAgent(name: string, config: ProcessAgentConfig, cwd?: string): AgentInstance {
     const id = `agent_${this.nextId++}`;
     this.logger?.log(`Spawning ACP agent "${name}" (${id}): ${config.command} ${(config.args ?? []).join(' ')}`);
 
@@ -89,7 +95,7 @@ export class AgentProcessManager extends EventEmitter {
   }
 }
 
-function spawnUnix(config: NativeAcpAgentConfig, cwd: string | undefined, logger?: Logger): ChildProcess {
+function spawnUnix(config: ProcessAgentConfig, cwd: string | undefined, logger?: Logger): ChildProcess {
   const { shell, useLoginFlag } = resolveUnixShell(logger);
   const commandStr = [config.command, ...(config.args ?? [])].map(shellEscape).join(' ');
   const shellArgs = useLoginFlag ? ['-l', '-c', commandStr] : ['-c', commandStr];

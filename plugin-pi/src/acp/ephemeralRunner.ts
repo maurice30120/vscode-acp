@@ -1,6 +1,7 @@
 import type {
 	PipelineAgentRunInput,
 	PipelineAgentRunner,
+	PipelinePromotionStatus,
 } from "@acp-client/pipeline";
 import type {
 	ClientSideConnection,
@@ -15,41 +16,66 @@ import {
 	type ConnectedAcpAgent,
 } from "./defaultConnector.js";
 import { RunAbortedError } from "./runAbortedError.js";
+import {
+	sandcastleConnector,
+	type SandcastleConnector,
+} from "./sandcastleConnector.js";
 import { SessionUpdateHandler } from "./sessionUpdateHandler.js";
-import { loadPiAcpConfig } from "../catalog/config.js";
+import { loadPiAgentCatalog } from "../catalog/config.js";
 import {
 	loadSkillCatalog,
 	renderSkillsCatalog,
 } from "../catalog/skillCatalog.js";
+import {
+	decidePromotionPolicy,
+	type SandcastlePreview,
+} from "../sandcastle/PromotionPolicy.js";
 import type {
 	Logger,
-	NativeAcpAgentConfig,
+	PiAgentConfigEntry,
 	PiPermissionContext,
+	SandcastleAgentConfig,
+	SandcastlePromotion,
 } from "../types.js";
 
+export type SandcastlePromotionDecision = "approve" | "reject" | "cancelled";
+
+export interface SandcastlePromotionRequest {
+	agentName: string;
+	sessionId: string;
+	preview: SandcastlePreview;
+}
+
 export interface EphemeralAcpRunnerOptions {
-	getAgentConfigs?: () => Record<string, NativeAcpAgentConfig>;
+	getAgentConfigs?: () => Record<string, PiAgentConfigEntry>;
+	getSandcastlePromotion?: () => SandcastlePromotion;
 	getPermissionContext?: () => PiPermissionContext | undefined;
 	connector?: AcpConnector;
+	sandcastleConnector?: SandcastleConnector;
+	requestSandcastlePromotion?: (
+		request: SandcastlePromotionRequest,
+	) => Promise<SandcastlePromotionDecision>;
 	logger?: Logger;
 }
 
 export class EphemeralAcpRunner {
 	private readonly connector: AcpConnector;
+	private readonly sandcastleConnector: SandcastleConnector;
 
 	constructor(
 		private readonly workspaceCwd: string,
 		private readonly options: EphemeralAcpRunnerOptions = {},
 	) {
 		this.connector = options.connector ?? defaultAcpConnector;
+		this.sandcastleConnector = options.sandcastleConnector ?? sandcastleConnector;
 	}
 
 	run: PipelineAgentRunner = async (input: PipelineAgentRunInput) => {
 		const result = await this.runAgent(input);
-		return { text: result.text };
+		return result;
 	};
 
-	async runAgent(input: PipelineAgentRunInput): Promise<{ text: string }> {
+	async runAgent(input: PipelineAgentRunInput): Promise<{ text: string; promotion?: PipelinePromotionStatus }> {
 		const config = this.readAgentConfig(input.agentName);
 		const sessionUpdateHandler = new SessionUpdateHandler();
 		let connected: ConnectedAcpAgent | null = null;
@@ -105,15 +131,11 @@ export class EphemeralAcpRunner {
 
 		try {
 			throwIfAborted();
-			connected = await this.connector({
-				agentName: input.agentName,
+			connected = await this.connectAgent(
+				input,
 				config,
-				workspaceCwd: input.workspaceCwd,
 				sessionUpdateHandler,
-				getPermissionContext:
-					this.options.getPermissionContext ?? (() => undefined),
-				logger: this.options.logger,
-			});
+			);
 			throwIfAborted();
 
 			const session = await this.createSessionWithAuth(
@@ -133,7 +155,15 @@ export class EphemeralAcpRunner {
 				],
 			});
 			this.throwIfCancelled(response, input.signal);
-			return { text: collectedText.trim() };
+			const promotion = await this.finishSandcastleRun(
+				config,
+				input,
+				connected,
+				sessionId,
+			);
+			return promotion
+				? { text: collectedText.trim(), promotion }
+				: { text: collectedText.trim() };
 		} finally {
 			input.signal?.removeEventListener("abort", onAbort);
 			sessionUpdateHandler.removeListener(listener);
@@ -141,17 +171,42 @@ export class EphemeralAcpRunner {
 		}
 	}
 
-	private readAgentConfig(agentName: string): NativeAcpAgentConfig {
+	private readAgentConfig(agentName: string): PiAgentConfigEntry {
 		const configs =
 			this.options.getAgentConfigs?.() ??
-			loadPiAcpConfig(this.workspaceCwd).agents;
+			loadPiAgentCatalog(this.workspaceCwd).agents;
 		const config = configs[agentName];
 		if (!config) {
 			throw new Error(
-				`Agent "${agentName}" is not configured in .pi/.acp/acp-agents.json.`,
+				`Agent "${agentName}" is not configured in .pi/.acp/acp-agents.json or .pi/.acp/.sandcastle/config.json.`,
 			);
 		}
 		return config;
+	}
+
+	private async connectAgent(
+		input: PipelineAgentRunInput,
+		config: PiAgentConfigEntry,
+		sessionUpdateHandler: SessionUpdateHandler,
+	): Promise<ConnectedAcpAgent> {
+		const baseInput = {
+			agentName: input.agentName,
+			workspaceCwd: input.workspaceCwd,
+			sessionUpdateHandler,
+			getPermissionContext:
+				this.options.getPermissionContext ?? (() => undefined),
+			logger: this.options.logger,
+		};
+		if (isSandcastleConfig(config)) {
+			return this.sandcastleConnector({
+				...baseInput,
+				config,
+			});
+		}
+		return this.connector({
+			...baseInput,
+			config,
+		});
 	}
 
 	private async createSessionWithAuth(
@@ -195,7 +250,7 @@ export class EphemeralAcpRunner {
 
 	private composeRunnerPrompt(
 		input: PipelineAgentRunInput,
-		config: NativeAcpAgentConfig,
+		config: PiAgentConfigEntry,
 	): string {
 		const skills = input.skills;
 		if (config.skills === false || !skills || skills.length === 0) {
@@ -217,9 +272,89 @@ export class EphemeralAcpRunner {
 
 		return `${skillsBlock}\n\n${input.promptText}`;
 	}
+
+	private async finishSandcastleRun(
+		config: PiAgentConfigEntry,
+		input: PipelineAgentRunInput,
+		connected: ConnectedAcpAgent,
+		sessionId: string,
+	): Promise<PipelinePromotionStatus | undefined> {
+		if (!isSandcastleConfig(config)) {
+			return undefined;
+		}
+
+		if (input.sideEffects !== "workspace") {
+			await connected.connInfo.connection.extMethod("sandcastle/reject", { sessionId });
+			return undefined;
+		}
+
+		const preview = await this.previewSandcastleChanges(connected, sessionId);
+		const promotion = this.options.getSandcastlePromotion?.() ?? "ask";
+		const decision = decidePromotionPolicy(preview, promotion);
+
+		if (decision === "discard_no_changes") {
+			await connected.connInfo.connection.extMethod("sandcastle/reject", { sessionId });
+			return "no_changes";
+		}
+		if (decision === "auto_reject") {
+			await connected.connInfo.connection.extMethod("sandcastle/reject", { sessionId });
+			return "rejected";
+		}
+		if (decision === "auto_apply") {
+			return this.applySandcastleChanges(connected, sessionId);
+		}
+
+		const userDecision = await this.requestSandcastlePromotion(input.agentName, sessionId, preview);
+		if (userDecision === "approve") {
+			return this.applySandcastleChanges(connected, sessionId);
+		}
+		await connected.connInfo.connection.extMethod("sandcastle/reject", { sessionId });
+		return userDecision === "reject" ? "rejected" : "cancelled";
+	}
+
+	private async previewSandcastleChanges(
+		connected: ConnectedAcpAgent,
+		sessionId: string,
+	): Promise<SandcastlePreview> {
+		const response = await connected.connInfo.connection.extMethod("sandcastle/preview", { sessionId });
+		return {
+			diff: String(response.diff ?? ""),
+			filesChanged: Number(response.filesChanged ?? 0),
+			branch: String(response.branch ?? ""),
+			baseRef: String(response.baseRef ?? ""),
+			worktreePath: String(response.worktreePath ?? ""),
+		};
+	}
+
+	private async applySandcastleChanges(
+		connected: ConnectedAcpAgent,
+		sessionId: string,
+	): Promise<PipelinePromotionStatus> {
+		const result = await connected.connInfo.connection.extMethod("sandcastle/apply", { sessionId });
+		if (result.success !== true) {
+			await connected.connInfo.connection.extMethod("sandcastle/reject", { sessionId });
+			throw new Error(String(result.message ?? "Sandcastle changes could not be applied."));
+		}
+		return Number(result.filesChanged ?? 0) === 0 ? "no_changes" : "applied";
+	}
+
+	private async requestSandcastlePromotion(
+		agentName: string,
+		sessionId: string,
+		preview: SandcastlePreview,
+	): Promise<SandcastlePromotionDecision> {
+		if (this.options.requestSandcastlePromotion) {
+			return this.options.requestSandcastlePromotion({ agentName, sessionId, preview });
+		}
+		return "cancelled";
+	}
 }
 
 export type MinimalAcpConnection = Pick<
 	ClientSideConnection,
 	"newSession" | "prompt" | "cancel" | "authenticate"
 >;
+
+function isSandcastleConfig(config: PiAgentConfigEntry): config is SandcastleAgentConfig {
+	return config.transport === "sandcastle";
+}

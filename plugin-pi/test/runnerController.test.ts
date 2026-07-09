@@ -2,7 +2,7 @@ import * as assert from "node:assert/strict";
 import { setImmediate } from "node:timers/promises";
 import { test } from "node:test";
 
-import type { PipelineAgentRunner } from "@acp-client/pipeline";
+import { PipelineService, type PipelineAgentRunner } from "@acp-client/pipeline";
 import type { SessionNotification } from "@agentclientprotocol/sdk";
 
 import { EphemeralAcpRunner } from "../src/acp/ephemeralRunner.js";
@@ -52,6 +52,279 @@ test("mocked ACP runner collects agent_message_chunk text", async () => {
 	});
 
 	assert.equal(result.text, "hello world");
+});
+
+test("EphemeralAcpRunner routes Sandcastle agents to the Sandcastle connector", async () => {
+	const workspace = createTempWorkspace();
+	let nativeCalls = 0;
+	let sandcastleCalls = 0;
+	const runner = new EphemeralAcpRunner(workspace, {
+		getAgentConfigs: () => ({
+			"Codex CLI": { command: "codex" },
+			"Codex Sandcastle": {
+				transport: "sandcastle",
+				provider: "codex",
+				model: "gpt-5",
+			},
+		}),
+		connector: async () => {
+			nativeCalls += 1;
+			throw new Error("native connector should not run");
+		},
+		sandcastleConnector: async (input) => {
+			sandcastleCalls += 1;
+			return mockConnectedAgent(input, {
+				extMethod: async (method) => {
+					assert.equal(method, "sandcastle/reject");
+					return { success: true };
+				},
+			});
+		},
+	});
+
+	const result = await runner.runAgent({
+		workspaceCwd: workspace,
+		agentName: "Codex Sandcastle",
+		promptText: "prompt",
+	});
+
+	assert.equal(result.text, "sandcastle output");
+	assert.equal(result.promotion, undefined);
+	assert.equal(nativeCalls, 0);
+	assert.equal(sandcastleCalls, 1);
+});
+
+test("EphemeralAcpRunner discards Sandcastle sideEffects none without promotion outcome", async () => {
+	const workspace = createTempWorkspace();
+	const calls: string[] = [];
+	const runner = new EphemeralAcpRunner(workspace, {
+		getAgentConfigs: () => ({
+			Sandbox: {
+				transport: "sandcastle",
+				provider: "codex",
+				model: "gpt-5",
+			},
+		}),
+		sandcastleConnector: async (input) => mockConnectedAgent(input, {
+			extMethod: async (method) => {
+				calls.push(method);
+				return { success: true };
+			},
+		}),
+	});
+
+	const result = await runner.runAgent({
+		workspaceCwd: workspace,
+		agentName: "Sandbox",
+		promptText: "prompt",
+		sideEffects: "none",
+	});
+
+	assert.equal(result.text, "sandcastle output");
+	assert.equal(result.promotion, undefined);
+	assert.deepEqual(calls, ["sandcastle/reject"]);
+});
+
+test("EphemeralAcpRunner auto-applies Sandcastle workspace promotion", async () => {
+	const workspace = createTempWorkspace();
+	const calls: string[] = [];
+	const runner = new EphemeralAcpRunner(workspace, {
+		getAgentConfigs: () => ({
+			Sandbox: {
+				transport: "sandcastle",
+				provider: "codex",
+				model: "gpt-5",
+			},
+		}),
+		getSandcastlePromotion: () => "autoApply",
+		sandcastleConnector: async (input) => mockConnectedAgent(input, {
+			extMethod: async (method) => {
+				calls.push(method);
+				if (method === "sandcastle/preview") {
+					return sandcastlePreview(2);
+				}
+				if (method === "sandcastle/apply") {
+					return { success: true, filesChanged: 2 };
+				}
+				throw new Error(`unexpected method ${method}`);
+			},
+		}),
+	});
+
+	const result = await runner.runAgent({
+		workspaceCwd: workspace,
+		agentName: "Sandbox",
+		promptText: "prompt",
+		sideEffects: "workspace",
+	});
+
+	assert.equal(result.promotion, "applied");
+	assert.deepEqual(calls, ["sandcastle/preview", "sandcastle/apply"]);
+});
+
+test("EphemeralAcpRunner maps Sandcastle no changes to no_changes", async () => {
+	const workspace = createTempWorkspace();
+	const calls: string[] = [];
+	const runner = new EphemeralAcpRunner(workspace, {
+		getAgentConfigs: () => ({
+			Sandbox: {
+				transport: "sandcastle",
+				provider: "codex",
+				model: "gpt-5",
+			},
+		}),
+		getSandcastlePromotion: () => "autoApply",
+		sandcastleConnector: async (input) => mockConnectedAgent(input, {
+			extMethod: async (method) => {
+				calls.push(method);
+				if (method === "sandcastle/preview") {
+					return sandcastlePreview(0);
+				}
+				if (method === "sandcastle/reject") {
+					return { success: true };
+				}
+				throw new Error(`unexpected method ${method}`);
+			},
+		}),
+	});
+
+	const result = await runner.runAgent({
+		workspaceCwd: workspace,
+		agentName: "Sandbox",
+		promptText: "prompt",
+		sideEffects: "workspace",
+	});
+
+	assert.equal(result.promotion, "no_changes");
+	assert.deepEqual(calls, ["sandcastle/preview", "sandcastle/reject"]);
+});
+
+test("EphemeralAcpRunner auto-rejects Sandcastle workspace promotion", async () => {
+	const workspace = createTempWorkspace();
+	const calls: string[] = [];
+	const runner = new EphemeralAcpRunner(workspace, {
+		getAgentConfigs: () => ({
+			Sandbox: {
+				transport: "sandcastle",
+				provider: "codex",
+				model: "gpt-5",
+			},
+		}),
+		getSandcastlePromotion: () => "autoReject",
+		sandcastleConnector: async (input) => mockConnectedAgent(input, {
+			extMethod: async (method) => {
+				calls.push(method);
+				if (method === "sandcastle/preview") {
+					return sandcastlePreview(1);
+				}
+				if (method === "sandcastle/reject") {
+					return { success: true };
+				}
+				throw new Error(`unexpected method ${method}`);
+			},
+		}),
+	});
+
+	const result = await runner.runAgent({
+		workspaceCwd: workspace,
+		agentName: "Sandbox",
+		promptText: "prompt",
+		sideEffects: "workspace",
+	});
+
+	assert.equal(result.promotion, "rejected");
+	assert.deepEqual(calls, ["sandcastle/preview", "sandcastle/reject"]);
+});
+
+test("EphemeralAcpRunner maps ask promotion approval, rejection, and headless cancel", async () => {
+	const workspace = createTempWorkspace();
+
+	for (const [decision, expected] of [
+		["approve", "applied"],
+		["reject", "rejected"],
+		["cancelled", "cancelled"],
+	] as const) {
+		const calls: string[] = [];
+		const runner = new EphemeralAcpRunner(workspace, {
+			getAgentConfigs: () => ({
+				Sandbox: {
+					transport: "sandcastle",
+					provider: "codex",
+					model: "gpt-5",
+				},
+			}),
+			getSandcastlePromotion: () => "ask",
+			requestSandcastlePromotion: async () => decision,
+			sandcastleConnector: async (input) => mockConnectedAgent(input, {
+				extMethod: async (method) => {
+					calls.push(method);
+					if (method === "sandcastle/preview") {
+						return sandcastlePreview(1);
+					}
+					if (method === "sandcastle/apply") {
+						return { success: true, filesChanged: 1 };
+					}
+					if (method === "sandcastle/reject") {
+						return { success: true };
+					}
+					throw new Error(`unexpected method ${method}`);
+				},
+			}),
+		});
+
+		const result = await runner.runAgent({
+			workspaceCwd: workspace,
+			agentName: "Sandbox",
+			promptText: "prompt",
+			sideEffects: "workspace",
+		});
+
+		assert.equal(result.promotion, expected);
+		assert.deepEqual(
+			calls,
+			decision === "approve"
+				? ["sandcastle/preview", "sandcastle/apply"]
+				: ["sandcastle/preview", "sandcastle/reject"],
+		);
+	}
+});
+
+test("EphemeralAcpRunner surfaces Sandcastle apply check failures", async () => {
+	const workspace = createTempWorkspace();
+	const calls: string[] = [];
+	const runner = new EphemeralAcpRunner(workspace, {
+		getAgentConfigs: () => ({
+			Sandbox: {
+				transport: "sandcastle",
+				provider: "codex",
+				model: "gpt-5",
+			},
+		}),
+		getSandcastlePromotion: () => "autoApply",
+		sandcastleConnector: async (input) => mockConnectedAgent(input, {
+			extMethod: async (method) => {
+				calls.push(method);
+				if (method === "sandcastle/preview") {
+					return sandcastlePreview(1);
+				}
+				if (method === "sandcastle/apply") {
+					return { success: false, filesChanged: 1, message: "git apply --check failed" };
+				}
+				return { success: true };
+			},
+		}),
+	});
+
+	await assert.rejects(
+		() => runner.runAgent({
+			workspaceCwd: workspace,
+			agentName: "Sandbox",
+			promptText: "prompt",
+			sideEffects: "workspace",
+		}),
+		/git apply --check failed/,
+	);
+	assert.deepEqual(calls, ["sandcastle/preview", "sandcastle/apply", "sandcastle/reject"]);
 });
 
 test("cancellation calls connection.cancel and disposes the mocked process", async () => {
@@ -334,7 +607,66 @@ test("/pipeline run then approve executes planner and implementer", async () => 
 	assert.match(notifications.join("\n"), /plan ready/i);
 	assert.ok(messages.length >= 2);
 	assert.ok(messages.some((message) => String(message.content).includes("ACP Pipeline Plan")));
+	assert.ok(!messages.some((message) => String(message.content).includes("Sandcastle implementation")));
 	assert.ok(messages.some((message) => String(message.content).includes("implementation done")));
+});
+
+test("PipelineService plan_ready message mentions Sandcastle for a Sandcastle implementer", async () => {
+	const workspace = createTempWorkspace();
+	const statuses: string[] = [];
+	const definition = {
+		version: 2 as const,
+		id: "sandcastle-plan",
+		title: "Sandcastle Plan",
+		primitives: {
+			planner: {
+				agent: "Planner",
+				prompt: "Plan {{userPrompt}}",
+				output: "proposed_plan" as const,
+				sideEffects: "none" as const,
+			},
+			implementer: {
+				agent: "Codex Sandcastle",
+				prompt: "Implement {{steps.approval.output}}",
+				output: "markdown" as const,
+				sideEffects: "workspace" as const,
+			},
+		},
+		steps: [
+			{ id: "plan", use: "planner" },
+			{ id: "approval", type: "approval" as const, input: "{{steps.plan.output}}" },
+			{ id: "implement", use: "implementer" },
+		],
+	};
+	const service = new PipelineService(
+		() => workspace,
+		{
+			getPipelineDefinitions: () => [definition],
+			getPipelineDefinitionForAgent: agentName =>
+				agentName === definition.id ? definition : null,
+			getAgentConfigs: () => ({
+				Planner: { command: "planner" },
+				"Codex Sandcastle": {
+					transport: "sandcastle",
+					provider: "codex",
+					model: "gpt-5",
+				},
+			}),
+			isAgentSandcastle: (agentName, configs) =>
+				(configs[agentName] as { transport?: string } | undefined)?.transport === "sandcastle",
+			runAgent: async () => "<proposed_plan>Use Sandcastle.</proposed_plan>",
+		},
+	);
+	service.on("status", event => {
+		if (event.status === "awaiting_approval") {
+			statuses.push(event.message);
+		}
+	});
+
+	await service.createPlan("session-1", "add feature", "sandcastle-plan");
+
+	assert.deepEqual(statuses, ["Plan ready — approve before Sandcastle implementation."]);
+	await service.dispose();
 });
 
 test("/pipeline verbose toggles runtime verbose mode", async () => {
@@ -797,6 +1129,44 @@ test("EphemeralAcpRunner skips skills injection when skills is omitted", async (
 
 	assert.equal(sentPrompt, "Do the work.");
 });
+
+function mockConnectedAgent(
+	input: {
+		sessionUpdateHandler: { handleUpdate: (update: SessionNotification) => void };
+	},
+	overrides: {
+		extMethod?: (method: string, params: Record<string, unknown>) => Promise<Record<string, unknown>>;
+	} = {},
+) {
+	return {
+		agentId: "sandcastle_agent",
+		connInfo: {
+			initResponse: {},
+			client: undefined,
+			connection: {
+				newSession: async () => ({ sessionId: "s1" }),
+				prompt: async () => {
+					input.sessionUpdateHandler.handleUpdate(textChunk("s1", "sandcastle output"));
+					return { stopReason: "end_turn" };
+				},
+				cancel: async () => {},
+				authenticate: async () => ({}),
+				extMethod: overrides.extMethod ?? (async () => ({ success: true })),
+			},
+		} as any,
+		dispose: () => {},
+	};
+}
+
+function sandcastlePreview(filesChanged: number) {
+	return {
+		diff: filesChanged > 0 ? "diff --git a/file b/file" : "",
+		filesChanged,
+		branch: "sandcastle/acp/codex/test",
+		baseRef: "HEAD",
+		worktreePath: "/tmp/worktree",
+	};
+}
 
 function textChunk(sessionId: string, text: string): SessionNotification {
 	return {

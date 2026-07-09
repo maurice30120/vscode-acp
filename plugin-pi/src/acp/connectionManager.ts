@@ -24,6 +24,7 @@ export interface ConnectionInfo {
 export interface ConnectionManagerOptions {
   logger?: Logger;
   getPermissionContext: () => PiPermissionContext | undefined;
+  autoApprovePermissions?: boolean;
 }
 
 export class ConnectionManager {
@@ -54,7 +55,9 @@ export class ConnectionManager {
         client = new PiAcpClient(
           new FileSystemHandler(workspaceCwd),
           new TerminalHandler(workspaceCwd),
-          new PermissionHandler(this.options.getPermissionContext),
+          new PermissionHandler(this.options.getPermissionContext, {
+            autoApproveAll: this.options.autoApprovePermissions,
+          }),
           this.sessionUpdateHandler,
         );
         return client;

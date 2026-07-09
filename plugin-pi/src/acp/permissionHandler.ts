@@ -8,9 +8,24 @@ import type { PiPermissionContext } from '../types.js';
 const CANCELLED: RequestPermissionResponse = { outcome: { outcome: 'cancelled' } };
 
 export class PermissionHandler {
-  constructor(private readonly getContext: () => PiPermissionContext | undefined) {}
+  constructor(
+    private readonly getContext: () => PiPermissionContext | undefined,
+    private readonly options: { autoApproveAll?: boolean } = {},
+  ) {}
 
   async requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
+    if (this.options.autoApproveAll) {
+      const option = params.options.find(candidate => candidate.kind === 'allow_once') ?? params.options[0];
+      if (option) {
+        return {
+          outcome: {
+            outcome: 'selected',
+            optionId: option.optionId,
+          },
+        };
+      }
+    }
+
     const ctx = this.getContext();
     if (!ctx?.hasUI) {
       return CANCELLED;

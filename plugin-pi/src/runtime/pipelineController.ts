@@ -13,7 +13,7 @@ import type { SessionNotification } from '@agentclientprotocol/sdk';
 
 import { EphemeralAcpRunner } from '../acp/ephemeralRunner.js';
 import { RunAbortedError } from '../acp/runAbortedError.js';
-import { loadPiAcpConfig } from '../catalog/config.js';
+import { loadPiAgentCatalog } from '../catalog/config.js';
 import {
   getPipelineDefinitionForAgent,
   getPipelineDefinitions,
@@ -54,6 +54,9 @@ export class PipelineController {
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? 15_000;
     this.runner = options.runner ?? new EphemeralAcpRunner(workspaceCwd, {
       getPermissionContext: () => this.permissionContext,
+      getAgentConfigs: () => loadPiAgentCatalog(this.workspaceCwd).agents,
+      getSandcastlePromotion: () => loadPiAgentCatalog(this.workspaceCwd).sandcastle.promotion,
+      requestSandcastlePromotion: request => this.requestSandcastlePromotion(request),
       logger: options.logger,
     });
     this.service = new PipelineService(
@@ -62,7 +65,9 @@ export class PipelineController {
         getPipelineDefinitions: () => getPipelineDefinitions(this.workspaceCwd, this.options.logger),
         getPipelineDefinitionForAgent: agentName =>
           getPipelineDefinitionForAgent(this.workspaceCwd, agentName, this.options.logger),
-        getAgentConfigs: () => loadPiAcpConfig(this.workspaceCwd).agents,
+        getAgentConfigs: () => loadPiAgentCatalog(this.workspaceCwd).agents,
+        isAgentSandcastle: (agentName, agentConfigs) =>
+          (agentConfigs[agentName] as { transport?: string } | undefined)?.transport === 'sandcastle',
         runAgent: this.runner.run,
         isRunAbortedError: error => error instanceof RunAbortedError,
       },
@@ -215,6 +220,48 @@ export class PipelineController {
       display: true,
       details,
     });
+  }
+
+  private async requestSandcastlePromotion(request: {
+    agentName: string;
+    sessionId: string;
+    preview: {
+      filesChanged: number;
+      branch: string;
+      baseRef: string;
+      worktreePath: string;
+    };
+  }): Promise<'approve' | 'reject' | 'cancelled'> {
+    const content = [
+      `Agent: ${request.agentName}`,
+      `Files changed: ${request.preview.filesChanged}`,
+      `Branch: ${request.preview.branch || '(unknown)'}`,
+      `Base: ${request.preview.baseRef || '(unknown)'}`,
+    ].join('\n');
+    this.sendDisplayMessage('ACP Pipeline Sandcastle Promotion', content, {
+      kind: 'sandcastle-promotion',
+      sessionId: request.sessionId,
+      agentName: request.agentName,
+      filesChanged: request.preview.filesChanged,
+      branch: request.preview.branch,
+      baseRef: request.preview.baseRef,
+      worktreePath: request.preview.worktreePath,
+    });
+
+    const ctx = this.permissionContext;
+    if (!ctx?.hasUI) {
+      return 'cancelled';
+    }
+
+    const labels = ['Apply Sandcastle changes', 'Reject Sandcastle changes'];
+    const selected = await ctx.ui.select('Sandcastle promotion', labels);
+    if (selected === labels[0]) {
+      return 'approve';
+    }
+    if (selected === labels[1]) {
+      return 'reject';
+    }
+    return 'cancelled';
   }
 
   private handleStatusEvent(event: PipelineStatusEvent): void {
