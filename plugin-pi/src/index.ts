@@ -83,7 +83,13 @@ export {
 export { PipelineController } from "./runtime/pipelineController.js";
 export { registerRunPipelineTool } from "./runtime/tool.js";
 export { EphemeralAcpRunner } from "./acp/ephemeralRunner.js";
-export { loadPiAcpConfig, parsePiAcpConfig } from "./catalog/config.js";
+export {
+	loadPiAcpConfig,
+	loadPiAgentCatalog,
+	loadSandcastleConfig,
+	parsePiAcpConfig,
+	parseSandcastleConfig,
+} from "./catalog/config.js";
 export {
 	getPipelineDefinitions,
 	getPipelineDefinitionForAgent,

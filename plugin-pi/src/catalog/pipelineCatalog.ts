@@ -8,10 +8,10 @@ import {
 	type PipelineValidationResult,
 } from "@acp-client/pipeline";
 
-import { loadPiAcpConfig } from "./config.js";
+import { loadPiAcpConfig, loadPiAgentCatalog } from "./config.js";
 import { getPiPluginRoot } from "./pluginRoot.js";
 import { resolvePipelinePromptFiles } from "./promptFileResolver.js";
-import type { Logger, NativeAcpAgentConfig } from "../types.js";
+import type { Logger, PiAgentConfigEntry } from "../types.js";
 
 const PIPELINE_DIR = path.join(".pi", ".acp", "pipelines");
 
@@ -20,19 +20,20 @@ export function getPipelineDefinitions(
 	logger?: Logger,
 ): PipelineDefinition[] {
 	const pluginRoot = getPiPluginRoot();
-	const config = loadPiAcpConfig(workspaceCwd, pluginRoot);
+	const catalog = loadPiAgentCatalog(workspaceCwd, pluginRoot);
+	const config = catalog.native;
 	if (!config.pipeline.enabled) {
 		return [];
 	}
 
-	for (const error of config.errors) {
+	for (const error of catalog.errors) {
 		logger?.error(error);
 	}
 
 	return loadPipelineDefinitionsFromRoot({
 		workspaceCwd,
 		configRoot: pluginRoot,
-		agentConfigs: config.agents,
+		agentConfigs: catalog.agents,
 		instructionsMaxBytes: config.pipeline.instructionsMaxBytes,
 		logger,
 	});
@@ -53,7 +54,7 @@ export function getPipelineDefinitionForAgent(
 
 export function loadWorkspacePipelineDefinitions(
 	workspaceCwd: string,
-	agentConfigs: Record<string, NativeAcpAgentConfig>,
+	agentConfigs: Record<string, PiAgentConfigEntry>,
 	logger?: Logger,
 ): PipelineDefinition[] {
 	return loadPipelineDefinitionsFromRoot({
@@ -68,7 +69,7 @@ export function loadWorkspacePipelineDefinitions(
 export interface PipelineDefinitionsFromRootOptions {
 	workspaceCwd: string;
 	configRoot: string;
-	agentConfigs: Record<string, NativeAcpAgentConfig>;
+	agentConfigs: Record<string, PiAgentConfigEntry>;
 	instructionsMaxBytes?: number;
 	logger?: Logger;
 }
@@ -139,7 +140,7 @@ export function loadPipelineDefinitionsFromRoot(
 export function parsePipelineYaml(
 	text: string,
 	filePath: string,
-	agentConfigs: Record<string, NativeAcpAgentConfig>,
+	agentConfigs: Record<string, PiAgentConfigEntry>,
 ): PipelineValidationResult {
 	let parsed: unknown;
 	try {

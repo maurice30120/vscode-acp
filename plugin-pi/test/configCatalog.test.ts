@@ -1,7 +1,13 @@
 import * as assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { loadPiAcpConfig, parsePiAcpConfig } from "../src/catalog/config.js";
+import {
+	loadPiAcpConfig,
+	loadPiAgentCatalog,
+	loadSandcastleConfig,
+	parsePiAcpConfig,
+	parseSandcastleConfig,
+} from "../src/catalog/config.js";
 import {
 	getPipelineDefinitionForAgent,
 	getPipelineDefinitions,
@@ -117,7 +123,7 @@ test("parsePiAcpConfig rejects invalid agent and pipeline fields", () => {
 	assert.match(config.errors.join("\n"), /pipeline\.instructionsMaxBytes/);
 });
 
-test("rejects sandcastle agents in Pi config v1", () => {
+test("rejects sandcastle agents in native Pi config and points to dedicated file", () => {
 	const config = parsePiAcpConfig(
 		JSON.stringify({
 			agents: {
@@ -131,7 +137,160 @@ test("rejects sandcastle agents in Pi config v1", () => {
 	);
 
 	assert.equal(config.agents.Sandcastle, undefined);
-	assert.match(config.errors.join("\n"), /sandcastle/);
+	assert.match(config.errors.join("\n"), /agents\.Sandcastle\.transport/);
+	assert.match(config.errors.join("\n"), /\.pi\/\.acp\/\.sandcastle\/config\.json/);
+});
+
+test("parseSandcastleConfig validates dedicated Sandcastle config", () => {
+	const config = parseSandcastleConfig(
+		JSON.stringify({
+			promotion: "ask",
+			agents: {
+				"Codex Sandcastle": {
+					transport: "sandcastle",
+					provider: "codex",
+					model: "gpt-5",
+					effort: "medium",
+					displayName: "Codex in Sandcastle",
+					env: { FOO: "bar" },
+					skills: false,
+				},
+			},
+		}),
+	);
+
+	assert.deepEqual(config.errors, []);
+	assert.equal(config.promotion, "ask");
+	assert.equal(config.agents["Codex Sandcastle"].transport, "sandcastle");
+	assert.equal(config.agents["Codex Sandcastle"].provider, "codex");
+	assert.equal(config.agents["Codex Sandcastle"].model, "gpt-5");
+	assert.equal(config.agents["Codex Sandcastle"].effort, "medium");
+	assert.equal(config.agents["Codex Sandcastle"].displayName, "Codex in Sandcastle");
+	assert.deepEqual(config.agents["Codex Sandcastle"].env, { FOO: "bar" });
+	assert.equal(config.agents["Codex Sandcastle"].skills, false);
+});
+
+test("parseSandcastleConfig reports explicit field errors", () => {
+	const config = parseSandcastleConfig(
+		JSON.stringify({
+			promotion: "manual",
+			agents: {
+				Bad: {
+					transport: "sandcastle",
+					provider: "claude",
+					model: " ",
+					effort: "max",
+					env: { TOKEN: 123 },
+				},
+				MissingTransport: {
+					provider: "codex",
+					model: "gpt-5",
+				},
+			},
+		}),
+	);
+
+	assert.deepEqual(config.agents, {});
+	const errors = config.errors.join("\n");
+	assert.match(errors, /promotion/);
+	assert.match(errors, /agents\.Bad\.provider/);
+	assert.match(errors, /agents\.Bad\.model/);
+	assert.match(errors, /agents\.Bad\.effort/);
+	assert.match(errors, /agents\.Bad\.env\.TOKEN/);
+	assert.match(errors, /agents\.MissingTransport\.transport/);
+});
+
+test("loadSandcastleConfig missing file is an empty non-regression", () => {
+	const workspace = createTempWorkspace();
+
+	const config = loadSandcastleConfig(workspace);
+
+	assert.deepEqual(config.errors, []);
+	assert.deepEqual(config.agents, {});
+	assert.equal(config.promotion, "ask");
+});
+
+test("loadPiAgentCatalog keeps native and Sandcastle agents disjoint but combines names for pipelines", () => {
+	const workspace = createTempWorkspace();
+	const pluginRoot = createTempWorkspace();
+	writeDefaultConfig(pluginRoot);
+	writeFile(
+		workspace,
+		".pi/.acp/.sandcastle/config.json",
+		JSON.stringify({
+			promotion: "autoReject",
+			agents: {
+				"Codex Sandcastle": {
+					transport: "sandcastle",
+					provider: "codex",
+					model: "gpt-5",
+				},
+			},
+		}),
+	);
+
+	const catalog = loadPiAgentCatalog(workspace, pluginRoot);
+
+	assert.deepEqual(catalog.errors, []);
+	assert.ok(catalog.native.agents["Codex CLI"]);
+	assert.equal(catalog.sandcastle.agents["Codex Sandcastle"].transport, "sandcastle");
+	assert.equal(catalog.agents["Codex CLI"].transport, undefined);
+	assert.equal(catalog.agents["Codex Sandcastle"].transport, "sandcastle");
+});
+
+test("duplicate native and Sandcastle agent names are errors and make pipelines referencing the name invalid", () => {
+	const workspace = createTempWorkspace();
+	const pluginRoot = createTempWorkspace();
+	writeDefaultConfig(pluginRoot);
+	writeFile(
+		workspace,
+		".pi/.acp/.sandcastle/config.json",
+		JSON.stringify({
+			promotion: "ask",
+			agents: {
+				"Codex CLI": {
+					transport: "sandcastle",
+					provider: "codex",
+					model: "gpt-5",
+				},
+			},
+		}),
+	);
+	writeFile(
+		pluginRoot,
+		".pi/.acp/pipelines/duplicate.yaml",
+		[
+			"version: 2",
+			"id: duplicate",
+			"title: Duplicate",
+			"primitives:",
+			"  planner:",
+			"    agent: Codex CLI",
+			'    prompt: "{{userPrompt}}"',
+			"    output: proposed_plan",
+			"steps:",
+			"  - id: planner",
+			"    use: planner",
+			"",
+		].join("\n"),
+	);
+	const errors: string[] = [];
+
+	const catalog = loadPiAgentCatalog(workspace, pluginRoot);
+	const definitions = loadPipelineDefinitionsFromRoot({
+		workspaceCwd: workspace,
+		configRoot: pluginRoot,
+		agentConfigs: catalog.agents,
+		logger: {
+			log: () => {},
+			error: message => errors.push(message),
+		},
+	});
+
+	assert.match(catalog.errors.join("\n"), /declared in both/);
+	assert.equal(catalog.agents["Codex CLI"], undefined);
+	assert.deepEqual(definitions, []);
+	assert.match(errors.join("\n"), /Codex CLI/);
 });
 
 test("parsePipelineYaml reports YAML parse errors", () => {

@@ -1,11 +1,25 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import type { NativeAcpAgentConfig, PiAcpConfig } from '../types.js';
+import type {
+  NativeAcpAgentConfig,
+  PiAcpConfig,
+  PiAgentCatalog,
+  PiAgentConfigEntry,
+  SandcastleAgentConfig,
+  SandcastleConfig,
+  SandcastleEffort,
+  SandcastlePromotion,
+  SandcastleProvider,
+} from '../types.js';
 import { getPiPluginRoot } from './pluginRoot.js';
 
 const CONFIG_PATH = path.join('.pi', '.acp', 'acp-agents.json');
+const SANDCASTLE_CONFIG_PATH = path.join('.pi', '.acp', '.sandcastle', 'config.json');
 const DEFAULT_INSTRUCTIONS_MAX_BYTES = 256 * 1024;
+const SANDCASTLE_PROVIDERS = new Set<string>(['codex', 'cursor']);
+const SANDCASTLE_EFFORTS = new Set<string>(['low', 'medium', 'high', 'xhigh']);
+const SANDCASTLE_PROMOTIONS = new Set<string>(['ask', 'autoApply', 'autoReject']);
 
 export function loadPiAcpConfig(_workspaceCwd: string, pluginRoot = getPiPluginRoot()): PiAcpConfig {
   const filePath = path.join(pluginRoot, CONFIG_PATH);
@@ -73,6 +87,78 @@ export function parsePiAcpConfig(text: string, filePath = CONFIG_PATH): PiAcpCon
   };
 }
 
+export function loadSandcastleConfig(workspaceCwd: string): SandcastleConfig {
+  const filePath = path.join(workspaceCwd, SANDCASTLE_CONFIG_PATH);
+  if (!fs.existsSync(filePath)) {
+    return emptySandcastleConfig(filePath, []);
+  }
+
+  try {
+    return parseSandcastleConfig(fs.readFileSync(filePath, 'utf8'), filePath);
+  } catch (e: unknown) {
+    return emptySandcastleConfig(filePath, [`Failed to read Sandcastle config: ${formatError(e)}`]);
+  }
+}
+
+export function parseSandcastleConfig(text: string, filePath = SANDCASTLE_CONFIG_PATH): SandcastleConfig {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (e: unknown) {
+    return emptySandcastleConfig(filePath, [`JSON parse error: ${formatError(e)}`]);
+  }
+
+  if (!isRecord(parsed)) {
+    return emptySandcastleConfig(filePath, ['Sandcastle config must be an object.']);
+  }
+
+  const errors: string[] = [];
+  const promotion = readSandcastlePromotion(parsed.promotion, errors);
+  const agents: Record<string, SandcastleAgentConfig> = {};
+  const agentsValue = parsed.agents;
+
+  if (!isRecord(agentsValue)) {
+    errors.push('agents must be an object.');
+  } else {
+    for (const [name, value] of Object.entries(agentsValue)) {
+      const agent = parseSandcastleAgent(name, value, errors);
+      if (agent) {
+        agents[name] = agent;
+      }
+    }
+  }
+
+  return {
+    filePath,
+    promotion,
+    agents,
+    errors,
+  };
+}
+
+export function loadPiAgentCatalog(workspaceCwd: string, pluginRoot = getPiPluginRoot()): PiAgentCatalog {
+  const native = loadPiAcpConfig(workspaceCwd, pluginRoot);
+  const sandcastle = loadSandcastleConfig(workspaceCwd);
+  const agents: Record<string, PiAgentConfigEntry> = { ...native.agents };
+  const errors = [...native.errors, ...sandcastle.errors];
+
+  for (const [name, config] of Object.entries(sandcastle.agents)) {
+    if (native.agents[name]) {
+      errors.push(`Agent "${name}" is declared in both ${CONFIG_PATH} and ${SANDCASTLE_CONFIG_PATH}; remove the duplicate before referencing it from a pipeline.`);
+      delete agents[name];
+      continue;
+    }
+    agents[name] = config;
+  }
+
+  return {
+    native,
+    sandcastle,
+    agents,
+    errors,
+  };
+}
+
 function emptyConfig(filePath: string, errors: string[]): PiAcpConfig {
   return {
     filePath,
@@ -81,6 +167,15 @@ function emptyConfig(filePath: string, errors: string[]): PiAcpConfig {
       enabled: true,
       instructionsMaxBytes: DEFAULT_INSTRUCTIONS_MAX_BYTES,
     },
+    errors,
+  };
+}
+
+function emptySandcastleConfig(filePath: string, errors: string[]): SandcastleConfig {
+  return {
+    filePath,
+    promotion: 'ask',
+    agents: {},
     errors,
   };
 }
@@ -96,7 +191,7 @@ function parseAgent(
   }
 
   if (value.transport === 'sandcastle') {
-    errors.push(`agents.${name} uses transport "sandcastle", which is not supported by the Pi plugin v1.`);
+    errors.push(`agents.${name}.transport must not be "sandcastle" in ${CONFIG_PATH}; declare Sandcastle agents in ${SANDCASTLE_CONFIG_PATH}.`);
     return null;
   }
 
@@ -126,6 +221,83 @@ function parseAgent(
     use_custom_mcp: typeof value.use_custom_mcp === 'boolean' ? value.use_custom_mcp : undefined,
     skills: typeof value.skills === 'boolean' ? value.skills : undefined,
   };
+}
+
+function parseSandcastleAgent(
+  name: string,
+  value: unknown,
+  errors: string[],
+): SandcastleAgentConfig | null {
+  if (!isRecord(value)) {
+    errors.push(`agents.${name} must be an object.`);
+    return null;
+  }
+
+  if (value.transport !== 'sandcastle') {
+    errors.push(`agents.${name}.transport must be "sandcastle".`);
+    return null;
+  }
+
+  const provider = readSandcastleProvider(value.provider, `agents.${name}.provider`, errors);
+  const model = readNonEmptyString(value.model, `agents.${name}.model`, errors);
+  const effort = value.effort === undefined
+    ? undefined
+    : readSandcastleEffort(value.effort, `agents.${name}.effort`, errors);
+  const env = value.env === undefined ? undefined : readStringRecord(value.env, `agents.${name}.env`, errors);
+
+  if (!provider || !model || effort === null || env === null) {
+    return null;
+  }
+
+  return {
+    transport: 'sandcastle',
+    provider,
+    model,
+    effort: effort ?? undefined,
+    displayName: typeof value.displayName === 'string' ? value.displayName : undefined,
+    env,
+    skills: typeof value.skills === 'boolean' ? value.skills : undefined,
+  };
+}
+
+function readSandcastlePromotion(value: unknown, errors: string[]): SandcastlePromotion {
+  if (typeof value === 'string' && SANDCASTLE_PROMOTIONS.has(value)) {
+    return value as SandcastlePromotion;
+  }
+  errors.push('promotion must be "ask", "autoApply", or "autoReject".');
+  return 'ask';
+}
+
+function readSandcastleProvider(
+  value: unknown,
+  scope: string,
+  errors: string[],
+): SandcastleProvider | null {
+  if (typeof value === 'string' && SANDCASTLE_PROVIDERS.has(value)) {
+    return value as SandcastleProvider;
+  }
+  errors.push(`${scope} must be "codex" or "cursor".`);
+  return null;
+}
+
+function readSandcastleEffort(
+  value: unknown,
+  scope: string,
+  errors: string[],
+): SandcastleEffort | null {
+  if (typeof value === 'string' && SANDCASTLE_EFFORTS.has(value)) {
+    return value as SandcastleEffort;
+  }
+  errors.push(`${scope} must be "low", "medium", "high", or "xhigh".`);
+  return null;
+}
+
+function readNonEmptyString(value: unknown, scope: string, errors: string[]): string | null {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    errors.push(`${scope} must be a non-empty string.`);
+    return null;
+  }
+  return value.trim();
 }
 
 function parsePipelineConfig(value: unknown, errors: string[]) {

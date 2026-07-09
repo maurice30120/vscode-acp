@@ -18,7 +18,21 @@ export interface UnsupportedSandcastleAgentConfig {
   env?: Record<string, string>;
 }
 
-export type PiAgentConfigEntry = NativeAcpAgentConfig | UnsupportedSandcastleAgentConfig;
+export type SandcastleProvider = 'codex' | 'cursor';
+export type SandcastleEffort = 'low' | 'medium' | 'high' | 'xhigh';
+export type SandcastlePromotion = 'ask' | 'autoApply' | 'autoReject';
+
+export interface SandcastleAgentConfig {
+  transport: 'sandcastle';
+  provider: SandcastleProvider;
+  model: string;
+  effort?: SandcastleEffort;
+  displayName?: string;
+  env?: Record<string, string>;
+  skills?: boolean;
+}
+
+export type PiAgentConfigEntry = NativeAcpAgentConfig | SandcastleAgentConfig;
 
 export interface PiPipelineConfig {
   enabled: boolean;
@@ -29,6 +43,20 @@ export interface PiAcpConfig {
   filePath: string;
   agents: Record<string, NativeAcpAgentConfig>;
   pipeline: PiPipelineConfig;
+  errors: string[];
+}
+
+export interface SandcastleConfig {
+  filePath: string;
+  promotion: SandcastlePromotion;
+  agents: Record<string, SandcastleAgentConfig>;
+  errors: string[];
+}
+
+export interface PiAgentCatalog {
+  native: PiAcpConfig;
+  sandcastle: SandcastleConfig;
+  agents: Record<string, PiAgentConfigEntry>;
   errors: string[];
 }
 
