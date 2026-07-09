@@ -95,6 +95,14 @@ steps:
 
 Chaque pipeline déclare des **primitives** (appels d'agents paramétrés avec des prompts template) et des **étapes** qui les enchaînent. Les étapes de type `approval` font une pause pour validation humaine avant de continuer.
 
+Le plugin fournit aussi un exemple de workflow asynchrone dans `plugin-pi/.acp/pipelines/async-use-case-review.yaml`. Il teste le pattern :
+
+```text
+cadrage -> analyses produit + technique en parallele -> synthese
+```
+
+Les branches paralleles sont volontairement en `sideEffects: none` : elles peuvent analyser et proposer, puis une étape de synthèse réconcilie leurs sorties via `{{steps.investigation.branches.<branche>.output}}`.
+
 Les primitives peuvent aussi utiliser `promptFile` pour externaliser les instructions longues :
 
 ```yaml

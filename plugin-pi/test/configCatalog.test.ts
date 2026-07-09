@@ -1,8 +1,9 @@
 import * as assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { parsePiAcpConfig } from "../src/catalog/config.js";
+import { loadPiAcpConfig, parsePiAcpConfig } from "../src/catalog/config.js";
 import {
+	getPipelineDefinitionForAgent,
 	getPipelineDefinitions,
 	loadWorkspacePipelineDefinitions,
 	parsePipelineYaml,
@@ -49,6 +50,70 @@ test("loads .pi/.acp/acp-agents.json compatible native ACP config", () => {
 	assert.equal(config.pipeline.instructionsMaxBytes, 1234);
 });
 
+test("loadPiAcpConfig reports a missing config and keeps pipeline defaults", () => {
+	const workspace = createTempWorkspace();
+
+	const config = loadPiAcpConfig(workspace);
+
+	assert.deepEqual(config.agents, {});
+	assert.equal(config.pipeline.enabled, true);
+	assert.equal(config.pipeline.instructionsMaxBytes, 262144);
+	assert.match(config.errors.join("\n"), /Missing Pi ACP config/);
+});
+
+test("parsePiAcpConfig reports JSON parse errors as empty config", () => {
+	const config = parsePiAcpConfig("{not json");
+
+	assert.deepEqual(config.agents, {});
+	assert.equal(config.pipeline.enabled, true);
+	assert.match(config.errors.join("\n"), /JSON parse error/);
+});
+
+test("parsePiAcpConfig rejects invalid agent and pipeline fields", () => {
+	const config = parsePiAcpConfig(
+		JSON.stringify({
+			agents: {
+				BadArgs: {
+					command: "codex",
+					args: ["ok", 1],
+				},
+				BadEnv: {
+					command: "codex",
+					env: { TOKEN: 123 },
+				},
+				BadTransport: {
+					transport: "stdio",
+					command: "codex",
+				},
+				Good: {
+					transport: "acp",
+					command: "  codex  ",
+					displayName: "Codex",
+					use_idea_mcp: true,
+					use_custom_mcp: false,
+					skills: false,
+				},
+			},
+			pipeline: {
+				enabled: "yes",
+				instructionsMaxBytes: 0,
+			},
+		}),
+	);
+
+	assert.deepEqual(Object.keys(config.agents), ["Good"]);
+	assert.equal(config.agents.Good.command, "codex");
+	assert.equal(config.agents.Good.transport, "acp");
+	assert.equal(config.agents.Good.skills, false);
+	assert.equal(config.pipeline.enabled, true);
+	assert.equal(config.pipeline.instructionsMaxBytes, 262144);
+	assert.match(config.errors.join("\n"), /BadArgs\.args/);
+	assert.match(config.errors.join("\n"), /BadEnv\.env\.TOKEN/);
+	assert.match(config.errors.join("\n"), /BadTransport\.transport/);
+	assert.match(config.errors.join("\n"), /pipeline\.enabled/);
+	assert.match(config.errors.join("\n"), /pipeline\.instructionsMaxBytes/);
+});
+
 test("rejects sandcastle agents in Pi config v1", () => {
 	const config = parsePiAcpConfig(
 		JSON.stringify({
@@ -64,6 +129,17 @@ test("rejects sandcastle agents in Pi config v1", () => {
 
 	assert.equal(config.agents.Sandcastle, undefined);
 	assert.match(config.errors.join("\n"), /sandcastle/);
+});
+
+test("parsePipelineYaml reports YAML parse errors", () => {
+	const result = parsePipelineYaml(
+		"version: 2\nprimitives:\n  - : broken",
+		"broken.yaml",
+		{ "Codex CLI": { command: "codex" } },
+	);
+
+	assert.equal(result.definition, undefined);
+	assert.match(result.errors.join("\n"), /YAML parse error/);
 });
 
 test("validates pipeline agent references against Pi config", () => {
@@ -111,6 +187,23 @@ test("validates pipeline agent references against Pi config", () => {
 	assert.match(invalid.errors.join("\n"), /Missing Agent/);
 });
 
+test("getPipelineDefinitions returns no pipelines when pipeline support is disabled", () => {
+	const workspace = createTempWorkspace();
+	writeFile(
+		workspace,
+		".pi/.acp/acp-agents.json",
+		JSON.stringify({
+			agents: { "Codex CLI": { command: "codex" } },
+			pipeline: { enabled: false },
+		}),
+	);
+	writeDemoPipeline(workspace);
+
+	const definitions = getPipelineDefinitions(workspace);
+
+	assert.deepEqual(definitions, []);
+});
+
 test("loads .pi/.acp/pipelines/*.yaml from workspace", () => {
 	const workspace = createTempWorkspace();
 	writeDefaultConfig(workspace);
@@ -125,6 +218,44 @@ test("loads .pi/.acp/pipelines/*.yaml from workspace", () => {
 	assert.equal(definitions[0].title, "Demo Pipeline");
 });
 
+test("loads .pi/.acp/pipelines/*.yml from workspace", () => {
+	const workspace = createTempWorkspace();
+	writeDefaultConfig(workspace);
+	writePipelineFile(workspace, "short.yml", [
+		"version: 2",
+		"id: short",
+		"title: Short Pipeline",
+		"primitives:",
+		"  planner:",
+		"    agent: Codex CLI",
+		'    prompt: "{{userPrompt}}"',
+		"    output: proposed_plan",
+		"steps:",
+		"  - id: planner",
+		"    use: planner",
+		"",
+	]);
+
+	const definitions = loadWorkspacePipelineDefinitions(workspace, {
+		"Codex CLI": { command: "codex" },
+	});
+
+	assert.deepEqual(
+		definitions.map((definition) => definition.id),
+		["short"],
+	);
+});
+
+test("getPipelineDefinitionForAgent resolves by id or title", () => {
+	const workspace = createTempWorkspace();
+	writeDefaultConfig(workspace);
+	writeDemoPipeline(workspace);
+
+	assert.equal(getPipelineDefinitionForAgent(workspace, "demo")?.title, "Demo Pipeline");
+	assert.equal(getPipelineDefinitionForAgent(workspace, "Demo Pipeline")?.id, "demo");
+	assert.equal(getPipelineDefinitionForAgent(workspace, "missing"), null);
+});
+
 test("getPipelineDefinitions ignores .acp/teams/*.yaml", () => {
 	const workspace = createTempWorkspace();
 	writeDefaultConfig(workspace);
@@ -137,6 +268,32 @@ test("getPipelineDefinitions ignores .acp/teams/*.yaml", () => {
 		definitions.map((definition) => definition.title),
 		["Demo Pipeline"],
 	);
+});
+
+test("loadWorkspacePipelineDefinitions logs invalid pipeline files and keeps valid ones", () => {
+	const workspace = createTempWorkspace();
+	writeDefaultConfig(workspace);
+	writePipelineFile(workspace, "bad.yaml", ["version: 2", "id: bad", "title: Bad"]);
+	writeDemoPipeline(workspace);
+	const errors: string[] = [];
+
+	const definitions = loadWorkspacePipelineDefinitions(
+		workspace,
+		{
+			"Codex CLI": { command: "codex" },
+			"Pi Agent": { command: "pi-acp" },
+		},
+		{
+			log: () => {},
+			error: (message) => errors.push(message),
+		},
+	);
+
+	assert.deepEqual(
+		definitions.map((definition) => definition.id),
+		["demo"],
+	);
+	assert.match(errors.join("\n"), /Ignoring invalid ACP pipeline/);
 });
 
 test("primitive requires either prompt or promptFile", () => {
@@ -163,6 +320,33 @@ test("primitive requires either prompt or promptFile", () => {
 		/must define either prompt or promptFile/,
 	);
 	assert.equal(missing.definition, undefined);
+});
+
+test("promptFile can be resolved relative to the pipeline YAML file", () => {
+	const workspace = createTempWorkspace();
+	writeDefaultConfig(workspace);
+	writeFile(workspace, ".pi/.acp/pipelines/prompts/planner.md", "Relative plan.");
+	writePipelineFile(workspace, "plan.yaml", [
+		"version: 2",
+		"id: plan",
+		"title: Plan Pipeline",
+		"primitives:",
+		"  planner:",
+		"    agent: Codex CLI",
+		"    promptFile: prompts/planner.md",
+		"    output: proposed_plan",
+		"steps:",
+		"  - id: planner",
+		"    use: planner",
+		"",
+	]);
+
+	const definitions = loadWorkspacePipelineDefinitions(workspace, {
+		"Codex CLI": { command: "codex" },
+	});
+
+	assert.equal(definitions.length, 1);
+	assert.equal(definitions[0].primitives.planner.prompt, "Relative plan.");
 });
 
 test("promptFile loads and composes the prompt (promptFile + blank line + prompt)", () => {
@@ -203,6 +387,32 @@ test("promptFile loads and composes the prompt (promptFile + blank line + prompt
 	// promptFile content and inline prompt separated by a blank line
 	assertIncludes(prompt, "careful planner.\n\nUser request:");
 	assert.equal(definitions[0].primitives.planner.promptFile, undefined);
+});
+
+test("directory promptFile renders the pipeline invalid", () => {
+	const workspace = createTempWorkspace();
+	writeDefaultConfig(workspace);
+	writeFile(workspace, ".pi/.acp/agents/planner/.keep", "");
+	writePipelineFile(workspace, "plan.yaml", [
+		"version: 2",
+		"id: plan",
+		"title: Plan Pipeline",
+		"primitives:",
+		"  planner:",
+		"    agent: Codex CLI",
+		"    promptFile: .pi/.acp/agents/planner",
+		"    output: proposed_plan",
+		"steps:",
+		"  - id: planner",
+		"    use: planner",
+		"",
+	]);
+
+	const definitions = loadWorkspacePipelineDefinitions(workspace, {
+		"Codex CLI": { command: "codex" },
+	});
+
+	assert.equal(definitions.length, 0);
 });
 
 test("promptFile alone (no inline prompt) is accepted", () => {

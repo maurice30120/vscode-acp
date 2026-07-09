@@ -7,8 +7,13 @@ import type { SessionNotification } from "@agentclientprotocol/sdk";
 
 import { EphemeralAcpRunner } from "../src/acp/ephemeralRunner.js";
 import { RunAbortedError } from "../src/acp/runAbortedError.js";
-import { handlePipelineCommand } from "../src/runtime/commands.js";
+import {
+	handlePipelineCommand,
+	parseRunArgs,
+	registerPipelineCommand,
+} from "../src/runtime/commands.js";
 import { PipelineController } from "../src/runtime/pipelineController.js";
+import { registerRunPipelineTool } from "../src/runtime/tool.js";
 import {
 	createTempWorkspace,
 	writeDefaultConfig,
@@ -103,6 +108,175 @@ test("cancellation calls connection.cancel and disposes the mocked process", asy
 	assert.equal(disposed, true);
 });
 
+test("EphemeralAcpRunner rejects unknown agents before connecting", async () => {
+	const workspace = createTempWorkspace();
+	let connectorCalled = false;
+	const runner = new EphemeralAcpRunner(workspace, {
+		getAgentConfigs: () => ({}),
+		connector: async () => {
+			connectorCalled = true;
+			throw new Error("should not connect");
+		},
+	});
+
+	await assert.rejects(
+		() =>
+			runner.runAgent({
+				workspaceCwd: workspace,
+				agentName: "Missing",
+				promptText: "prompt",
+			}),
+		/not configured/,
+	);
+	assert.equal(connectorCalled, false);
+});
+
+test("EphemeralAcpRunner rejects an already aborted signal before connecting", async () => {
+	const workspace = createTempWorkspace();
+	const abortController = new AbortController();
+	abortController.abort();
+	let connectorCalled = false;
+	const runner = new EphemeralAcpRunner(workspace, {
+		getAgentConfigs: () => ({ "Codex CLI": { command: "codex" } }),
+		connector: async () => {
+			connectorCalled = true;
+			throw new Error("should not connect");
+		},
+	});
+
+	await assert.rejects(
+		() =>
+			runner.runAgent({
+				workspaceCwd: workspace,
+				agentName: "Codex CLI",
+				promptText: "prompt",
+				signal: abortController.signal,
+			}),
+		RunAbortedError,
+	);
+	assert.equal(connectorCalled, false);
+});
+
+test("EphemeralAcpRunner throws RunAbortedError when prompt response is cancelled", async () => {
+	const workspace = createTempWorkspace();
+	let disposed = false;
+	const runner = new EphemeralAcpRunner(workspace, {
+		getAgentConfigs: () => ({ "Codex CLI": { command: "codex" } }),
+		connector: async () => ({
+			agentId: "agent_1",
+			connInfo: {
+				initResponse: {},
+				client: undefined,
+				connection: {
+					newSession: async () => ({ sessionId: "s1" }),
+					prompt: async () => ({ stopReason: "cancelled" }),
+					cancel: async () => {},
+					authenticate: async () => ({}),
+				},
+			} as any,
+			dispose: () => {
+				disposed = true;
+			},
+		}),
+	});
+
+	await assert.rejects(
+		() =>
+			runner.runAgent({
+				workspaceCwd: workspace,
+				agentName: "Codex CLI",
+				promptText: "prompt",
+			}),
+		RunAbortedError,
+	);
+	assert.equal(disposed, true);
+});
+
+test("EphemeralAcpRunner retries newSession after auth flow", async () => {
+	const workspace = createTempWorkspace();
+	let newSessionCalls = 0;
+	let authenticatedMethod = "";
+	const runner = new EphemeralAcpRunner(workspace, {
+		getAgentConfigs: () => ({ "Codex CLI": { command: "codex" } }),
+		getPermissionContext: () => ({
+			hasUI: true,
+			ui: {
+				confirm: async () => true,
+			},
+		} as any),
+		connector: async () => ({
+			agentId: "agent_1",
+			connInfo: {
+				initResponse: {
+					authMethods: [{ id: "browser", name: "Browser" }],
+				},
+				client: undefined,
+				connection: {
+					newSession: async () => {
+						newSessionCalls += 1;
+						if (newSessionCalls === 1) {
+							throw { code: -32000 };
+						}
+						return { sessionId: "s1" };
+					},
+					prompt: async () => ({ stopReason: "end_turn" }),
+					cancel: async () => {},
+					authenticate: async ({ methodId }: { methodId: string }) => {
+						authenticatedMethod = methodId;
+						return {};
+					},
+				},
+			} as any,
+			dispose: () => {},
+		}),
+	});
+
+	await runner.runAgent({
+		workspaceCwd: workspace,
+		agentName: "Codex CLI",
+		promptText: "prompt",
+	});
+
+	assert.equal(newSessionCalls, 2);
+	assert.equal(authenticatedMethod, "browser");
+});
+
+test("EphemeralAcpRunner ignores and does not forward updates from other sessions", async () => {
+	const workspace = createTempWorkspace();
+	const forwarded: string[] = [];
+	const runner = new EphemeralAcpRunner(workspace, {
+		getAgentConfigs: () => ({ "Codex CLI": { command: "codex" } }),
+		connector: async (input) => ({
+			agentId: "agent_1",
+			connInfo: {
+				initResponse: {},
+				client: undefined,
+				connection: {
+					newSession: async () => ({ sessionId: "s1" }),
+					prompt: async () => {
+						input.sessionUpdateHandler.handleUpdate(textChunk("other", "ignore"));
+						input.sessionUpdateHandler.handleUpdate(textChunk("s1", "keep"));
+						return { stopReason: "end_turn" };
+					},
+					cancel: async () => {},
+					authenticate: async () => ({}),
+				},
+			} as any,
+			dispose: () => {},
+		}),
+	});
+
+	const result = await runner.runAgent({
+		workspaceCwd: workspace,
+		agentName: "Codex CLI",
+		promptText: "prompt",
+		onSessionUpdate: (update) => forwarded.push(update.sessionId),
+	});
+
+	assert.equal(result.text, "keep");
+	assert.deepEqual(forwarded, ["s1"]);
+});
+
 test("/pipeline list reports configured pipelines", async () => {
 	const workspace = createTempWorkspace();
 	writeDefaultConfig(workspace);
@@ -161,6 +335,235 @@ test("/pipeline run then approve executes planner and implementer", async () => 
 	assert.match(notifications.join("\n"), /plan ready/i);
 	assert.equal(messages.length, 2);
 	assert.match(String(messages[1].content), /implementation done/);
+});
+
+test("parseRunArgs prefers the longest configured pipeline name", () => {
+	const parsed = parseRunArgs("demo full add tests", ["demo", "demo full"]);
+
+	assert.deepEqual(parsed, {
+		pipelineName: "demo full",
+		prompt: "add tests",
+	});
+});
+
+test("parseRunArgs supports multi-word pipeline titles", () => {
+	const parsed = parseRunArgs("Demo Pipeline add tests", [
+		"demo",
+		"Demo Pipeline",
+	]);
+
+	assert.deepEqual(parsed, {
+		pipelineName: "Demo Pipeline",
+		prompt: "add tests",
+	});
+});
+
+test("parseRunArgs falls back to first word as pipeline id", () => {
+	const parsed = parseRunArgs("unknown add tests", ["demo"]);
+
+	assert.deepEqual(parsed, {
+		pipelineName: "unknown",
+		prompt: "add tests",
+	});
+});
+
+test("parseRunArgs rejects missing prompt", () => {
+	assert.equal(parseRunArgs("", ["demo"]), null);
+	assert.equal(parseRunArgs("demo", ["demo"]), null);
+});
+
+test("/pipeline run without a prompt reports usage", async () => {
+	const notifications: string[] = [];
+	const controller = {
+		listPipelines: () => [{ id: "demo", title: "Demo Pipeline" }],
+	} as unknown as PipelineController;
+
+	await handlePipelineCommand(
+		"run demo",
+		commandContext(createTempWorkspace(), notifications),
+		controller,
+	);
+
+	assert.match(notifications[0], /Usage: \/pipeline run/);
+});
+
+test("/pipeline approve forwards edited plan text", async () => {
+	const notifications: string[] = [];
+	let approvedPlan = "";
+	const controller = {
+		approve: async (_ctx: unknown, plan?: string) => {
+			approvedPlan = plan ?? "";
+			return "done";
+		},
+	} as unknown as PipelineController;
+
+	await handlePipelineCommand(
+		"approve edited plan",
+		commandContext(createTempWorkspace(), notifications),
+		controller,
+	);
+
+	assert.equal(approvedPlan, "edited plan");
+	assert.match(notifications[0], /approved/);
+});
+
+test("/pipeline reject and cancel call controller actions", async () => {
+	const notifications: string[] = [];
+	const calls: string[] = [];
+	const controller = {
+		reject: () => calls.push("reject"),
+		cancel: () => calls.push("cancel"),
+	} as unknown as PipelineController;
+	const ctx = commandContext(createTempWorkspace(), notifications);
+
+	await handlePipelineCommand("reject", ctx, controller);
+	await handlePipelineCommand("cancel", ctx, controller);
+
+	assert.deepEqual(calls, ["reject", "cancel"]);
+	assert.match(notifications.join("\n"), /rejected/);
+	assert.match(notifications.join("\n"), /cancelled/);
+});
+
+test("PipelineController rejects approve, reject, and cancel without an active run", async () => {
+	const workspace = createTempWorkspace();
+	const controller = new PipelineController(
+		workspace,
+		{ sendMessage: () => {} } as any,
+		{
+			runner: { run: async () => "unused" },
+		},
+	);
+
+	await assert.rejects(() => controller.approve(), /No pending pipeline plan/);
+	assert.throws(() => controller.reject(), /No pending pipeline plan/);
+	assert.throws(() => controller.cancel(), /No active pipeline run/);
+});
+
+test("PipelineController rejects blank pipeline prompts", async () => {
+	const workspace = createTempWorkspace();
+	const controller = new PipelineController(
+		workspace,
+		{ sendMessage: () => {} } as any,
+		{
+			runner: { run: async () => "unused" },
+		},
+	);
+
+	await assert.rejects(
+		() => controller.runPipeline("demo", "  "),
+		/Pipeline prompt is required/,
+	);
+});
+
+test("registerPipelineCommand registers completions and delegates handler", async () => {
+	let commandRegistration:
+		| {
+				getArgumentCompletions: (prefix: string) => Array<{ value: string }>;
+				handler: (args: string, ctx: unknown) => Promise<void>;
+		  }
+		| undefined;
+	const controller = {
+		formatPipelineList: () => "No ACP pipelines found.",
+	} as unknown as PipelineController;
+	const pi = {
+		registerCommand: (name: string, registration: typeof commandRegistration) => {
+			assert.equal(name, "pipeline");
+			commandRegistration = registration;
+		},
+	};
+	registerPipelineCommand(pi as any, controller);
+
+	assert.deepEqual(commandRegistration?.getArgumentCompletions("ap"), [
+		{ value: "approve", label: "approve" },
+	]);
+	const notifications: string[] = [];
+	await commandRegistration?.handler(
+		"list",
+		commandContext(createTempWorkspace(), notifications),
+	);
+	assert.equal(notifications[0], "No ACP pipelines found.");
+});
+
+test("registerRunPipelineTool returns awaiting approval details", async () => {
+	let execute:
+		| ((
+				toolCallId: string,
+				params: { pipelineName?: string; prompt: string },
+				signal: AbortSignal,
+				onUpdate: unknown,
+				ctx: unknown,
+		  ) => Promise<{ content: Array<{ text: string }>; details: unknown }>)
+		| undefined;
+	const controller = {
+		runPipeline: async (pipelineName: string, prompt: string) => ({
+			sessionId: "session-1",
+			plan: `${pipelineName}:${prompt}`,
+			awaitingApproval: true,
+		}),
+	} as unknown as PipelineController;
+	const pi = {
+		registerTool: (registration: { execute: NonNullable<typeof execute> }) => {
+			execute = registration.execute;
+		},
+	};
+	registerRunPipelineTool(pi as any, controller);
+
+	const result = await execute!(
+		"tool-1",
+		{ pipelineName: "demo", prompt: "add tests" },
+		new AbortController().signal,
+		undefined,
+		{},
+	);
+
+	assert.match(result.content[0].text, /awaiting user approval/);
+	assert.match(result.content[0].text, /demo:add tests/);
+	assert.deepEqual(result.details, {
+		sessionId: "session-1",
+		plan: "demo:add tests",
+		awaitingApproval: true,
+	});
+});
+
+test("registerRunPipelineTool returns completed output details", async () => {
+	let execute:
+		| ((
+				toolCallId: string,
+				params: { pipelineName?: string; prompt: string },
+				signal: AbortSignal,
+				onUpdate: unknown,
+				ctx: unknown,
+		  ) => Promise<{ content: Array<{ text: string }>; details: unknown }>)
+		| undefined;
+	const controller = {
+		runPipeline: async (pipelineName: string, prompt: string) => ({
+			sessionId: "session-1",
+			output: `${pipelineName || "default"}:${prompt}`,
+			awaitingApproval: false,
+		}),
+	} as unknown as PipelineController;
+	const pi = {
+		registerTool: (registration: { execute: NonNullable<typeof execute> }) => {
+			execute = registration.execute;
+		},
+	};
+	registerRunPipelineTool(pi as any, controller);
+
+	const result = await execute!(
+		"tool-1",
+		{ prompt: "add tests" },
+		new AbortController().signal,
+		undefined,
+		{},
+	);
+
+	assert.match(result.content[0].text, /Pipeline completed/);
+	assert.match(result.content[0].text, /default:add tests/);
+	assert.deepEqual(result.details, {
+		sessionId: "session-1",
+		output: "default:add tests",
+		awaitingApproval: false,
+	});
 });
 
 test("EphemeralAcpRunner prefixes the prompt with the filtered skills catalog", async () => {
