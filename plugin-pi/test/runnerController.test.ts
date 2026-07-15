@@ -691,12 +691,12 @@ test("/pipeline verbose toggles runtime verbose mode", async () => {
 	assert.match(notifications[3], /disabled/);
 });
 
-test("PipelineController compact activity omits agent message chunks", async () => {
+test("PipelineController activity relays agent message chunks", async () => {
 	const workspace = createTempWorkspace();
 
 	const messages: Array<{ content: unknown; details?: { kind?: string } }> = [];
 	const runner: PipelineAgentRunner = async (input) => {
-		input.onSessionUpdate?.(textChunk("s1", "internal chunk"));
+		input.onSessionUpdate?.(textChunk("s1", "generated chunk"));
 		if (input.agentName === "Pi Agent") {
 			return "<proposed_plan>Implement the feature.</proposed_plan>";
 		}
@@ -717,16 +717,89 @@ test("PipelineController compact activity omits agent message chunks", async () 
 	await controller.runPipeline("plan-execute-verify", "add tests");
 
 	assert.ok(messages.some((message) => message.details?.kind === "activity-status"));
-	assert.ok(!messages.some((message) => message.details?.kind === "verbose-session-update"));
-	assert.ok(!messages.some((message) => String(message.content).includes("internal chunk")));
+	assert.ok(messages.some((message) => message.details?.kind === "agent-message-chunk"));
+	assert.ok(messages.some((message) => String(message.content).includes("generated chunk")));
 });
 
-test("PipelineController verbose activity relays session updates", async () => {
+test("PipelineController groups adjacent agent message chunks", async () => {
 	const workspace = createTempWorkspace();
 
 	const messages: Array<{ content: unknown; details?: { kind?: string } }> = [];
 	const runner: PipelineAgentRunner = async (input) => {
-		input.onSessionUpdate?.(textChunk("s1", "debug chunk"));
+		input.onSessionUpdate?.(textChunk("s1", "gen"));
+		input.onSessionUpdate?.(textChunk("s1", "erated"));
+		input.onSessionUpdate?.(textChunk("s1", " chunk"));
+		if (input.agentName === "Pi Agent") {
+			return "<proposed_plan>Implement the feature.</proposed_plan>";
+		}
+		return "implementation done";
+	};
+	const controller = new PipelineController(
+		workspace,
+		{
+			sendMessage: (message: { content: unknown; details?: { kind?: string } }) => {
+				messages.push(message);
+			},
+		} as any,
+		{
+			runner: { run: runner },
+		},
+	);
+
+	await controller.runPipeline("plan-execute-verify", "add tests");
+
+	const outputMessages = messages.filter((message) => message.details?.kind === "agent-message-chunk");
+	assert.equal(outputMessages.length, 1);
+	assert.ok(String(outputMessages[0]?.content).includes("generated chunk"));
+});
+
+test("PipelineController activity relays agent thought chunks", async () => {
+	const workspace = createTempWorkspace();
+
+	const messages: Array<{ content: unknown; details?: { kind?: string } }> = [];
+	const runner: PipelineAgentRunner = async (input) => {
+		input.onSessionUpdate?.(thoughtChunk("s1", "thinking chunk"));
+		if (input.agentName === "Pi Agent") {
+			return "<proposed_plan>Implement the feature.</proposed_plan>";
+		}
+		return "implementation done";
+	};
+	const controller = new PipelineController(
+		workspace,
+		{
+			sendMessage: (message: { content: unknown; details?: { kind?: string } }) => {
+				messages.push(message);
+			},
+		} as any,
+		{
+			runner: { run: runner },
+		},
+	);
+
+	await controller.runPipeline("plan-execute-verify", "add tests");
+
+	assert.ok(messages.some((message) => message.details?.kind === "agent-thought-chunk"));
+	assert.ok(messages.some((message) => String(message.content).includes("ACP Pipeline Thought")));
+	assert.ok(messages.some((message) => String(message.content).includes("thinking chunk")));
+});
+
+test("PipelineController verbose activity still reports non-text session updates", async () => {
+	const workspace = createTempWorkspace();
+
+	const messages: Array<{ content: unknown; details?: { kind?: string } }> = [];
+	const runner: PipelineAgentRunner = async (input) => {
+		input.onSessionUpdate?.({
+			sessionId: "s1",
+			update: {
+				sessionUpdate: "tool_call",
+				rawInput: {},
+				status: "pending",
+				toolCallId: "tool-1",
+				title: "Tool",
+				kind: "read",
+				content: [],
+			},
+		} as SessionNotification);
 		if (input.agentName === "Pi Agent") {
 			return "<proposed_plan>Implement the feature.</proposed_plan>";
 		}
@@ -749,7 +822,7 @@ test("PipelineController verbose activity relays session updates", async () => {
 
 	assert.ok(messages.some((message) => message.details?.kind === "verbose-status"));
 	assert.ok(messages.some((message) => message.details?.kind === "verbose-session-update"));
-	assert.ok(messages.some((message) => String(message.content).includes("debug chunk")));
+	assert.ok(messages.some((message) => String(message.content).includes("tool_call")));
 });
 
 test("PipelineController sends compact heartbeat during long-running activity", async () => {
@@ -776,6 +849,86 @@ test("PipelineController sends compact heartbeat during long-running activity", 
 	await controller.runPipeline("plan-execute-verify", "add tests");
 
 	assert.ok(messages.some((message) => message.details?.kind === "activity-heartbeat"));
+	assert.ok(messages.some((message) => String(message.content).includes("Agent updates: 0; text chunks: 0; thought chunks: 0.")));
+	assert.ok(messages.some((message) => String(message.content).includes("/pipeline status")));
+});
+
+test("PipelineController heartbeat reports agent update counters without chunk text", async () => {
+	const workspace = createTempWorkspace();
+
+	const messages: Array<{
+		content: unknown;
+		details?: {
+			kind?: string;
+			sessionUpdateCount?: number;
+			agentTextChunkCount?: number;
+			agentThoughtChunkCount?: number;
+		};
+	}> = [];
+	let finishRun: (() => void) | undefined;
+	const runner: PipelineAgentRunner = async (input) => {
+		input.onSessionUpdate?.(textChunk("s1", "hidden chunk"));
+		await new Promise<void>((resolve) => {
+			finishRun = resolve;
+		});
+		return "<proposed_plan>Implement the feature.</proposed_plan>";
+	};
+	const controller = new PipelineController(
+		workspace,
+		{
+			sendMessage: (message: {
+				content: unknown;
+				details?: {
+					kind?: string;
+					sessionUpdateCount?: number;
+					agentTextChunkCount?: number;
+					agentThoughtChunkCount?: number;
+				};
+			}) => {
+				messages.push(message);
+			},
+		} as any,
+		{
+			runner: { run: runner },
+			heartbeatIntervalMs: 5,
+		},
+	);
+
+	const run = controller.runPipeline("plan-execute-verify", "add tests");
+	while (!messages.some((message) => message.details?.kind === "activity-heartbeat")) {
+		await setImmediate();
+	}
+	finishRun?.();
+	await run;
+
+	const heartbeat = messages.find((message) => message.details?.kind === "activity-heartbeat");
+	assert.equal(heartbeat?.details?.sessionUpdateCount, 1);
+	assert.equal(heartbeat?.details?.agentTextChunkCount, 1);
+	assert.equal(heartbeat?.details?.agentThoughtChunkCount, 0);
+	assert.match(String(heartbeat?.content), /Agent updates: 1; text chunks: 1; thought chunks: 0\./);
+	assert.ok(messages.some((message) => String(message.content).includes("hidden chunk")));
+});
+
+test("/pipeline status reports active pipeline diagnostics", async () => {
+	const notifications: string[] = [];
+	const controller = {
+		formatActivitySnapshot: () => [
+			"Active pipeline session: session-1",
+			"Current activity: implement (Vibe)",
+			"Agent updates received: 0",
+			"Agent thought chunks received: 0",
+			"Last agent update: none yet",
+		].join("\n"),
+	} as unknown as PipelineController;
+
+	await handlePipelineCommand(
+		"status",
+		commandContext(createTempWorkspace(), notifications),
+		controller,
+	);
+
+	assert.match(notifications[0], /implement \(Vibe\)/);
+	assert.match(notifications[0], /Agent updates received: 0/);
 });
 
 test("parseRunArgs prefers the longest configured pipeline name", () => {
@@ -1173,6 +1326,16 @@ function textChunk(sessionId: string, text: string): SessionNotification {
 		sessionId,
 		update: {
 			sessionUpdate: "agent_message_chunk",
+			content: { type: "text", text },
+		},
+	};
+}
+
+function thoughtChunk(sessionId: string, text: string): SessionNotification {
+	return {
+		sessionId,
+		update: {
+			sessionUpdate: "agent_thought_chunk",
 			content: { type: "text", text },
 		},
 	};

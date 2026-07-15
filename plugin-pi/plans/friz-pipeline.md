@@ -2,7 +2,7 @@
 
 ## Contexte
 
-Quand l'utilisateur lance `/pipeline run <pipeline> <prompt>` (ou le tool `run_pipeline`), l'UI de pi **semble se figer** : plus aucun retour, la commande ne rend pas la main, parfois indéfiniment. Ce document explique **pourquoi** à partir du code actuel de `plugin-pi` et `@acp-client/pipeline`, puis propose un plan de correction décision-complet.
+Quand l'utilisateur lance `/pipeline run <pipeline> <prompt>` (ou le tool `run_pipeline`), l'UI de pi peut **sembler se figer** ou rester bloquée indéfiniment si un appel ACP ne revient jamais. Ce document explique **pourquoi** à partir du code actuel de `plugin-pi` et `@acp-client/pipeline`, puis propose un plan de correction décision-complet.
 
 Le cheminement d'exécution concerné :
 
@@ -16,15 +16,17 @@ commands.handlePipelineCommand (handler asynchrone, await)
                            └─ EphemeralAcpRunner.runAgent (await)
                                 ├─ defaultAcpConnector : spawn child process
                                 ├─ connection.initialize() (await JSON-RPC)
+                                ├─ connection.newSession() / authenticate() (await JSON-RPC/UI)
                                 └─ connection.prompt()   (await JSON-RPC, peut durer des minutes)
 ```
 
-Tout ce chemin est **une chaîne d'`await` bloquants** tenue par le handler de commande pi. Tant que `prompt()` ne résout pas, la commande ne rend pas la main.
+Tout ce chemin est **une chaîne d'`await` longs** tenue par le handler de commande pi. Le code courant remonte déjà des statuts, du streaming agent et un heartbeat via `PipelineController`, ce qui limite le freeze perçu. En revanche, si `initialize()`, `newSession()`, `authenticate()`, `prompt()` ou une interaction UI ne résout jamais, la commande ne rend pas la main.
 
 ## Scope
 
 - Diagnostiquer et corriger les causes de gel perçu et réel de `/pipeline`.
-- Couvrir : absence de timeout, non-propagation de la mort du process enfant, absence de feedback UI en streaming, blocage permission/auth, recréation du controller en cours de run.
+- Couvrir : absence de timeout, non-propagation de la mort du process enfant, blocage permission/auth, recréation du controller en cours de run.
+- Vérifier et consolider le feedback UI existant (`status`, `session-update`, heartbeat), sans le reconstruire de zéro.
 
 ## Out of scope
 
@@ -36,11 +38,11 @@ Tout ce chemin est **une chaîne d'`await` bloquants** tenue par le handler de c
 
 ## Causes racines identifiées
 
-### 1. Aucun timeout sur `initialize()` et `prompt()` (cause principale de gel infini)
+### 1. Aucun timeout sur les appels ACP longs (cause principale de gel infini)
 
-**Fichier** : `src/acp/ephemeralRunner.ts:119-136`
+**Fichiers** : `src/acp/connectionManager.ts:68-81`, `src/acp/ephemeralRunner.ts:141-156`, `src/acp/authHandler.ts`
 
-`connection.initialize()` puis `connection.prompt()` sont attendus **sans aucun délai maximal**. Si l'agent ACP enfant met 10 minutes à répondre, le handler pi reste bloqué 10 minutes sans rendre la main. Aujourd'hui, seul un `AbortController` explicite (cancel/dispose) peut interrompre ; aucun timeout automatique n'existe.
+`connection.initialize()`, `connection.newSession()`, `connection.authenticate()` et `connection.prompt()` sont attendus **sans aucun délai maximal**. Si l'agent ACP enfant met 10 minutes à répondre, le handler pi reste actif 10 minutes. S'il ne répond jamais, le run reste suspendu. Aujourd'hui, seul un `AbortController` explicite (cancel/dispose) peut tenter d'interrompre ; aucun timeout automatique n'existe.
 
 ```ts
 const response = await connected.connInfo.connection.prompt({ sessionId, prompt: [...] });
@@ -51,23 +53,24 @@ const response = await connected.connInfo.connection.prompt({ sessionId, prompt:
 
 **Fichiers** : `src/acp/agentProcess.ts:50-54`, `src/acp/connectionManager.ts:65-78`, `src/acp/ephemeralRunner.ts`
 
-`AgentProcessManager` écoute `child.on('close')` et `child.on('error')` mais **ne fait que logger + émettre un event**. Rien ne rejette la promesse en cours sur `connection.initialize()` ou `connection.prompt()`.
+`AgentProcessManager` écoute `child.on('close')` et `child.on('error')` mais **ne fait que logger + émettre un event**. Rien ne rejette la promesse en cours sur `connection.initialize()`, `connection.newSession()`, `connection.authenticate()` ou `connection.prompt()`.
 
 Conséquence : si l'agent crashe (exit non zéro, ENOENT, SIGSEGV, OOM) pendant l'initialize ou le prompt, le stream ndJson ne reçoit jamais de réponse → l'`await` **ne résout jamais** → `/pipeline` reste figé **indéfiniment**. Le `finally` de `runAgent` ne s'exécute pas non plus (la promesse est pendante), donc le listener abort et le handler restent attachés.
 
 C'est le scénario "gel total" le plus grave : pas même un message d'erreur.
 
-### 3. Aucun feedback UI pendant l'exécution (gel *perçu*)
+### 3. Feedback UI existant mais à conserver/tester (gel *perçu*)
 
-**Fichier** : `src/runtime/pipelineController.ts:62-76`, `src/runtime/commands.ts:43-48`
+**Fichier** : `src/runtime/pipelineController.ts`
 
 - `plan-ready` → `sendDisplayMessage` (affiché).
-- `status` → **logger uniquement** (`this.options.logger?.log`), jamais remonté à l'UI pi.
-- `session-update` (chunks de texte de l'agent) → transmis à `input.onSessionUpdate` côté engine, mais **le controller ne les forward pas à pi** (`PipelineController` n'écoute même pas `session-update`).
+- `status` → `handleStatusEvent` → `sendDisplayMessage`.
+- `session-update` → `handleSessionUpdateEvent` → chunks bufferisés/throttlés.
+- Heartbeat toutes les 15s par défaut quand aucune activité récente n'est vue.
 
-Résultat : pendant toute la phase planner (potentiellement longue), l'utilisateur ne voit **rien**. Pas de spinner, pas de chunks, pas de statut. → Impression de freeze même si le pipeline travaille normalement.
+Le risque initial "aucun feedback" est donc **déjà partiellement corrigé dans le code courant**. Le plan ne doit pas réimplémenter cette couche, mais la couvrir par tests et vérifier que les messages apparaissent bien dans les phases longues.
 
-on veut un feedback en streaming pour que l'utilisateur voie que le pipeline avance. 
+Le gel perçu peut encore exister pendant les phases sans événement agent avant le premier statut visible, ou si le handler de commande pi empêche réellement toute interaction malgré les `sendMessage`.
 
 ### 4. Le handler de commande pi bloque sur un `await` long sans rendre la main
 
@@ -124,23 +127,28 @@ Note : `if (!ctx?.hasUI) return CANCELLED` couvre le cas headless, mais pas le c
 
 ### Étape 1 — Propager la mort du process enfant vers les promesses JSON-RPC (priorité BLOQUANTE)
 
-**Problème** : cause #2. Un agent qui crashe pendant `initialize`/`prompt` => gel infini.
+**Problème** : cause #2. Un agent qui crashe pendant `initialize`/`newSession`/`authenticate`/`prompt` => gel infini.
 
-**Décision** : introduire un garde-fou dans `EphemeralAcpRunner.runAgent` qui rejette toute promesse en cours quand le process enfant se termine anormalement.
+**Décision** : introduire un garde-fou de cycle de vie process au plus près du process enfant. Le connector/`ConnectionManager` doit l'utiliser pendant `initialize()`, puis exposer le même garde à `EphemeralAcpRunner` pour `newSession()`, `authenticate()` et `prompt()`.
 
 **Changements** :
 
-- Dans `defaultConnector` (ou `EphemeralAcpRunner`), exposer l'`AgentProcessManager` / le `ChildProcess` au runner afin qu'il puisse attacher un listener `close`/`error` **qui rejette la promesse en cours**.
-- Concrètement : créer une `Promise` gardée (`let initializeReject`, `let promptReject`) et, sur `close`/`error` du child avant fin, appeler le reject courant avec une `AgentProcessDiedError(code|signal)`.
+- Créer un garde typé côté `defaultAcpConnector`, par exemple `processExit: Promise<AgentProcessExit>` ou `onProcessDied(listener): Disposable`, branché sur les événements `agent-error` / `agent-closed` de `AgentProcessManager`.
+- Utiliser ce garde **dans `ConnectionManager.connect()` ou dans `defaultAcpConnector` autour de `connectionManager.connect(...)`** pour couvrir `initialize()`, qui se produit avant le retour de `ConnectedAcpAgent`.
+- Étendre `ConnectedAcpAgent` avec le même garde pour les phases suivantes. Éviter d'exposer directement `ChildProcess` au runner sauf nécessité.
+- `sandcastleConnector` expose le même contrat si son process bridge peut mourir pendant un appel ACP.
+- Concrètement : wrapper chaque appel long (`initialize`, `newSession`, `authenticate`, `prompt`) avec un helper `withProcessGuard(processGuard, label, promise)` qui `Promise.race` la promesse JSON-RPC avec une promesse rejetée à la mort du process.
+- L'erreur doit être explicite : `AgentProcessDiedError(agentName, code, signal, phase)`.
 - Nettoyer ces listeners dans le `finally` existant.
-- Alternative plus propre : wrapper `connection.initialize()` et `connection.prompt()` dans un helper `withProcessGuard(child, promise)` qui `Promise.race` la promesse JSON-RPC avec une promesse qui reject à la mort du child.
 
 **Fichiers** :
 
 - `src/acp/ephemeralRunner.ts`
-- `src/acp/defaultConnector.ts` (exposer le child / un hook `onProcessDied`)
+- `src/acp/connectionManager.ts` ou `src/acp/defaultConnector.ts` pour garder `initialize()`
+- `src/acp/defaultConnector.ts` (exposer un hook/process guard typé)
 - `src/acp/agentProcess.ts` (exposer un event typé `died` exploitable, déjà émet `agent-closed`/`agent-error`)
-- Nouveau test : simuler un child qui exit(code=1) pendant `initialize` → `runAgent` rejette rapidement (sous 1s), pas de pendage.
+- `src/acp/sandcastleConnector.ts` si le bridge doit participer au même contrat.
+- Nouveau test : simuler un child qui exit(code=1) pendant `initialize` et pendant `prompt` → `runAgent` rejette rapidement (sous 1s), pas de promesse pendante.
 
 **Critères d'acceptation** :
 
@@ -150,58 +158,70 @@ Note : `if (!ctx?.hasUI) return CANCELLED` couvre le cas headless, mais pas le c
 
 ---
 
-### Étape 2 — Ajouter un timeout par step (initialize + prompt) (priorité BLOQUANTE)
+### Étape 2 — Ajouter des timeouts sur les appels ACP/UI longs (priorité BLOQUANTE)
 
 **Problème** : cause #1. Aucune borne temporelle.
 
-**Décision** : ajouter un timeout configurable sur `initialize` et `prompt`, implémenté via `AbortController` temporisé branché sur le `signal` existant de l'input + rejet par timeout.
+**Décision** : ajouter des timeouts configurables sur `initialize`, `newSession`, `authenticate`, `prompt`, les permissions et la promotion/auth UI. Implémenter via `Promise.race` + cleanup/cancel, en respectant le `signal` existant de l'input.
 
 **Changements** :
 
-- `EphemeralAcpRunnerOptions` : ajouter `timeouts?: { initializeMs?: number; promptMs?: number }` (défauts : initialize 30s, prompt 10min, surchargeables par config).
-- Dans `runAgent`, créer un `AbortController` local combiné (parent = `input.signal`, + timer) ; utiliser `AbortSignal.any([input.signal, timeoutSignal])` (Node ≥ 22 OK).
-- Sur timeout : appeler `connected.connInfo.connection.cancel({ sessionId })`, `dispose()`, et rejeter avec `PipelineTimeoutError` (reconnue comme non-abort pour ne pas être silenciée — ou gérée explicitement dans `PipelineRunEngine` qui déjà gère `isRunAbortedError`).
+- `EphemeralAcpRunnerOptions` : ajouter `timeouts?: { initializeMs?: number; newSessionMs?: number; authenticateMs?: number; promptMs?: number; permissionMs?: number; authUiMs?: number; promotionUiMs?: number }`.
+- Défauts proposés : initialize 30s, newSession 30s, authenticate 2min, prompt 10min, permission 5min, auth UI 10min, promotion UI 10min.
+- Introduire un helper commun `withTimeout(label, ms, promise, onTimeout?)`.
+- Sur timeout de `prompt` : appeler `connected.connInfo.connection.cancel({ sessionId })` si `sessionId` existe, puis `dispose()`, puis rejeter avec `PipelineTimeoutError`.
+- Sur timeout de `initialize`/`newSession`/`authenticate` : `dispose()` et rejeter avec `PipelineTimeoutError`.
+- Le timeout doit être distingué d'un abort utilisateur : il ne doit pas être masqué par `isRunAbortedError`.
 - Propager le timeout côté `PipelineController`/config (`.pi/.acp/acp-agents.json` ou `config.ts`) avec valeurs par défaut saines.
-- Brancher aussi le timer sur `createSessionWithAuth` (auth flow borné).
+- Brancher les timeouts UI dans `PermissionHandler`, `SessionAuthHandler` et la promotion Sandcastle (`requestSandcastlePromotion`).
 
 **Fichiers** :
 
 - `src/acp/ephemeralRunner.ts`
+- `src/acp/connectionManager.ts`
+- `src/acp/permissionHandler.ts`
+- `src/acp/authHandler.ts`
 - `src/catalog/config.ts` (lecture `timeouts`)
 - `src/runtime/pipelineController.ts` (passer options)
-- Test : prompt qui ne répond jamais → rejet après `promptMs`, process tué, run marqué `error`/`cancelled`.
+- Test : prompt qui ne répond jamais → rejet après `promptMs`, process tué, run marqué `error`.
+- Test : `newSession` ou `authenticate` qui ne répond jamais → rejet après timeout.
 
 **Critères d'acceptation** :
 
 - Un agent silencieux est interrompu après le timeout configuré.
 - Le process enfant est tué (SIGTERM puis SIGKILL après 5s via `killAgent`).
+- Timeout visible comme erreur explicite et non comme annulation utilisateur.
 - `npm test` vert + nouveau test timeout.
 
 ---
 
-### Étape 3 — Remonter le streaming et les statuts à l'UI pi (priorité HAUTE, gel perçu)
+### Étape 3 — Consolider le feedback UI existant (priorité HAUTE, gel perçu)
 
-**Problème** : cause #3 et #4. L'utilisateur ne voit rien pendant l'exécution.
+**Problème** : cause #3 et #4. Le code courant remonte déjà les statuts, chunks et heartbeats, mais cette garantie doit être protégée par tests et vérifiée contre le vrai contrat de commande Pi.
 
-**Décision** : `PipelineController` écoute `session-update` (chunks) et `status`, et les forward à pi via `pi.sendMessage` (display) / `ctx.ui.notify`.
+**Décision** : ne pas réimplémenter le streaming. Ajouter des tests de non-régression et vérifier si le handler `/pipeline run` peut rester `await` avec `sendMessage` streaming, ou doit rendre la main immédiatement.
 
 **Changements** :
 
-- Dans le constructeur de `PipelineController`, ajouter un listener `this.service.on('session-update', ...)` qui envoie un message display incrémental (chunks de l'agent). Throttle/debounce pour ne pas spammer (ex. batch tous les 200ms ou toutes les N lignes).
-- Transformer le listener `status` pour qu'en plus du logger il émette un `pi.sendMessage` display (statut `running`/`planning`/`implementing`).
-- Option : rendre le handler `/pipeline run` non bloquant en lançant le run en arrière-plan (`void controller.runPipeline(...)` sans await) et en notifiant via `sendMessage` à la fin. **Décision** : d'abord garder l'await mais avec streaming ; n'asyncifier que si le contrat pi l'exige (à vérifier dans la doc pi). Si le handler doit rendre la main, alors asyncifier + notifier.
+- Ajouter/mettre à jour les tests `PipelineController` :
+  - `status` actif → `pi.sendMessage` avec `kind: activity-status`.
+  - `session-update` texte → buffer flush + `pi.sendMessage` avec `agent-message-chunk` / `agent-thought-chunk`.
+  - absence d'update pendant `heartbeatIntervalMs` → message heartbeat.
+- Vérifier manuellement dans Pi que `sendMessage(display: true)` s'affiche pendant que le command handler est encore en `await`.
+- Si Pi ne rend pas l'UI interactive malgré les messages : transformer `/pipeline run` en run arrière-plan avec registre de session, notification finale et erreurs envoyées via `sendMessage`.
 
 **Fichiers** :
 
 - `src/runtime/pipelineController.ts`
 - `src/runtime/commands.ts` (éventuellement asyncifier)
-- `src/acp/sessionUpdateHandler.ts` (vérifier le forward des chunks)
+- Tests runtime associés.
 
 **Critères d'acceptation** :
 
 - Pendant un run, l'utilisateur voit les chunks de l'agent s'afficher en continu.
 - Les transitions de statut (`planning`, `implementing`, `reviewing`) sont visibles.
 - Pas de spam UI (throttle respecté).
+- Le heartbeat apparaît pendant les phases longues sans chunk.
 
 ---
 
@@ -251,7 +271,7 @@ Note : `if (!ctx?.hasUI) return CANCELLED` couvre le cas headless, mais pas le c
 
 **Critères d'acceptation** :
 
-- Une permission/anth qui n'aboutit pas ne gèle plus le pipeline.
+- Une permission/auth qui n'aboutit pas ne gèle plus le pipeline.
 - Comportement annulable via `/pipeline cancel`.
 
 ---
@@ -286,9 +306,9 @@ Note : `if (!ctx?.hasUI) return CANCELLED` couvre le cas headless, mais pas le c
 ## Test Plan
 
 - `npm test` (plugin-pi) : tests existants verts + nouveaux tests :
-  - `ephemeralRunner` : child exit pendant initialize → rejet rapide (étape 1).
-  - `ephemeralRunner` : prompt sans réponse → timeout (étape 2).
-  - `pipelineController` : forwarding `session-update`/`status` à `sendMessage` (étape 3).
+  - `ephemeralRunner`/`connectionManager` : child exit pendant initialize/newSession/prompt → rejet rapide (étape 1).
+  - `ephemeralRunner`/`connectionManager`/`authHandler` : prompt, newSession ou authenticate sans réponse → timeout (étape 2).
+  - `pipelineController` : forwarding `session-update`/`status` + heartbeat à `sendMessage` (étape 3).
   - `index` : multi-cwd sans interruption croisée (étape 4).
   - `permissionHandler`/`authHandler` : timeout → `CANCELLED` (étape 5).
   - `agentProcess` : `loginShell: false` par défaut (étape 6).
@@ -298,11 +318,13 @@ Note : `if (!ctx?.hasUI) return CANCELLED` couvre le cas headless, mais pas le c
 ## Risques
 
 - Timeout trop court sur de gros pipelines légitimes → valeurs par défaut généreuses (prompt 10min) + surchargeable.
-- Asyncification du handler (étape 3 option) peut changer le contrat pi → vérifier doc pi avant ; sinon garder await + streaming.
+- Asyncification du handler (étape 3 option) peut changer le contrat pi → vérifier le comportement réel Pi avant ; sinon garder await + streaming existant.
 - `AbortSignal.any` nécessite Node ≥ 20 (OK, `engines` = `>=22.19.0`).
 - Multi-controller (étape 4) : veiller à disposer pour éviter fuite de processes enfants.
+- Exposer directement `ChildProcess` depuis le connector augmenterait le couplage ; préférer un contrat typé `processExit`/`onProcessDied`.
 
 ## Vérification initiale (référence)
 
-- Code lu : `src/runtime/{commands,pipelineController,tool}.ts`, `src/acp/{ephemeralRunner,defaultConnector,connectionManager,agentProcess,permissionHandler,authHandler}.ts`, `src/index.ts`, `@acp-client/pipeline` `PipelineService`/`PipelineRunEngine`/`PipelineExecutor`.
-- Aucun fichier modifié par ce plan (document de plan uniquement).
+- Code relu le 2026-07-15 : `src/runtime/{commands,pipelineController,tool}.ts`, `src/acp/{ephemeralRunner,defaultConnector,connectionManager,agentProcess,permissionHandler,authHandler}.ts`, `src/index.ts`, `@acp-client/pipeline` `PipelineService`/`PipelineRunEngine`/`PipelineExecutor`.
+- Mise à jour importante : `PipelineController` contient déjà le forwarding `status`/`session-update` et un heartbeat. Le plan actualisé traite ce point comme consolidation/test, pas comme fonctionnalité absente.
+- Aucun code modifié par ce plan (document de plan uniquement).

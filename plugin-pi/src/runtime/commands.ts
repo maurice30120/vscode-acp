@@ -31,6 +31,10 @@ export async function handlePipelineCommand(
       ctx.ui.notify(list, 'info');
       return;
     }
+    case 'status': {
+      ctx.ui.notify(controller.formatActivitySnapshot(), 'info');
+      return;
+    }
     case 'run': {
       const parsed = parseRunArgs(
         rest,
