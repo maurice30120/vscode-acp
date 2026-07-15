@@ -17,9 +17,18 @@ import { getPiPluginRoot } from './pluginRoot.js';
 const CONFIG_PATH = path.join('.pi', '.acp', 'acp-agents.json');
 const SANDCASTLE_CONFIG_PATH = path.join('.pi', '.acp', '.sandcastle', 'config.json');
 const DEFAULT_INSTRUCTIONS_MAX_BYTES = 256 * 1024;
-const SANDCASTLE_PROVIDERS = new Set<string>(['codex', 'cursor']);
+const SANDCASTLE_PROVIDERS = new Set<string>(['codex', 'cursor', 'pi', 'vibe']);
 const SANDCASTLE_EFFORTS = new Set<string>(['low', 'medium', 'high', 'xhigh']);
 const SANDCASTLE_PROMOTIONS = new Set<string>(['ask', 'autoApply', 'autoReject']);
+const TIMEOUT_KEYS = [
+  'initializeMs',
+  'newSessionMs',
+  'authenticateMs',
+  'promptMs',
+  'permissionMs',
+  'authUiMs',
+  'promotionUiMs',
+] as const;
 
 export function loadPiAcpConfig(_workspaceCwd: string, pluginRoot = getPiPluginRoot()): PiAcpConfig {
   const filePath = path.join(pluginRoot, CONFIG_PATH);
@@ -87,8 +96,8 @@ export function parsePiAcpConfig(text: string, filePath = CONFIG_PATH): PiAcpCon
   };
 }
 
-export function loadSandcastleConfig(workspaceCwd: string): SandcastleConfig {
-  const filePath = path.join(workspaceCwd, SANDCASTLE_CONFIG_PATH);
+export function loadSandcastleConfig(_workspaceCwd: string, pluginRoot = getPiPluginRoot()): SandcastleConfig {
+  const filePath = path.join(pluginRoot, SANDCASTLE_CONFIG_PATH);
   if (!fs.existsSync(filePath)) {
     return emptySandcastleConfig(filePath, []);
   }
@@ -138,7 +147,7 @@ export function parseSandcastleConfig(text: string, filePath = SANDCASTLE_CONFIG
 
 export function loadPiAgentCatalog(workspaceCwd: string, pluginRoot = getPiPluginRoot()): PiAgentCatalog {
   const native = loadPiAcpConfig(workspaceCwd, pluginRoot);
-  const sandcastle = loadSandcastleConfig(workspaceCwd);
+  const sandcastle = loadSandcastleConfig(workspaceCwd, pluginRoot);
   const agents: Record<string, PiAgentConfigEntry> = { ...native.agents };
   const errors = [...native.errors, ...sandcastle.errors];
 
@@ -216,6 +225,7 @@ function parseAgent(
     command: value.command.trim(),
     args,
     env,
+    loginShell: typeof value.loginShell === 'boolean' ? value.loginShell : undefined,
     displayName: typeof value.displayName === 'string' ? value.displayName : undefined,
     use_idea_mcp: typeof value.use_idea_mcp === 'boolean' ? value.use_idea_mcp : undefined,
     use_custom_mcp: typeof value.use_custom_mcp === 'boolean' ? value.use_custom_mcp : undefined,
@@ -276,7 +286,7 @@ function readSandcastleProvider(
   if (typeof value === 'string' && SANDCASTLE_PROVIDERS.has(value)) {
     return value as SandcastleProvider;
   }
-  errors.push(`${scope} must be "codex" or "cursor".`);
+  errors.push(`${scope} must be "codex", "cursor", "pi", or "vibe".`);
   return null;
 }
 
@@ -336,7 +346,37 @@ function parsePipelineConfig(value: unknown, errors: string[]) {
             return DEFAULT_INSTRUCTIONS_MAX_BYTES;
           })();
 
-  return { enabled, instructionsMaxBytes };
+  const timeouts = parseTimeoutConfig(value.timeouts, errors);
+
+  return { enabled, instructionsMaxBytes, ...(timeouts ? { timeouts } : {}) };
+}
+
+function parseTimeoutConfig(value: unknown, errors: string[]) {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    errors.push('pipeline.timeouts must be an object when provided.');
+    return undefined;
+  }
+
+  const result: Record<string, number> = {};
+  for (const key of TIMEOUT_KEYS) {
+    const timeoutValue = value[key];
+    if (timeoutValue === undefined) {
+      continue;
+    }
+    if (
+      typeof timeoutValue !== 'number'
+      || !Number.isInteger(timeoutValue)
+      || timeoutValue <= 0
+    ) {
+      errors.push(`pipeline.timeouts.${key} must be a positive integer.`);
+      continue;
+    }
+    result[key] = timeoutValue;
+  }
+  return Object.keys(result).length === 0 ? undefined : result;
 }
 
 function readStringArray(value: unknown, scope: string, errors: string[]): string[] | null {

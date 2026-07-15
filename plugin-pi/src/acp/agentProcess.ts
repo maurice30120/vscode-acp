@@ -8,6 +8,7 @@ export interface ProcessAgentConfig {
   command: string;
   args?: string[];
   env?: Record<string, string>;
+  loginShell?: boolean;
 }
 
 export interface AgentInstance {
@@ -15,6 +16,13 @@ export interface AgentInstance {
   name: string;
   process: ChildProcess;
   config: ProcessAgentConfig;
+}
+
+export interface AgentProcessExit {
+  agentId: string;
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  error?: Error;
 }
 
 export class AgentProcessManager extends EventEmitter {
@@ -95,10 +103,52 @@ export class AgentProcessManager extends EventEmitter {
   }
 }
 
+export function observeAgentProcessExit(instance: AgentInstance): Promise<AgentProcessExit> {
+  if (
+    typeof instance.process.once !== 'function'
+    || typeof instance.process.off !== 'function'
+  ) {
+    return new Promise(() => {});
+  }
+  return new Promise(resolve => {
+    let settled = false;
+    const settle = (exit: AgentProcessExit): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve(exit);
+    };
+    const onError = (error: Error): void => {
+      settle({
+        agentId: instance.id,
+        code: null,
+        signal: null,
+        error,
+      });
+    };
+    const onClose = (code: number | null, signal: NodeJS.Signals | null): void => {
+      settle({
+        agentId: instance.id,
+        code,
+        signal,
+      });
+    };
+    const cleanup = (): void => {
+      instance.process.off('error', onError);
+      instance.process.off('close', onClose);
+    };
+    instance.process.once('error', onError);
+    instance.process.once('close', onClose);
+  });
+}
+
 function spawnUnix(config: ProcessAgentConfig, cwd: string | undefined, logger?: Logger): ChildProcess {
   const { shell, useLoginFlag } = resolveUnixShell(logger);
   const commandStr = [config.command, ...(config.args ?? [])].map(shellEscape).join(' ');
-  const shellArgs = useLoginFlag ? ['-l', '-c', commandStr] : ['-c', commandStr];
+  const loginShell = config.loginShell ?? false;
+  const shellArgs = useLoginFlag && loginShell ? ['-l', '-c', commandStr] : ['-c', commandStr];
   logger?.log(`Using shell: ${shell} ${shellArgs.join(' ')}`);
   return spawn(shell, shellArgs, {
     stdio: ['pipe', 'pipe', 'pipe'],

@@ -15,7 +15,7 @@ primitives:
       {{userPrompt}}
 
   implementer:
-    agent: Vibe
+    agent: Vibe Sandcastle
     output: markdown
     sideEffects: workspace
     prompt: |

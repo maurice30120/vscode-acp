@@ -97,6 +97,7 @@ test("parsePiAcpConfig rejects invalid agent and pipeline fields", () => {
 				Good: {
 					transport: "acp",
 					command: "  codex  ",
+					loginShell: true,
 					displayName: "Codex",
 					use_idea_mcp: true,
 					use_custom_mcp: false,
@@ -106,6 +107,10 @@ test("parsePiAcpConfig rejects invalid agent and pipeline fields", () => {
 			pipeline: {
 				enabled: "yes",
 				instructionsMaxBytes: 0,
+				timeouts: {
+					promptMs: 1234,
+					newSessionMs: -1,
+				},
 			},
 		}),
 	);
@@ -113,14 +118,17 @@ test("parsePiAcpConfig rejects invalid agent and pipeline fields", () => {
 	assert.deepEqual(Object.keys(config.agents), ["Good"]);
 	assert.equal(config.agents.Good.command, "codex");
 	assert.equal(config.agents.Good.transport, "acp");
+	assert.equal(config.agents.Good.loginShell, true);
 	assert.equal(config.agents.Good.skills, false);
 	assert.equal(config.pipeline.enabled, true);
 	assert.equal(config.pipeline.instructionsMaxBytes, 262144);
+	assert.equal(config.pipeline.timeouts?.promptMs, 1234);
 	assert.match(config.errors.join("\n"), /BadArgs\.args/);
 	assert.match(config.errors.join("\n"), /BadEnv\.env\.TOKEN/);
 	assert.match(config.errors.join("\n"), /BadTransport\.transport/);
 	assert.match(config.errors.join("\n"), /pipeline\.enabled/);
 	assert.match(config.errors.join("\n"), /pipeline\.instructionsMaxBytes/);
+	assert.match(config.errors.join("\n"), /pipeline\.timeouts\.newSessionMs/);
 });
 
 test("rejects sandcastle agents in native Pi config and points to dedicated file", () => {
@@ -155,6 +163,16 @@ test("parseSandcastleConfig validates dedicated Sandcastle config", () => {
 					env: { FOO: "bar" },
 					skills: false,
 				},
+				"Pi Sandcastle": {
+					transport: "sandcastle",
+					provider: "pi",
+					model: "claude-sonnet-4-6",
+				},
+				"Vibe Sandcastle": {
+					transport: "sandcastle",
+					provider: "vibe",
+					model: "mistral-large-latest",
+				},
 			},
 		}),
 	);
@@ -168,6 +186,8 @@ test("parseSandcastleConfig validates dedicated Sandcastle config", () => {
 	assert.equal(config.agents["Codex Sandcastle"].displayName, "Codex in Sandcastle");
 	assert.deepEqual(config.agents["Codex Sandcastle"].env, { FOO: "bar" });
 	assert.equal(config.agents["Codex Sandcastle"].skills, false);
+	assert.equal(config.agents["Pi Sandcastle"].provider, "pi");
+	assert.equal(config.agents["Vibe Sandcastle"].provider, "vibe");
 });
 
 test("parseSandcastleConfig reports explicit field errors", () => {
@@ -202,8 +222,9 @@ test("parseSandcastleConfig reports explicit field errors", () => {
 
 test("loadSandcastleConfig missing file is an empty non-regression", () => {
 	const workspace = createTempWorkspace();
+	const pluginRoot = createTempWorkspace();
 
-	const config = loadSandcastleConfig(workspace);
+	const config = loadSandcastleConfig(workspace, pluginRoot);
 
 	assert.deepEqual(config.errors, []);
 	assert.deepEqual(config.agents, {});
@@ -215,7 +236,7 @@ test("loadPiAgentCatalog keeps native and Sandcastle agents disjoint but combine
 	const pluginRoot = createTempWorkspace();
 	writeDefaultConfig(pluginRoot);
 	writeFile(
-		workspace,
+		pluginRoot,
 		".pi/.acp/.sandcastle/config.json",
 		JSON.stringify({
 			promotion: "autoReject",
@@ -243,7 +264,7 @@ test("duplicate native and Sandcastle agent names are errors and make pipelines 
 	const pluginRoot = createTempWorkspace();
 	writeDefaultConfig(pluginRoot);
 	writeFile(
-		workspace,
+		pluginRoot,
 		".pi/.acp/.sandcastle/config.json",
 		JSON.stringify({
 			promotion: "ask",

@@ -3,6 +3,7 @@ import type {
   RequestPermissionResponse,
 } from '@agentclientprotocol/sdk';
 
+import { PipelineTimeoutError, withTimeout } from './operationGuards.js';
 import type { PiPermissionContext } from '../types.js';
 
 const CANCELLED: RequestPermissionResponse = { outcome: { outcome: 'cancelled' } };
@@ -10,7 +11,7 @@ const CANCELLED: RequestPermissionResponse = { outcome: { outcome: 'cancelled' }
 export class PermissionHandler {
   constructor(
     private readonly getContext: () => PiPermissionContext | undefined,
-    private readonly options: { autoApproveAll?: boolean } = {},
+    private readonly options: { autoApproveAll?: boolean; timeoutMs?: number } = {},
   ) {}
 
   async requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
@@ -32,10 +33,22 @@ export class PermissionHandler {
     }
 
     const labels = params.options.map(option => `${option.name} [${option.kind}]`);
-    const selected = await ctx.ui.select(
-      params.toolCall?.title ?? 'ACP permission request',
-      labels,
-    );
+    let selected: string | undefined;
+    try {
+      selected = await withTimeout(
+        'permission',
+        this.options.timeoutMs ?? 300_000,
+        ctx.ui.select(
+          params.toolCall?.title ?? 'ACP permission request',
+          labels,
+        ),
+      );
+    } catch (error: unknown) {
+      if (error instanceof PipelineTimeoutError) {
+        return CANCELLED;
+      }
+      throw error;
+    }
     if (!selected) {
       return CANCELLED;
     }

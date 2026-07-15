@@ -1,8 +1,9 @@
 import { fileURLToPath } from 'node:url';
 
-import { AgentProcessManager, type ProcessAgentConfig } from './agentProcess.js';
+import { AgentProcessManager, observeAgentProcessExit, type ProcessAgentConfig } from './agentProcess.js';
 import { ConnectionManager, type ConnectionInfo } from './connectionManager.js';
 import { type ConnectedAcpAgent } from './defaultConnector.js';
+import type { PartialAcpOperationTimeouts } from './operationGuards.js';
 import { SessionUpdateHandler } from './sessionUpdateHandler.js';
 import type { Logger, PiPermissionContext, SandcastleAgentConfig } from '../types.js';
 
@@ -12,6 +13,7 @@ export interface SandcastleConnectorInput {
   workspaceCwd: string;
   sessionUpdateHandler: SessionUpdateHandler;
   getPermissionContext: () => PiPermissionContext | undefined;
+  timeouts?: PartialAcpOperationTimeouts;
   logger?: Logger;
 }
 
@@ -29,16 +31,17 @@ export function buildSandcastleBridgeProcessConfig(config: SandcastleAgentConfig
   if (config.effort) {
     args.push('--effort', config.effort);
   }
+  const env = {
+    ...(config.env ?? {}),
+    ACP_SANDCASTLE_IMAGE: config.env?.ACP_SANDCASTLE_IMAGE
+      ?? process.env.ACP_SANDCASTLE_IMAGE
+      ?? 'acp-client-sandcastle:local',
+  };
 
   return {
     command: process.execPath,
     args,
-    env: {
-      ...(config.env ?? {}),
-      ACP_SANDCASTLE_IMAGE: config.env?.ACP_SANDCASTLE_IMAGE
-        ?? process.env.ACP_SANDCASTLE_IMAGE
-        ?? 'acp-client-sandcastle:local',
-    },
+    env,
   };
 }
 
@@ -48,15 +51,17 @@ export const sandcastleConnector: SandcastleConnector = async (input) => {
     logger: input.logger,
     getPermissionContext: input.getPermissionContext,
     autoApprovePermissions: true,
+    timeouts: input.timeouts,
   });
 
   const processConfig = buildSandcastleBridgeProcessConfig(input.config);
   const agentInstance = agentManager.spawnAgent(input.agentName, processConfig, input.workspaceCwd);
   const agentId = agentInstance.id;
+  const processExit = observeAgentProcessExit(agentInstance);
 
   let connInfo: ConnectionInfo;
   try {
-    connInfo = await connectionManager.connect(agentId, agentInstance.process, input.workspaceCwd);
+    connInfo = await connectionManager.connect(agentId, agentInstance.process, input.workspaceCwd, processExit);
   } catch (e: unknown) {
     agentManager.killAgent(agentId);
     connectionManager.dispose();
@@ -69,5 +74,5 @@ export const sandcastleConnector: SandcastleConnector = async (input) => {
     input.sessionUpdateHandler.dispose();
   };
 
-  return { agentId, connInfo, dispose };
+  return { agentId, connInfo, processExit, dispose };
 };

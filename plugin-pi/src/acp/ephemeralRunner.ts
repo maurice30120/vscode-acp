@@ -15,6 +15,13 @@ import {
 	type AcpConnector,
 	type ConnectedAcpAgent,
 } from "./defaultConnector.js";
+import {
+	PipelineTimeoutError,
+	resolveTimeouts,
+	withProcessGuard,
+	withTimeout,
+	type PartialAcpOperationTimeouts,
+} from "./operationGuards.js";
 import { RunAbortedError } from "./runAbortedError.js";
 import {
 	sandcastleConnector,
@@ -55,6 +62,7 @@ export interface EphemeralAcpRunnerOptions {
 	requestSandcastlePromotion?: (
 		request: SandcastlePromotionRequest,
 	) => Promise<SandcastlePromotionDecision>;
+	timeouts?: PartialAcpOperationTimeouts;
 	logger?: Logger;
 }
 
@@ -148,12 +156,28 @@ export class EphemeralAcpRunner {
 			sessionId = session.sessionId;
 			throwIfAborted();
 
-			const response = await connected.connInfo.connection.prompt({
-				sessionId,
-				prompt: [
-					{ type: "text", text: this.composeRunnerPrompt(input, config) },
-				],
-			});
+			const response = await withProcessGuard(
+				"prompt",
+				connected.processExit,
+				withTimeout(
+					"prompt",
+					resolveTimeouts(this.options.timeouts).promptMs,
+					connected.connInfo.connection.prompt({
+						sessionId,
+						prompt: [
+							{ type: "text", text: this.composeRunnerPrompt(input, config) },
+						],
+					}),
+					async () => {
+						try {
+							await connected?.connInfo.connection.cancel({ sessionId: sessionId ?? "" });
+						} catch (e: unknown) {
+							this.options.logger?.error("Ephemeral ACP timeout cancel failed", e);
+						}
+						dispose();
+					},
+				),
+			);
 			this.throwIfCancelled(response, input.signal);
 			const promotion = await this.finishSandcastleRun(
 				config,
@@ -195,6 +219,7 @@ export class EphemeralAcpRunner {
 			sessionUpdateHandler,
 			getPermissionContext:
 				this.options.getPermissionContext ?? (() => undefined),
+			timeouts: this.options.timeouts,
 			logger: this.options.logger,
 		};
 		if (isSandcastleConfig(config)) {
@@ -218,25 +243,42 @@ export class EphemeralAcpRunner {
 	): Promise<{ sessionId: string }> {
 		throwIfAborted();
 		try {
-			return await connected.connInfo.connection.newSession({
-				cwd: workspaceCwd,
-				mcpServers: [],
-			});
+			return await this.newSession(connected, workspaceCwd);
 		} catch (e: unknown) {
 			const authHandler = new SessionAuthHandler(
 				() => connected.dispose(),
 				this.options.getPermissionContext ?? (() => undefined),
+				{
+					timeouts: this.options.timeouts,
+					processExit: connected.processExit,
+				},
 			);
 			if (!authHandler.isAuthRequiredError(e)) {
 				throw e;
 			}
 			await authHandler.runAuthFlow(agentName, agentId, connected.connInfo);
 			throwIfAborted();
-			return connected.connInfo.connection.newSession({
-				cwd: workspaceCwd,
-				mcpServers: [],
-			});
+			return this.newSession(connected, workspaceCwd);
 		}
+	}
+
+	private async newSession(
+		connected: ConnectedAcpAgent,
+		workspaceCwd: string,
+	): Promise<{ sessionId: string }> {
+		return withProcessGuard(
+			"newSession",
+			connected.processExit,
+			withTimeout(
+				"newSession",
+				resolveTimeouts(this.options.timeouts).newSessionMs,
+				connected.connInfo.connection.newSession({
+					cwd: workspaceCwd,
+					mcpServers: [],
+				}),
+				() => connected.dispose(),
+			),
+		);
 	}
 
 	private throwIfCancelled(
@@ -344,7 +386,17 @@ export class EphemeralAcpRunner {
 		preview: SandcastlePreview,
 	): Promise<SandcastlePromotionDecision> {
 		if (this.options.requestSandcastlePromotion) {
-			return this.options.requestSandcastlePromotion({ agentName, sessionId, preview });
+			return withTimeout(
+				"sandcastle-promotion-ui",
+				resolveTimeouts(this.options.timeouts).promotionUiMs,
+				this.options.requestSandcastlePromotion({ agentName, sessionId, preview }),
+				() => undefined,
+			).catch(error => {
+				if (error instanceof PipelineTimeoutError) {
+					return "cancelled";
+				}
+				throw error;
+			});
 		}
 		return "cancelled";
 	}

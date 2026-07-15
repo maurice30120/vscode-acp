@@ -9,7 +9,7 @@ Aujourd'hui, `plugin-pi` ne sait exécuter que des agents ACP **natifs** (`trans
 
 ## Solution
 
-Ajouter à `plugin-pi` le transport Sandcastle (Docker + worktree jetable) en l'exécutant comme un **run éphémère** : un process *bridge ACP* né et mort pour ce run, parlant ACP sur stdio, spawné à la demande. La config Sandcastle vit dans un fichier séparé (`.pi/.acp/.sandcastle/config.json`) ; la promotion des changements de la sandbox vers le workspace réutilise le **canal d'approbation pipeline existant** (ADR-0005) plutôt que d'en inventer un nouveau. `plugin-pi` reste une implémentation autonome : le code utile est porté depuis `plugin-vscode` par duplication intentionnelle (ADR-0008), sans dépendance au plugin vscode.
+Ajouter à `plugin-pi` le transport Sandcastle (Docker + worktree jetable) en l'exécutant comme un **run éphémère** : un process *bridge ACP* né et mort pour ce run, parlant ACP sur stdio, spawné à la demande. La config Sandcastle est embarquée dans le plugin (`plugin-pi/.pi/.acp/.sandcastle/config.json`) ; la promotion des changements de la sandbox vers le workspace réutilise le **canal d'approbation pipeline existant** (ADR-0005) plutôt que d'en inventer un nouveau. `plugin-pi` reste une implémentation autonome : le code utile est porté depuis `plugin-vscode` par duplication intentionnelle (ADR-0008), sans dépendance au plugin vscode.
 
 ## User Stories
 
@@ -37,7 +37,7 @@ Ajouter à `plugin-pi` le transport Sandcastle (Docker + worktree jetable) en l'
 22. En tant qu'utilisateur Pi, je veux qu'au moment de l'approbation du plan (avant l'implémentation), un message distinct m'indique « approuver avant implémentation Sandcastle » quand l'implémenteur est Sandcastle, de sorte que je sache que je m'engage à promouvoir un run sandbox.
 23. En tant qu'utilisateur Pi, je veux que la détention du runtime ACP standard (initialize/prompt/cancel/session-update/AbortSignal) soit identique pour un run Sandcastle et un run natif, de sorte qu'il n'y ait qu'un seul modèle de run côté Pi.
 24. En tant qu'utilisateur Pi, je veux qu'un agent natif existant continue de fonctionner à l'identique après l'ajout de Sandcastle, de sorte que rien ne régresse pour les pipelines actuels.
-25. En tant qu'utilisateur Pi, je veux que l'absence de `.pi/.acp/.sandcastle/config.json` ne change rien au comportement natif, de sorte que les workspaces sans Sandcastle soient ignorants de la feature.
+25. En tant qu'utilisateur Pi, je veux que la config Sandcastle soit embarquée dans le plugin, de sorte que les workspaces n'aient pas besoin de fournir `.pi/.acp/.sandcastle/config.json` pour utiliser Sandcastle.
 26. En tant qu'utilisateur Pi, je veux que l'annulation d'un run Sandcastle (AbortSignal, ADR-0006) démolisse le process bridge et la sandbox en cours, de sorte qu'aucun état zombie ne subsiste.
 27. En tant qu'utilisateur Pi, je veux que les permissions ACP demandées par le bridge Sandcastle soient auto-approuvées, de sorte que le bridge puisse piloter la sandbox sans interrompre l'utilisateur.
 28. En tant qu'utilisateur Pi, je veux que la promotion ne soit jamais interactive via une fenêtre VS Code (Pi n'en a pas), de sorte que tout le voyage d'approbation passe par le canal pipeline Pi.
@@ -58,7 +58,7 @@ Ajouter à `plugin-pi` le transport Sandcastle (Docker + worktree jetable) en l'
     "agents": {
       "Codex Sandcastle": {
         "transport": "sandcastle",             // requis — discriminant, jamais implicite
-        "provider": "codex",                   // "codex" | "cursor"
+        "provider": "codex",                   // "codex" | "cursor" | "pi" | "vibe"
         "model": "gpt-5",
         "effort": "medium",                    // "low"|"medium"|"high"|"xhigh", optionnel
         "displayName": "...",                  // optionnel

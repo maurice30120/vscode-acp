@@ -52,7 +52,7 @@ Ajouter le support des agents `transport: "sandcastle"` dans `plugin-pi`, en s'i
 ## Test Plan
 
 - Config/catalogue :
-  - config Sandcastle absente : comportement natif inchangé.
+  - config Sandcastle embarquée absente : comportement natif inchangé.
   - config Sandcastle valide : agents fusionnés et utilisables dans un pipeline.
   - provider/model/effort/promotion invalides : erreurs explicites.
   - agent Sandcastle dans `acp-agents.json` : rejet avec chemin correct.

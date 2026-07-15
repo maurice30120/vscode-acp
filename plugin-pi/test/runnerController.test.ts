@@ -6,12 +6,17 @@ import { PipelineService, type PipelineAgentRunner } from "@acp-client/pipeline"
 import type { SessionNotification } from "@agentclientprotocol/sdk";
 
 import { EphemeralAcpRunner } from "../src/acp/ephemeralRunner.js";
+import {
+	AgentProcessDiedError,
+	PipelineTimeoutError,
+} from "../src/acp/operationGuards.js";
 import { RunAbortedError } from "../src/acp/runAbortedError.js";
 import {
 	handlePipelineCommand,
 	parseRunArgs,
 	registerPipelineCommand,
 } from "../src/runtime/commands.js";
+import acpPipelinePiExtension from "../src/index.js";
 import { PipelineController } from "../src/runtime/pipelineController.js";
 import { registerRunPipelineTool } from "../src/runtime/tool.js";
 import {
@@ -465,6 +470,133 @@ test("EphemeralAcpRunner throws RunAbortedError when prompt response is cancelle
 	assert.equal(disposed, true);
 });
 
+test("EphemeralAcpRunner times out an unresponsive prompt and disposes the process", async () => {
+	const workspace = createTempWorkspace();
+	let disposed = false;
+	let cancelCalled = false;
+	let resolvePrompt!: (value: { stopReason: "end_turn" }) => void;
+	const runner = new EphemeralAcpRunner(workspace, {
+		getAgentConfigs: () => ({ "Codex CLI": { command: "codex" } }),
+		timeouts: { promptMs: 5 },
+		connector: async () => ({
+			agentId: "agent_1",
+			connInfo: {
+				initResponse: {},
+				client: undefined,
+				connection: {
+					newSession: async () => ({ sessionId: "s1" }),
+					prompt: async () =>
+						new Promise<{ stopReason: "end_turn" }>(resolve => {
+							resolvePrompt = resolve;
+						}),
+					cancel: async () => {
+						cancelCalled = true;
+					},
+					authenticate: async () => ({}),
+				},
+			} as any,
+			dispose: () => {
+				disposed = true;
+			},
+		}),
+	});
+
+	await assert.rejects(
+		() =>
+			runner.runAgent({
+				workspaceCwd: workspace,
+				agentName: "Codex CLI",
+				promptText: "prompt",
+			}),
+		PipelineTimeoutError,
+	);
+	resolvePrompt({ stopReason: "end_turn" });
+	assert.equal(cancelCalled, true);
+	assert.equal(disposed, true);
+});
+
+test("EphemeralAcpRunner times out an unresponsive newSession", async () => {
+	const workspace = createTempWorkspace();
+	let disposed = false;
+	let resolveNewSession!: (value: { sessionId: string }) => void;
+	const runner = new EphemeralAcpRunner(workspace, {
+		getAgentConfigs: () => ({ "Codex CLI": { command: "codex" } }),
+		timeouts: { newSessionMs: 5 },
+		connector: async () => ({
+			agentId: "agent_1",
+			connInfo: {
+				initResponse: {},
+				client: undefined,
+				connection: {
+					newSession: async () =>
+						new Promise<{ sessionId: string }>(resolve => {
+							resolveNewSession = resolve;
+						}),
+					prompt: async () => ({ stopReason: "end_turn" }),
+					cancel: async () => {},
+					authenticate: async () => ({}),
+				},
+			} as any,
+			dispose: () => {
+				disposed = true;
+			},
+		}),
+	});
+
+	await assert.rejects(
+		() =>
+			runner.runAgent({
+				workspaceCwd: workspace,
+				agentName: "Codex CLI",
+				promptText: "prompt",
+			}),
+		PipelineTimeoutError,
+	);
+	resolveNewSession({ sessionId: "s1" });
+	assert.equal(disposed, true);
+});
+
+test("EphemeralAcpRunner rejects when the process dies during prompt", async () => {
+	const workspace = createTempWorkspace();
+	let processDied!: (exit: { agentId: string; code: number; signal: null }) => void;
+	let resolvePrompt!: (value: { stopReason: "end_turn" }) => void;
+	const processExit = new Promise<any>(resolve => {
+		processDied = resolve;
+	});
+	const runner = new EphemeralAcpRunner(workspace, {
+		getAgentConfigs: () => ({ "Codex CLI": { command: "codex" } }),
+		connector: async () => ({
+			agentId: "agent_1",
+			processExit,
+			connInfo: {
+				initResponse: {},
+				client: undefined,
+				connection: {
+					newSession: async () => ({ sessionId: "s1" }),
+					prompt: async () =>
+						new Promise<{ stopReason: "end_turn" }>(resolve => {
+							resolvePrompt = resolve;
+						}),
+					cancel: async () => {},
+					authenticate: async () => ({}),
+				},
+			} as any,
+			dispose: () => {},
+		}),
+	});
+
+	const promise = runner.runAgent({
+		workspaceCwd: workspace,
+		agentName: "Codex CLI",
+		promptText: "prompt",
+	});
+	await setImmediate();
+	processDied({ agentId: "agent_1", code: 1, signal: null });
+
+	await assert.rejects(promise, AgentProcessDiedError);
+	resolvePrompt({ stopReason: "end_turn" });
+});
+
 test("EphemeralAcpRunner retries newSession after auth flow", async () => {
 	const workspace = createTempWorkspace();
 	let newSessionCalls = 0;
@@ -582,7 +714,7 @@ test("/pipeline run then approve executes planner and implementer", async () => 
 		if (input.agentName === "Pi Agent") {
 			return "<proposed_plan>Implement the feature.</proposed_plan>";
 		}
-		if (input.agentName === "Vibe") {
+		if (input.agentName === "Vibe Sandcastle") {
 			return "implementation done";
 		}
 		return "implementation done";
@@ -603,11 +735,11 @@ test("/pipeline run then approve executes planner and implementer", async () => 
 	await handlePipelineCommand("run plan-execute-verify add tests", ctx, controller);
 	await handlePipelineCommand("approve", ctx, controller);
 
-	assert.deepEqual(calls, ["Pi Agent", "Vibe", "OpenCode"]);
+	assert.deepEqual(calls, ["Pi Agent", "Vibe Sandcastle", "OpenCode"]);
 	assert.match(notifications.join("\n"), /plan ready/i);
 	assert.ok(messages.length >= 2);
 	assert.ok(messages.some((message) => String(message.content).includes("ACP Pipeline Plan")));
-	assert.ok(!messages.some((message) => String(message.content).includes("Sandcastle implementation")));
+	assert.ok(messages.some((message) => String(message.content).includes("Sandcastle implementation")));
 	assert.ok(messages.some((message) => String(message.content).includes("implementation done")));
 });
 
@@ -719,6 +851,9 @@ test("PipelineController activity relays agent message chunks", async () => {
 	assert.ok(messages.some((message) => message.details?.kind === "activity-status"));
 	assert.ok(messages.some((message) => message.details?.kind === "agent-message-chunk"));
 	assert.ok(messages.some((message) => String(message.content).includes("generated chunk")));
+	assert.ok(messages.some((message) => String(message.content).includes("Agent: Pi Agent")));
+	assert.ok(messages.some((message) => String(message.content).includes("Step: plan")));
+	assert.ok(messages.some((message) => /^Phase: \S+/m.test(String(message.content))));
 });
 
 test("PipelineController groups adjacent agent message chunks", async () => {
@@ -779,7 +914,7 @@ test("PipelineController activity relays agent thought chunks", async () => {
 	await controller.runPipeline("plan-execute-verify", "add tests");
 
 	assert.ok(messages.some((message) => message.details?.kind === "agent-thought-chunk"));
-	assert.ok(messages.some((message) => String(message.content).includes("ACP Pipeline Thought")));
+	assert.ok(messages.some((message) => String(message.content).includes("ACP Pipeline Agent Thread")));
 	assert.ok(messages.some((message) => String(message.content).includes("thinking chunk")));
 });
 
@@ -825,7 +960,7 @@ test("PipelineController verbose activity still reports non-text session updates
 	assert.ok(messages.some((message) => String(message.content).includes("tool_call")));
 });
 
-test("PipelineController sends compact heartbeat during long-running activity", async () => {
+test("PipelineController keeps heartbeat internal during long-running activity", async () => {
 	const workspace = createTempWorkspace();
 
 	const messages: Array<{ content: unknown; details?: { kind?: string } }> = [];
@@ -848,12 +983,11 @@ test("PipelineController sends compact heartbeat during long-running activity", 
 
 	await controller.runPipeline("plan-execute-verify", "add tests");
 
-	assert.ok(messages.some((message) => message.details?.kind === "activity-heartbeat"));
-	assert.ok(messages.some((message) => String(message.content).includes("Agent updates: 0; text chunks: 0; thought chunks: 0.")));
-	assert.ok(messages.some((message) => String(message.content).includes("/pipeline status")));
+	assert.ok(!messages.some((message) => message.details?.kind === "activity-heartbeat"));
+	assert.ok(messages.some((message) => message.details?.kind === "activity-status"));
 });
 
-test("PipelineController heartbeat reports agent update counters without chunk text", async () => {
+test("PipelineController status reports agent update counters without duplicating chunk text", async () => {
 	const workspace = createTempWorkspace();
 
 	const messages: Array<{
@@ -895,17 +1029,24 @@ test("PipelineController heartbeat reports agent update counters without chunk t
 	);
 
 	const run = controller.runPipeline("plan-execute-verify", "add tests");
-	while (!messages.some((message) => message.details?.kind === "activity-heartbeat")) {
+	let snapshot = "";
+	for (let attempts = 0; attempts < 50; attempts += 1) {
+		snapshot = controller.formatActivitySnapshot();
+		if (snapshot.includes("Agent updates received: 1")) {
+			break;
+		}
 		await setImmediate();
 	}
 	finishRun?.();
 	await run;
 
-	const heartbeat = messages.find((message) => message.details?.kind === "activity-heartbeat");
-	assert.equal(heartbeat?.details?.sessionUpdateCount, 1);
-	assert.equal(heartbeat?.details?.agentTextChunkCount, 1);
-	assert.equal(heartbeat?.details?.agentThoughtChunkCount, 0);
-	assert.match(String(heartbeat?.content), /Agent updates: 1; text chunks: 1; thought chunks: 0\./);
+	assert.ok(!messages.some((message) => message.details?.kind === "activity-heartbeat"));
+	assert.match(snapshot, /Agent updates received: 1/);
+	assert.match(snapshot, /Agent text chunks received: 1/);
+	assert.match(snapshot, /Agent thought chunks received: 0/);
+	assert.match(snapshot, /Agent threads:/);
+	assert.match(snapshot, /Pi Agent:/);
+	assert.ok(!snapshot.includes("hidden chunk"));
 	assert.ok(messages.some((message) => String(message.content).includes("hidden chunk")));
 });
 
@@ -1161,6 +1302,40 @@ test("registerRunPipelineTool returns completed output details", async () => {
 		output: "default:add tests",
 		awaitingApproval: false,
 	});
+});
+
+test("extension keeps one PipelineController per cwd across session_start events", async () => {
+	const originalDispose = PipelineController.prototype.dispose;
+	const disposed: string[] = [];
+	const handlers = new Map<string, (event: unknown, ctx: { cwd: string }) => unknown>();
+
+	PipelineController.prototype.dispose = function patchedDispose(this: PipelineController) {
+		disposed.push((this as any).workspaceCwd);
+		return Promise.resolve();
+	};
+
+	try {
+		acpPipelinePiExtension({
+			on: (event: string, handler: (event: unknown, ctx: { cwd: string }) => unknown) => {
+				handlers.set(event, handler);
+			},
+			registerCommand: () => {},
+			registerTool: () => {},
+			sendMessage: () => {},
+		} as any);
+
+		const workspaceA = createTempWorkspace();
+		const workspaceB = createTempWorkspace();
+		handlers.get("session_start")?.({}, { cwd: workspaceA });
+		handlers.get("session_start")?.({}, { cwd: workspaceB });
+
+		assert.deepEqual(disposed, []);
+
+		await handlers.get("session_shutdown")?.({}, { cwd: workspaceA });
+		assert.deepEqual(disposed.sort(), [workspaceA, workspaceB].sort());
+	} finally {
+		PipelineController.prototype.dispose = originalDispose;
+	}
 });
 
 test("EphemeralAcpRunner prefixes the prompt with the filtered skills catalog", async () => {

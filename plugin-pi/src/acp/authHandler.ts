@@ -1,12 +1,23 @@
 import { RequestError } from '@agentclientprotocol/sdk';
 
 import type { ConnectionInfo } from './connectionManager.js';
+import {
+  resolveTimeouts,
+  withProcessGuard,
+  withTimeout,
+  type PartialAcpOperationTimeouts,
+} from './operationGuards.js';
 import type { PiPermissionContext } from '../types.js';
+import type { AgentProcessExit } from './agentProcess.js';
 
 export class SessionAuthHandler {
   constructor(
     private readonly killAgent: (agentId: string) => void,
     private readonly getPermissionContext: () => PiPermissionContext | undefined,
+    private readonly options: {
+      timeouts?: PartialAcpOperationTimeouts;
+      processExit?: Promise<AgentProcessExit>;
+    } = {},
   ) {}
 
   isAuthRequiredError(error: unknown): boolean {
@@ -35,7 +46,12 @@ export class SessionAuthHandler {
     let selectedMethod = authMethods[0];
     if (authMethods.length > 1) {
       const labels = authMethods.map(method => `${method.name} [${method.id}]`);
-      const selected = await ctx.ui.select(`${agentName} authentication`, labels);
+      const selected = await withTimeout(
+        'auth-ui',
+        resolveTimeouts(this.options.timeouts).authUiMs,
+        ctx.ui.select(`${agentName} authentication`, labels),
+        () => this.killAgent(agentId),
+      );
       if (!selected) {
         this.killAgent(agentId);
         throw new Error('Authentication cancelled by user.');
@@ -43,9 +59,14 @@ export class SessionAuthHandler {
       const index = labels.indexOf(selected);
       selectedMethod = authMethods[index] ?? authMethods[0];
     } else {
-      const ok = await ctx.ui.confirm(
-        `${agentName} authentication`,
-        `Authenticate with "${selectedMethod.name}"?${selectedMethod.description ? `\n${selectedMethod.description}` : ''}`,
+      const ok = await withTimeout(
+        'auth-ui',
+        resolveTimeouts(this.options.timeouts).authUiMs,
+        ctx.ui.confirm(
+          `${agentName} authentication`,
+          `Authenticate with "${selectedMethod.name}"?${selectedMethod.description ? `\n${selectedMethod.description}` : ''}`,
+        ),
+        () => this.killAgent(agentId),
       );
       if (!ok) {
         this.killAgent(agentId);
@@ -53,7 +74,16 @@ export class SessionAuthHandler {
       }
     }
 
-    await connInfo.connection.authenticate({ methodId: selectedMethod.id });
+    await withProcessGuard(
+      'authenticate',
+      this.options.processExit,
+      withTimeout(
+        'authenticate',
+        resolveTimeouts(this.options.timeouts).authenticateMs,
+        connInfo.connection.authenticate({ methodId: selectedMethod.id }),
+        () => this.killAgent(agentId),
+      ),
+    );
   }
 }
 

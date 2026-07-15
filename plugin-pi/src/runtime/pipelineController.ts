@@ -46,6 +46,7 @@ export class PipelineController {
   private verbose = false;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private lastActivityAt = 0;
+  private lastHeartbeatAt = 0;
   private lastActivityLabel = 'pipeline activity';
   private activityStartedAt = 0;
   private lastSessionUpdateAt = 0;
@@ -54,6 +55,8 @@ export class PipelineController {
   private agentThoughtChunkCount = 0;
   private lastSessionUpdateKind = '';
   private readonly streamBuffers = new Map<string, PipelineStreamBuffer>();
+  private readonly agentThreads = new Map<string, PipelineAgentThread>();
+  private readonly stepAgentNames = new Map<string, string>();
 
   constructor(
     private readonly workspaceCwd: string,
@@ -65,6 +68,7 @@ export class PipelineController {
     this.runner = options.runner ?? new EphemeralAcpRunner(workspaceCwd, {
       getPermissionContext: () => this.permissionContext,
       getAgentConfigs: () => loadPiAgentCatalog(this.workspaceCwd).agents,
+      timeouts: loadPiAgentCatalog(this.workspaceCwd).native.pipeline.timeouts,
       getSandcastlePromotion: () => loadPiAgentCatalog(this.workspaceCwd).sandcastle.promotion,
       requestSandcastlePromotion: request => this.requestSandcastlePromotion(request),
       logger: options.logger,
@@ -235,6 +239,13 @@ export class PipelineController {
       `Agent text chunks received: ${this.agentTextChunkCount}`,
       `Agent thought chunks received: ${this.agentThoughtChunkCount}`,
     ];
+    const threadSummary = this.formatAgentThreadSummary();
+    if (threadSummary) {
+      lines.push('', 'Agent threads:', threadSummary);
+    }
+    if (this.lastHeartbeatAt > 0) {
+      lines.push(`Last internal heartbeat: ${this.formatDuration(Date.now() - this.lastHeartbeatAt)} ago`);
+    }
     if (this.lastSessionUpdateAt > 0) {
       lines.push(`Last agent update: ${this.formatDuration(Date.now() - this.lastSessionUpdateAt)} ago (${this.lastSessionUpdateKind || 'unknown'})`);
     } else {
@@ -314,6 +325,9 @@ export class PipelineController {
     }
 
     this.flushSessionStreamBuffers(event.sessionId);
+    if (event.stepId && event.agentName) {
+      this.stepAgentNames.set(this.getStepAgentKey(event.stepId, event.branchId), event.agentName);
+    }
     this.lastActivityAt = Date.now();
     this.lastActivityLabel = this.formatActivityLabel(event);
     this.activityStartedAt = this.lastActivityAt;
@@ -350,6 +364,7 @@ export class PipelineController {
     this.sessionUpdateCount += 1;
     this.lastSessionUpdateKind = event.update.update.sessionUpdate;
     const textUpdate = this.extractSessionUpdateText(event.update);
+    this.recordAgentThreadEvent(event, textUpdate);
     if (textUpdate?.kind === 'agent_message_chunk') {
       this.agentTextChunkCount += 1;
     }
@@ -388,6 +403,9 @@ export class PipelineController {
     this.agentTextChunkCount = 0;
     this.agentThoughtChunkCount = 0;
     this.lastSessionUpdateKind = '';
+    this.agentThreads.clear();
+    this.stepAgentNames.clear();
+    this.lastHeartbeatAt = 0;
     this.lastActivityLabel = 'pipeline activity';
     this.heartbeatTimer = setInterval(() => {
       if (!this.activeSessionId || this.activeSessionId !== sessionId) {
@@ -398,22 +416,8 @@ export class PipelineController {
       if (idleMs < this.heartbeatIntervalMs) {
         return;
       }
-      this.lastActivityAt = Date.now();
-      this.sendDisplayMessage(
-        'ACP Pipeline Activity',
-        this.formatHeartbeatMessage(),
-        {
-          kind: 'activity-heartbeat',
-          sessionId,
-          lastActivityLabel: this.lastActivityLabel,
-          activityElapsedMs: Date.now() - this.activityStartedAt,
-          sessionUpdateCount: this.sessionUpdateCount,
-          agentTextChunkCount: this.agentTextChunkCount,
-          agentThoughtChunkCount: this.agentThoughtChunkCount,
-          lastSessionUpdateKind: this.lastSessionUpdateKind || undefined,
-          lastSessionUpdateAgoMs: this.lastSessionUpdateAt > 0 ? Date.now() - this.lastSessionUpdateAt : undefined,
-        },
-      );
+      this.lastHeartbeatAt = Date.now();
+      this.options.logger?.log(this.formatHeartbeatMessage());
     }, this.heartbeatIntervalMs);
   }
 
@@ -456,11 +460,12 @@ export class PipelineController {
         details: {
           kind: textUpdate.detailKind,
           sessionId: event.sessionId,
+          agentThreadKey: this.getAgentThreadKey(event),
           phase: event.phase,
           stepId: event.stepId,
           branchId: event.branchId,
           role: event.role,
-          agentName: event.agentName,
+          agentName: this.resolveAgentName(event),
           teamId: event.teamId,
           updateKind: textUpdate.kind,
         },
@@ -516,11 +521,21 @@ export class PipelineController {
       return;
     }
 
-    this.sendDisplayMessage(buffer.title, this.formatStreamChunkMessage(text), buffer.details);
+    this.sendDisplayMessage(buffer.title, this.formatStreamChunkMessage(buffer, text), buffer.details);
   }
 
-  private formatStreamChunkMessage(text: string): string {
-    return this.normalizeStreamText(text);
+  private formatStreamChunkMessage(buffer: PipelineStreamBuffer, text: string): string {
+    const context = [
+      `Agent: ${String(buffer.details.agentName || buffer.details.role || 'unknown')}`,
+      `Step: ${String(buffer.details.stepId || 'pipeline')}`,
+      `Phase: ${String(buffer.details.phase || 'unknown')}`,
+      `Update: ${String(buffer.details.updateKind || 'unknown')}`,
+    ];
+    const branchId = buffer.details.branchId;
+    if (branchId) {
+      context.splice(2, 0, `Branch: ${String(branchId)}`);
+    }
+    return `${context.join('\n')}\n\n${this.normalizeStreamText(text)}`;
   }
 
   private formatStreamTitle(
@@ -529,7 +544,8 @@ export class PipelineController {
   ): string {
     const label = this.formatActivityLabel(event);
     const streamLabel = textUpdate.kind === 'agent_thought_chunk' ? 'Thought' : 'Output';
-    return `ACP Pipeline ${streamLabel} · ${label}`;
+    const actor = this.resolveAgentName(event) ?? 'unknown agent';
+    return `ACP Pipeline Agent Thread · ${actor} · ${streamLabel} · ${label}`;
   }
 
   private getStreamBufferKey(
@@ -542,7 +558,7 @@ export class PipelineController {
       event.stepId ?? '',
       event.branchId ?? '',
       event.role ?? '',
-      event.agentName ?? '',
+      this.resolveAgentName(event) ?? '',
       textUpdate.kind,
     ].join('\u0000');
   }
@@ -565,8 +581,71 @@ export class PipelineController {
       lines.push('Last agent update: none yet.');
     }
     lines.push(`Agent updates: ${this.sessionUpdateCount}; text chunks: ${this.agentTextChunkCount}; thought chunks: ${this.agentThoughtChunkCount}.`);
+    const threadSummary = this.formatAgentThreadSummary();
+    if (threadSummary) {
+      lines.push('Agent threads:');
+      lines.push(threadSummary);
+    }
     lines.push('Use /pipeline verbose on to show raw agent chunks, or /pipeline status for a snapshot.');
     return lines.join('\n');
+  }
+
+  private recordAgentThreadEvent(
+    event: PipelineSessionUpdateEvent,
+    textUpdate: ExtractedSessionText | null,
+  ): void {
+    const key = this.getAgentThreadKey(event);
+    const agentName = this.resolveAgentName(event);
+    const thread = this.agentThreads.get(key) ?? {
+      key,
+      label: agentName ?? event.role ?? event.stepId ?? event.phase,
+      updates: 0,
+      textChunks: 0,
+      thoughtChunks: 0,
+      toolUpdates: 0,
+      steps: new Set<string>(),
+      phases: new Set<string>(),
+      lastKind: '',
+      lastAt: 0,
+    };
+    thread.updates += 1;
+    thread.lastKind = event.update.update.sessionUpdate;
+    thread.lastAt = Date.now();
+    if (event.stepId) {
+      thread.steps.add(event.stepId);
+    }
+    if (event.phase) {
+      thread.phases.add(event.phase);
+    }
+    if (textUpdate?.kind === 'agent_message_chunk') {
+      thread.textChunks += 1;
+    } else if (textUpdate?.kind === 'agent_thought_chunk') {
+      thread.thoughtChunks += 1;
+    } else {
+      thread.toolUpdates += 1;
+    }
+    this.agentThreads.set(key, thread);
+  }
+
+  private getAgentThreadKey(event: Pick<PipelineSessionUpdateEvent, 'agentName' | 'role' | 'stepId' | 'branchId' | 'phase'>): string {
+    return [
+      this.resolveAgentName(event) ?? event.role ?? event.stepId ?? event.phase,
+      event.branchId ?? '',
+    ].join('\u0000');
+  }
+
+  private formatAgentThreadSummary(): string {
+    if (this.agentThreads.size === 0) {
+      return '';
+    }
+    return [...this.agentThreads.values()]
+      .sort((a, b) => a.label.localeCompare(b.label))
+      .map(thread => {
+        const stepLabel = [...thread.steps].join(', ') || 'pipeline';
+        const lastAgo = thread.lastAt > 0 ? `${this.formatDuration(Date.now() - thread.lastAt)} ago` : 'never';
+        return `- ${thread.label}: ${thread.updates} update(s), ${thread.textChunks} output chunk(s), ${thread.thoughtChunks} thought chunk(s), ${thread.toolUpdates} tool/other update(s); step(s): ${stepLabel}; last: ${thread.lastKind || 'unknown'} ${lastAgo}`;
+      })
+      .join('\n');
   }
 
   private extractSessionUpdateText(update: SessionNotification): ExtractedSessionText | null {
@@ -602,8 +681,22 @@ export class PipelineController {
     const scope = event.branchId
       ? `${event.stepId ?? 'step'}:${event.branchId}`
       : event.stepId ?? 'pipeline';
-    const actor = event.agentName ?? event.role;
+    const actor = this.resolveAgentName(event) ?? event.role;
     return actor ? `${scope} (${actor})` : scope;
+  }
+
+  private resolveAgentName(event: Pick<PipelineStatusEvent | PipelineSessionUpdateEvent, 'stepId' | 'branchId' | 'role' | 'agentName'>): string | undefined {
+    if (event.agentName) {
+      return event.agentName;
+    }
+    if (!event.stepId) {
+      return undefined;
+    }
+    return this.stepAgentNames.get(this.getStepAgentKey(event.stepId, event.branchId));
+  }
+
+  private getStepAgentKey(stepId: string, branchId?: string): string {
+    return [stepId, branchId ?? ''].join('\u0000');
   }
 
   private isTerminalStatus(status: PipelineStatusEvent['status']): boolean {
@@ -637,4 +730,17 @@ type PipelineStreamBuffer = {
   details: Record<string, unknown>;
   text: string;
   timer: ReturnType<typeof setTimeout> | null;
+};
+
+type PipelineAgentThread = {
+  key: string;
+  label: string;
+  updates: number;
+  textChunks: number;
+  thoughtChunks: number;
+  toolUpdates: number;
+  steps: Set<string>;
+  phases: Set<string>;
+  lastKind: string;
+  lastAt: number;
 };

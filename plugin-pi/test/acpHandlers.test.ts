@@ -1,6 +1,7 @@
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { PassThrough } from "node:stream";
 import { test } from "node:test";
 
 import { AgentProcessManager } from "../src/acp/agentProcess.js";
@@ -8,6 +9,10 @@ import { SessionAuthHandler } from "../src/acp/authHandler.js";
 import { ConnectionManager } from "../src/acp/connectionManager.js";
 import { defaultAcpConnector } from "../src/acp/defaultConnector.js";
 import { FileSystemHandler } from "../src/acp/fileSystemHandler.js";
+import {
+	AgentProcessDiedError,
+	PipelineTimeoutError,
+} from "../src/acp/operationGuards.js";
 import { PermissionHandler } from "../src/acp/permissionHandler.js";
 import { PiAcpClient } from "../src/acp/piAcpClient.js";
 import { buildSandcastleBridgeProcessConfig } from "../src/acp/sandcastleConnector.js";
@@ -151,6 +156,28 @@ test("PermissionHandler cancels when Pi UI selection is empty", async () => {
 	assert.deepEqual(result, { outcome: { outcome: "cancelled" } });
 });
 
+test("PermissionHandler cancels when Pi UI selection times out", async () => {
+	let resolveSelect!: (value: string | undefined) => void;
+	const handler = new PermissionHandler(
+		() =>
+			({
+				hasUI: true,
+				ui: {
+					select: async () =>
+						new Promise<string | undefined>(resolve => {
+							resolveSelect = resolve;
+						}),
+				},
+			}) as any,
+		{ timeoutMs: 5 },
+	);
+
+	const result = await handler.requestPermission(permissionParams());
+
+	resolveSelect(undefined);
+	assert.deepEqual(result, { outcome: { outcome: "cancelled" } });
+});
+
 test("SessionAuthHandler identifies ACP auth-required errors", () => {
 	const handler = new SessionAuthHandler(
 		() => {},
@@ -236,6 +263,75 @@ test("SessionAuthHandler selects among multiple auth methods", async () => {
 	} as any);
 
 	assert.deepEqual(authenticated, ["browser"]);
+});
+
+test("SessionAuthHandler times out an auth UI decision and kills the agent", async () => {
+	const killed: string[] = [];
+	let resolveConfirm!: (value: boolean) => void;
+	const handler = new SessionAuthHandler(
+		(agentId) => {
+			killed.push(agentId);
+		},
+		() =>
+			({
+				hasUI: true,
+				ui: {
+					confirm: async () =>
+						new Promise<boolean>(resolve => {
+							resolveConfirm = resolve;
+						}),
+				},
+			}) as any,
+		{ timeouts: { authUiMs: 5 } },
+	);
+
+	await assert.rejects(
+		() =>
+			handler.runAuthFlow("Codex", "agent-1", {
+				initResponse: {
+					authMethods: [{ id: "browser", name: "Browser" }],
+				},
+			} as any),
+		PipelineTimeoutError,
+	);
+	resolveConfirm(false);
+	assert.deepEqual(killed, ["agent-1"]);
+});
+
+test("SessionAuthHandler times out authenticate and kills the agent", async () => {
+	const killed: string[] = [];
+	let resolveAuthenticate!: (value: unknown) => void;
+	const handler = new SessionAuthHandler(
+		(agentId) => {
+			killed.push(agentId);
+		},
+		() =>
+			({
+				hasUI: true,
+				ui: {
+					confirm: async () => true,
+				},
+			}) as any,
+		{ timeouts: { authenticateMs: 5 } },
+	);
+
+	await assert.rejects(
+		() =>
+			handler.runAuthFlow("Codex", "agent-1", {
+				initResponse: {
+					authMethods: [{ id: "browser", name: "Browser" }],
+				},
+				connection: {
+					authenticate: async () =>
+						new Promise(resolve => {
+							resolveAuthenticate = resolve;
+						}),
+				},
+			} as any),
+		PipelineTimeoutError,
+	);
+	resolveAuthenticate({});
+	assert.deepEqual(killed, ["agent-1"]);
 });
 
 test("SessionUpdateHandler forwards updates only to current listeners", () => {
@@ -344,6 +440,59 @@ test("ConnectionManager throws when process stdio is missing", async () => {
 	);
 });
 
+test("ConnectionManager rejects initialize when the agent process exits", async () => {
+	const manager = new ConnectionManager(new SessionUpdateHandler(), {
+		getPermissionContext: () => undefined,
+		timeouts: { initializeMs: 10_000 },
+	});
+	const processExit = Promise.resolve({
+		agentId: "agent-1",
+		code: 1,
+		signal: null,
+	});
+
+	await assert.rejects(
+		() =>
+			manager.connect(
+				"agent-1",
+				{
+					stdout: new PassThrough(),
+					stdin: new PassThrough(),
+				} as any,
+				createTempWorkspace(),
+				processExit,
+			),
+		AgentProcessDiedError,
+	);
+});
+
+test("ConnectionManager times out initialize when the agent is silent", async () => {
+	const manager = new ConnectionManager(new SessionUpdateHandler(), {
+		getPermissionContext: () => undefined,
+		timeouts: { initializeMs: 5 },
+	});
+	const stdout = new PassThrough();
+	const stdin = new PassThrough();
+
+	try {
+		await assert.rejects(
+			() =>
+				manager.connect(
+					"agent-1",
+					{
+						stdout,
+						stdin,
+					} as any,
+					createTempWorkspace(),
+				),
+			PipelineTimeoutError,
+		);
+	} finally {
+		stdout.destroy();
+		stdin.destroy();
+	}
+});
+
 test("buildSandcastleBridgeProcessConfig builds node bridge command args and image env", () => {
 	const config = buildSandcastleBridgeProcessConfig({
 		transport: "sandcastle",
@@ -368,6 +517,37 @@ test("buildSandcastleBridgeProcessConfig builds node bridge command args and ima
 	]);
 	assert.equal(config.env?.FOO, "bar");
 	assert.equal(config.env?.ACP_SANDCASTLE_IMAGE, "custom:image");
+});
+
+test("buildSandcastleBridgeProcessConfig supports Pi and Vibe providers", () => {
+	const piConfig = buildSandcastleBridgeProcessConfig({
+		transport: "sandcastle",
+		provider: "pi",
+		model: "claude-sonnet-4-6",
+		effort: "high",
+	});
+	assert.deepEqual(piConfig.args?.slice(1), [
+		"--provider",
+		"pi",
+		"--model",
+		"claude-sonnet-4-6",
+		"--effort",
+		"high",
+	]);
+
+	const vibeConfig = buildSandcastleBridgeProcessConfig({
+		transport: "sandcastle",
+		provider: "vibe",
+		model: "mistral-large-latest",
+		env: { VIBE_HOME: "/tmp/vibe-home" },
+	});
+	assert.deepEqual(vibeConfig.args?.slice(1), [
+		"--provider",
+		"vibe",
+		"--model",
+		"mistral-large-latest",
+	]);
+	assert.equal(vibeConfig.env?.VIBE_HOME, "/tmp/vibe-home");
 });
 
 test("ConnectionManager removeConnection and dispose clear tracked clients", () => {

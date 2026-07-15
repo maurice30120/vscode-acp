@@ -8,7 +8,14 @@ import {
 import type { ChildProcess } from 'node:child_process';
 import { Readable, Writable } from 'node:stream';
 
+import type { AgentProcessExit } from './agentProcess.js';
 import { FileSystemHandler } from './fileSystemHandler.js';
+import {
+  resolveTimeouts,
+  withProcessGuard,
+  withTimeout,
+  type PartialAcpOperationTimeouts,
+} from './operationGuards.js';
 import { PermissionHandler } from './permissionHandler.js';
 import { PiAcpClient } from './piAcpClient.js';
 import { SessionUpdateHandler } from './sessionUpdateHandler.js';
@@ -25,6 +32,7 @@ export interface ConnectionManagerOptions {
   logger?: Logger;
   getPermissionContext: () => PiPermissionContext | undefined;
   autoApprovePermissions?: boolean;
+  timeouts?: PartialAcpOperationTimeouts;
 }
 
 export class ConnectionManager {
@@ -39,6 +47,7 @@ export class ConnectionManager {
     agentId: string,
     process: ChildProcess,
     workspaceCwd: string,
+    processExit?: Promise<AgentProcessExit>,
   ): Promise<ConnectionInfo> {
     if (!process.stdout || !process.stdin) {
       throw new Error('Agent process missing stdio streams');
@@ -57,6 +66,7 @@ export class ConnectionManager {
           new TerminalHandler(workspaceCwd),
           new PermissionHandler(this.options.getPermissionContext, {
             autoApproveAll: this.options.autoApprovePermissions,
+            timeoutMs: resolveTimeouts(this.options.timeouts).permissionMs,
           }),
           this.sessionUpdateHandler,
         );
@@ -65,20 +75,28 @@ export class ConnectionManager {
       stream,
     );
 
-    const initResponse = await connection.initialize({
-      protocolVersion: PROTOCOL_VERSION,
-      clientInfo: {
-        name: 'acp-pi-extension',
-        version: '0.0.0',
-      },
-      clientCapabilities: {
-        fs: {
-          readTextFile: true,
-          writeTextFile: true,
-        },
-        terminal: true,
-      },
-    });
+    const initResponse = await withProcessGuard(
+      'initialize',
+      processExit,
+      withTimeout(
+        'initialize',
+        resolveTimeouts(this.options.timeouts).initializeMs,
+        connection.initialize({
+          protocolVersion: PROTOCOL_VERSION,
+          clientInfo: {
+            name: 'acp-pi-extension',
+            version: '0.0.0',
+          },
+          clientCapabilities: {
+            fs: {
+              readTextFile: true,
+              writeTextFile: true,
+            },
+            terminal: true,
+          },
+        }),
+      ),
+    );
 
     if (!client) {
       throw new Error('ACP client was not initialized.');

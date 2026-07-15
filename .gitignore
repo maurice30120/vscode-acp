@@ -21,9 +21,13 @@ tsconfig.tsbuildinfo
 .pi/
 */.pi/
 .acp/
+!plugin-pi/.pi/
+!plugin-pi/.pi/**
 
 # Sandcastle local state
 .sandcastle/
+!plugin-pi/.pi/.acp/.sandcastle/
+!plugin-pi/.pi/.acp/.sandcastle/**
 
 # Lock file for locally installed skills
 skills-lock.json

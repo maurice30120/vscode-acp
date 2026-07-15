@@ -13,6 +13,7 @@ import type {
 } from "@ai-hero/sandcastle";
 
 import { parseBridgeConfig } from "../src/sandcastle/BridgeConfig.js";
+import { defaultSandcastleRuntime } from "../src/sandcastle/DefaultSandcastleRuntime.js";
 import { decidePromotionPolicy } from "../src/sandcastle/PromotionPolicy.js";
 import {
 	SandcastleBridgeAgent,
@@ -21,20 +22,64 @@ import {
 
 test("parseBridgeConfig parses provider model effort and image", () => {
 	const config = parseBridgeConfig(
-		["--provider", "codex", "--model", "gpt-5", "--effort", "xhigh"],
-		{ ACP_SANDCASTLE_IMAGE: "custom:image" },
+		["--provider", "pi", "--model", "glm-5.2", "--effort", "high"],
+		{ ACP_SANDCASTLE_IMAGE: "custom:image", FOO: "bar" },
 	);
 
 	assert.deepEqual(config, {
-		provider: "codex",
-		model: "gpt-5",
+		provider: "pi",
+		model: "claude-sonnet-4-6",
 		effort: "xhigh",
 		imageName: "custom:image",
+		env: {
+			ACP_SANDCASTLE_IMAGE: "custom:image",
+			FOO: "bar",
+		},
 	});
 	assert.throws(
 		() => parseBridgeConfig(["--provider", "other", "--model", "gpt-5"], {}),
 		/provider/,
 	);
+});
+
+test("defaultSandcastleRuntime creates Pi and Vibe providers", () => {
+	const piProvider = defaultSandcastleRuntime.createProvider({
+		provider: "pi",
+		model: "claude-sonnet-4-6",
+		effort: "high",
+		imageName: "fake",
+		env: { FOO: "bar" },
+	});
+	assert.equal(piProvider.name, "pi");
+	assert.equal(piProvider.env.FOO, "bar");
+	assert.match(
+		piProvider.buildPrintCommand({ prompt: "hello", dangerouslySkipPermissions: true }).command,
+		/pi -p --mode json --model 'claude-sonnet-4-6' --thinking high/,
+	);
+
+	const vibeProvider = defaultSandcastleRuntime.createProvider({
+		provider: "vibe",
+		model: "mistral-large-latest",
+		imageName: "fake",
+		env: { FOO: "bar" },
+	});
+	assert.equal(vibeProvider.name, "vibe");
+	assert.equal(vibeProvider.env.VIBE_ACTIVE_MODEL, "mistral-large-latest");
+	assert.equal(vibeProvider.env.FOO, "bar");
+	assert.deepEqual(vibeProvider.buildPrintCommand({
+		prompt: "hello",
+		dangerouslySkipPermissions: true,
+	}), {
+		command: "vibe -p --output streaming --trust",
+		stdin: "hello",
+	});
+	assert.deepEqual(vibeProvider.parseStreamLine(JSON.stringify({
+		role: "assistant",
+		content: "done",
+	})), [
+		{ type: "text", text: "done" },
+		{ type: "result", result: "done" },
+	]);
 });
 
 test("decidePromotionPolicy maps no changes and promotion modes", () => {

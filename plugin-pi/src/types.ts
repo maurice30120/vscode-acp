@@ -5,6 +5,7 @@ export interface NativeAcpAgentConfig {
   command: string;
   args?: string[];
   env?: Record<string, string>;
+  loginShell?: boolean;
   displayName?: string;
   use_idea_mcp?: boolean;
   use_custom_mcp?: boolean;
@@ -18,7 +19,7 @@ export interface UnsupportedSandcastleAgentConfig {
   env?: Record<string, string>;
 }
 
-export type SandcastleProvider = 'codex' | 'cursor';
+export type SandcastleProvider = 'codex' | 'cursor' | 'pi' | 'vibe';
 export type SandcastleEffort = 'low' | 'medium' | 'high' | 'xhigh';
 export type SandcastlePromotion = 'ask' | 'autoApply' | 'autoReject';
 
@@ -34,9 +35,20 @@ export interface SandcastleAgentConfig {
 
 export type PiAgentConfigEntry = NativeAcpAgentConfig | SandcastleAgentConfig;
 
+export interface PiTimeoutConfig {
+  initializeMs?: number;
+  newSessionMs?: number;
+  authenticateMs?: number;
+  promptMs?: number;
+  permissionMs?: number;
+  authUiMs?: number;
+  promotionUiMs?: number;
+}
+
 export interface PiPipelineConfig {
   enabled: boolean;
   instructionsMaxBytes: number;
+  timeouts?: PiTimeoutConfig;
 }
 
 export interface PiAcpConfig {

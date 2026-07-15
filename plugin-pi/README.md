@@ -69,7 +69,39 @@ Le package contient `.pi/.acp/acp-agents.json` :
 
 En v1, un fichier `<workspace>/.pi/.acp/acp-agents.json` n'est pas lu comme surcharge. Cette surcharge workspace est prévue pour une v2.
 
-### 2. Pipelines embarqués (`.pi/.acp/pipelines/`)
+### 2. Agents Sandcastle embarqués
+
+Le package contient aussi `.pi/.acp/.sandcastle/config.json` :
+
+```json
+{
+  "promotion": "ask",
+  "agents": {
+    "Pi Sandcastle": {
+      "transport": "sandcastle",
+      "provider": "pi",
+      "model": "claude-sonnet-4-6",
+      "effort": "high"
+    },
+    "Vibe Sandcastle": {
+      "transport": "sandcastle",
+      "provider": "vibe",
+      "model": "mistral-large-latest",
+      "env": {
+        "VIBE_HOME": ".sandcastle/vibe-home"
+      }
+    }
+  }
+}
+```
+
+Fichier embarqué : `plugin-pi/.pi/.acp/.sandcastle/config.json`.
+
+Providers acceptés : `codex`, `cursor`, `pi`, `vibe`. Le provider `vibe` lance la CLI programmatique `vibe -p --output streaming --trust`; `vibe-acp` reste le serveur ACP natif, pas le mode utilisé par Sandcastle.
+
+Pour appliquer les changements de la sandbox au workspace, la primitive de pipeline doit avoir `sideEffects: workspace`. La promotion globale vaut `ask`, `autoApply` ou `autoReject`.
+
+### 3. Pipelines embarqués (`.pi/.acp/pipelines/`)
 
 Fichiers YAML version 2 packagés dans le plugin sous `.pi/.acp/pipelines/`. Exemple :
 
@@ -132,7 +164,7 @@ primitives:
 
 Quand `promptFile` et `prompt` sont tous les deux présents, le contenu du fichier est ajouté avant le prompt inline.
 
-### 3. Utiliser des skills par primitive
+### 4. Utiliser des skills par primitive
 
 Les skills se déclarent sur chaque primitive avec `skills: [...]`. Le runner injecte uniquement les skills demandées pour l'étape en cours, depuis `.agents/skills/<name>/SKILL.md`.
 

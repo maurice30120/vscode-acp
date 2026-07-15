@@ -6,14 +6,13 @@ import { consoleLogger } from "./types.js";
 import { Type } from "typebox";
 
 export default function acpPipelinePiExtension(pi: ExtensionAPI): void {
-	let controller: PipelineController | null = null;
-	let controllerCwd: string | null = null;
+	const controllers = new Map<string, PipelineController>();
 
 	const getController = (cwd: string): PipelineController => {
-		if (!controller || controllerCwd !== cwd) {
-			void controller?.dispose();
+		let controller = controllers.get(cwd);
+		if (!controller) {
 			controller = new PipelineController(cwd, pi, { logger: consoleLogger });
-			controllerCwd = cwd;
+			controllers.set(cwd, controller);
 		}
 		return controller;
 	};
@@ -23,9 +22,8 @@ export default function acpPipelinePiExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.on("session_shutdown", async () => {
-		await controller?.dispose();
-		controller = null;
-		controllerCwd = null;
+		await Promise.all([...controllers.values()].map(controller => controller.dispose()));
+		controllers.clear();
 	});
 
 	pi.registerCommand("pipeline", {
