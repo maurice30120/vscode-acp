@@ -32,7 +32,7 @@ interface ManagedTerminal {
 
 /**
  * Manages terminals that ACP agents request (terminal/create, terminal/output, etc.).
- * Uses real child processes for capturing output, with VS Code terminals for display.
+ * Uses real child processes for capturing output, with optional VS Code terminals for display.
  */
 export class TerminalHandler {
   private terminals: Map<string, ManagedTerminal> = new Map();
@@ -109,27 +109,28 @@ export class TerminalHandler {
       });
     });
 
-    // Also create a VS Code terminal for visual output
-    const writeEmitter = new vscode.EventEmitter<string>();
-    const pty: vscode.Pseudoterminal = {
-      onDidWrite: writeEmitter.event,
-      open() {
-        writeEmitter.fire(`$ ${params.command} ${(params.args || []).join(' ')}\r\n`);
-      },
-      close() { /* no-op */ },
-    };
-    const vsTerminal = vscode.window.createTerminal({
-      name: `ACP: ${params.command}`,
-      pty,
-    });
+    let vsTerminal: vscode.Terminal | undefined;
+    if (vscode.workspace.getConfiguration('acp').get<boolean>('terminal.visible', false)) {
+      const writeEmitter = new vscode.EventEmitter<string>();
+      const pty: vscode.Pseudoterminal = {
+        onDidWrite: writeEmitter.event,
+        open() {
+          writeEmitter.fire(`$ ${params.command} ${(params.args || []).join(' ')}\r\n`);
+        },
+        close() { /* no-op */ },
+      };
+      vsTerminal = vscode.window.createTerminal({
+        name: `ACP: ${params.command}`,
+        pty,
+      });
 
-    // Stream output to VS Code terminal
-    child.stdout?.on('data', (data: Buffer) => {
-      writeEmitter.fire(data.toString().replace(/\n/g, '\r\n'));
-    });
-    child.stderr?.on('data', (data: Buffer) => {
-      writeEmitter.fire(data.toString().replace(/\n/g, '\r\n'));
-    });
+      child.stdout?.on('data', (data: Buffer) => {
+        writeEmitter.fire(data.toString().replace(/\n/g, '\r\n'));
+      });
+      child.stderr?.on('data', (data: Buffer) => {
+        writeEmitter.fire(data.toString().replace(/\n/g, '\r\n'));
+      });
+    }
 
     const managed: ManagedTerminal = {
       id: terminalId,
@@ -228,7 +229,7 @@ export class TerminalHandler {
       }
     }
 
-    // Don't dispose VS Code terminal — keep output visible per ACP spec
+    managed.vsTerminal?.dispose();
     this.terminals.delete(params.terminalId);
 
     return {};

@@ -15,7 +15,17 @@ Module.prototype.require = function mockVscodeRequire(id) {
         createOutputChannel: () => ({
           appendLine: () => {},
         }),
+        createTerminal: () => ({
+          dispose: () => {},
+        }),
         showInformationMessage: async () => undefined,
+      },
+      EventEmitter: class {
+        constructor() {
+          this.event = () => ({ dispose: () => {} });
+        }
+        fire() {}
+        dispose() {}
       },
       commands: {
         executeCommand: async () => undefined,

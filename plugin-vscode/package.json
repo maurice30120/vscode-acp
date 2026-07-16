@@ -497,6 +497,11 @@
           "default": true,
           "description": "Log all ACP protocol traffic to the output channel."
         },
+        "acp.terminal.visible": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show ACP command executions in VS Code terminals for debugging. When disabled, command output is still captured for the agent without creating visible terminals."
+        },
         "acp.pipeline.enabled": {
           "type": "boolean",
           "default": true,

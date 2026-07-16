@@ -327,6 +327,7 @@ Per-agent opt-out: set `"skills": false` on the `acp.agents` entry.
 | `acp.autoApprovePermissions` | `ask` | Permission requests: `ask` or `allowAll` |
 | `acp.defaultWorkingDirectory` | `""` | Session cwd; empty = workspace root |
 | `acp.logTraffic` | `true` | Log ACP JSON-RPC to ACP Traffic channel |
+| `acp.terminal.visible` | `false` | Show ACP command terminals for debugging only |
 | `acp.pipeline.enabled` | `true` | Load `.acp/pipelines/` and `.acp/teams/` |
 | `acp.instructions.maxBytes` | `262144` | Max size for team instruction Markdown files |
 | `acp.skills.enabled` | `true` | Enable workspace skills wiring |
