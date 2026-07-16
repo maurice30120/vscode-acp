@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as vscode from 'vscode';
 
 import * as yaml from 'js-yaml';
 
@@ -21,6 +20,7 @@ import {
   isInstructionError,
 } from '../instructions/InstructionResolver';
 import { log } from '../utils/Logger';
+import { getAgentConfigs } from './AgentConfig';
 
 export type { CompiledTeamMetadata };
 
@@ -37,7 +37,7 @@ export interface AgentTeamEntry {
 }
 
 function readAgentConfigs(): Record<string, unknown> {
-  return vscode.workspace.getConfiguration('acp').get<Record<string, unknown>>('agents', {});
+  return getAgentConfigs();
 }
 
 export function loadWorkspaceTeamEntries(

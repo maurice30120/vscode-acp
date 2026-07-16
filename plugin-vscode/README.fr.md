@@ -160,7 +160,7 @@ En fin de run **pipeline**, la promotion peut s’ouvrir automatiquement selon `
 | [Hermes Agent](https://hermes-agent.nousresearch.com/docs/user-guide/features/acp) | `hermes acp` |
 | [Pi Agent](https://github.com/svkozak/pi-acp) | `npx -y pi-acp` |
 
-Ajouter des entrées personnalisées sous `acp.agents` dans les paramètres. Chaque entrée est soit :
+Ajouter des entrées personnalisées sous `.acp/acp-agents.json`. Chaque entrée est soit :
 
 ```json
 { "command": "npx", "args": ["@agentclientprotocol/claude-agent-acp@latest"], "env": {}, "transport": "acp" }
@@ -317,7 +317,7 @@ L’extension peut brancher les skills du dépôt depuis `.agents/skills/` pour 
 - **Cursor CLI** — si `.cursor/skills` est absent, l’extension crée un symlink vers `.agents/skills` pour la découverte native du CLI.
 - **Sandcastle** — le dossier hôte `.agents/` est monté dans le conteneur pour que Codex/Cursor voient les skills même s’ils ne sont pas encore commités dans le worktree.
 
-Désactiver par agent : `"skills": false` dans l’entrée `acp.agents`.
+Désactiver par agent : `"skills": false` dans l’entrée `.acp/acp-agents.json`.
 
 ---
 
@@ -325,7 +325,7 @@ Désactiver par agent : `"skills": false` dans l’entrée `acp.agents`.
 
 | Paramètre | Défaut | Description |
 |-----------|--------|-------------|
-| `acp.agents` | natifs + 2 Sandcastle | Configs agents (`transport: "acp"` ou `"sandcastle"`) |
+| `.acp/acp-agents.json` | natifs + 2 Sandcastle | Configs agents workspace (`transport: "acp"` ou `"sandcastle"`) |
 | `acp.autoApprovePermissions` | `ask` | Demandes de permission : `ask` ou `allowAll` |
 | `acp.defaultWorkingDirectory` | `""` | Répertoire de travail de session ; vide = racine du workspace |
 | `acp.logTraffic` | `true` | Journaliser le JSON-RPC ACP dans le canal ACP Traffic |
@@ -389,7 +389,7 @@ Désactiver par agent : `"skills": false` dans l’entrée `acp.agents`.
 
 | Commande | Description |
 |----------|-------------|
-| `ACP: Add / Remove Agent Configuration` | Gérer `acp.agents` |
+| `ACP: Add / Remove Agent Configuration` | Gérer `.acp/acp-agents.json` |
 | `ACP: Set Agent Mode` / `Set Agent Model` | Sélecteurs legacy dans la barre d’outils |
 | `ACP: Enable / Disable Editor Context Link` | Activer/désactiver l’injection de contexte éditeur |
 | `ACP: Show Log` | Canal de log de l’extension |
@@ -474,7 +474,7 @@ La communication avec les agents utilise ACP (JSON-RPC 2.0 sur stdio).
 
 - Les agents doivent être sur le `PATH` ou accessibles via `npx`
 - Certains agents nécessitent une authentification séparée
-- Les rôles pipeline et équipe référencent les agents par nom — tous doivent exister dans `acp.agents`
+- Les rôles pipeline et équipe référencent les agents par nom — tous doivent exister dans `.acp/acp-agents.json`
 - Sandcastle nécessite Docker, la construction de l’image et les clés dans `.sandcastle/.env`
 - Le chat inline nécessite VS Code Insiders + API proposée pour l’UX complète entre les lignes
 - Bridge Sandcastle : Windows non testé ; macOS/Linux nécessitent `AGENT_UID`/`AGENT_GID` à la construction de l’image

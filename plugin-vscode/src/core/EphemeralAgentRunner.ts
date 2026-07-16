@@ -26,7 +26,7 @@ export class DefaultEphemeralAgentRunner implements EphemeralAgentRunner {
   async run(input: EphemeralAgentRunnerInput): Promise<EphemeralAgentRunResult> {
     const config = getAgentConfig(input.agentName);
     if (!config) {
-      throw new Error(`Agent "${input.agentName}" is not configured in acp.agents.`);
+      throw new Error(`Agent "${input.agentName}" is not configured in .acp/acp-agents.json.`);
     }
 
     if (isSandcastleAgentConfig(config)) {

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { PipelineService, serializeCompiledTeamPipeline } from '@acp-client/pipeline';
 
 import {
+  AGENT_CONFIG_RELATIVE_PATH,
   getAgentConfigs,
   getAgentNames,
   isSandcastleAgentConfig,
@@ -41,18 +42,19 @@ export class OrchestrationPlugin implements FeaturePlugin<OrchestrationPluginCon
   activate(context: OrchestrationPluginContext): vscode.Disposable {
     const { sessionManager, sessionTreeProvider, chatController, sandcastlePromotion } = context;
     const ephemeralRunner = new DefaultEphemeralAgentRunner(sandcastlePromotion);
+    const readAgentConfigs = () => getAgentConfigs(context.workspaceCwd());
     const pipelineService = new PipelineService(context.workspaceCwd, {
-      getPipelineDefinitions: () => getPipelineDefinitions(context.workspaceCwd(), getAgentConfigs()),
+      getPipelineDefinitions: () => getPipelineDefinitions(context.workspaceCwd(), readAgentConfigs()),
       getPipelineDefinitionForAgent: agentName =>
-        getPipelineDefinitionForAgent(agentName, context.workspaceCwd(), getAgentConfigs()),
-      getAgentConfigs,
+        getPipelineDefinitionForAgent(agentName, context.workspaceCwd(), readAgentConfigs()),
+      getAgentConfigs: readAgentConfigs,
       runAgent: input => ephemeralRunner.run(input),
       isAgentSandcastle: (agentName, agentConfigs) => {
         const config = agentConfigs[agentName] as AgentConfigEntry | undefined;
         return config ? isSandcastleAgentConfig(config) : false;
       },
       getTeamPipelineForAgent: teamAgentName =>
-        getTeamEntryForAgent(teamAgentName, context.workspaceCwd(), getAgentConfigs())?.pipeline ?? null,
+        getTeamEntryForAgent(teamAgentName, context.workspaceCwd(), readAgentConfigs())?.pipeline ?? null,
       readWorkspaceDiff: async () => {
         const result = await defaultGitCommandRunner.exec(context.workspaceCwd(), ['diff', 'HEAD']);
         return result.stdout.trim();
@@ -64,7 +66,7 @@ export class OrchestrationPlugin implements FeaturePlugin<OrchestrationPluginCon
     disposables.push(runtime.activate());
     const refresh = () => sessionTreeProvider.invalidate();
 
-    for (const pattern of ['**/.acp/pipelines/*.yaml', '**/.acp/pipelines/*.yml', '**/.acp/teams/*.yaml', '**/.acp/teams/*.yml']) {
+    for (const pattern of ['**/.acp/acp-agents.json', '**/.acp/pipelines/*.yaml', '**/.acp/pipelines/*.yml', '**/.acp/teams/*.yaml', '**/.acp/teams/*.yml']) {
       const watcher = vscode.workspace.createFileSystemWatcher(pattern);
       disposables.push(
         watcher,
@@ -76,8 +78,7 @@ export class OrchestrationPlugin implements FeaturePlugin<OrchestrationPluginCon
 
     disposables.push(vscode.workspace.onDidChangeConfiguration(event => {
       if (
-        event.affectsConfiguration('acp.agents')
-        || event.affectsConfiguration('acp.pipeline.enabled')
+        event.affectsConfiguration('acp.pipeline.enabled')
         || event.affectsConfiguration('acp.defaultWorkingDirectory')
         || event.affectsConfiguration('acp.instructions.maxBytes')
       ) {
@@ -93,7 +94,7 @@ export class OrchestrationPlugin implements FeaturePlugin<OrchestrationPluginCon
       if (value?.agentName) { return value.agentName; }
       const names = getAgentNames();
       if (names.length === 0) {
-        void vscode.window.showWarningMessage('No ACP agents configured. Add agents in Settings > ACP > Agents.');
+        void vscode.window.showWarningMessage(`No ACP agents configured. Add agents in ${AGENT_CONFIG_RELATIVE_PATH}.`);
         return undefined;
       }
       return vscode.window.showQuickPick(names, { placeHolder: 'Select an agent to connect', title: 'Connect to Agent' });

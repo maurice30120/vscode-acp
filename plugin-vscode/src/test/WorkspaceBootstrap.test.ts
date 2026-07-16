@@ -21,7 +21,12 @@ suite('WorkspaceBootstrap', () => {
 
   test('starter kit is present after sync', () => {
     assert.ok(fs.existsSync(path.join(starterRoot, 'MANIFEST.json')));
+    assert.ok(fs.existsSync(path.join(starterRoot, '.acp', '.gitignore')));
+    assert.ok(fs.existsSync(path.join(starterRoot, '.acp', 'acp-agents.json')));
+    assert.ok(fs.existsSync(path.join(starterRoot, '.acp', 'agents', '.gitignore')));
+    assert.ok(fs.existsSync(path.join(starterRoot, '.acp', 'pipelines', '.gitignore')));
     assert.ok(fs.existsSync(path.join(starterRoot, '.acp', 'pipelines', 'plan-execute-verify.yaml')));
+    assert.ok(fs.existsSync(path.join(starterRoot, '.acp', 'teams', '.gitignore')));
     assert.ok(!fs.existsSync(path.join(starterRoot, '.sandcastle', '.env')));
 
     const manifest = JSON.parse(fs.readFileSync(path.join(starterRoot, 'MANIFEST.json'), 'utf8')) as { version: string };
@@ -32,7 +37,12 @@ suite('WorkspaceBootstrap', () => {
     const result = await syncWorkspaceStarterCore(repoRoot(), workspaceRoot, { starterRoot });
 
     assert.ok(result.created.length > 0);
+    assert.ok(fs.existsSync(path.join(workspaceRoot, '.acp', '.gitignore')));
+    assert.ok(fs.existsSync(path.join(workspaceRoot, '.acp', 'acp-agents.json')));
+    assert.ok(fs.existsSync(path.join(workspaceRoot, '.acp', 'agents', '.gitignore')));
+    assert.ok(fs.existsSync(path.join(workspaceRoot, '.acp', 'pipelines', '.gitignore')));
     assert.ok(fs.existsSync(path.join(workspaceRoot, '.acp', 'pipelines', 'plan-execute-verify.yaml')));
+    assert.ok(fs.existsSync(path.join(workspaceRoot, '.acp', 'teams', '.gitignore')));
     assert.ok(fs.existsSync(path.join(workspaceRoot, '.agents', 'skills', 'tdd', 'SKILL.md')));
     assert.ok(fs.existsSync(path.join(workspaceRoot, '.sandcastle', 'Dockerfile')));
     assert.ok(!fs.existsSync(path.join(workspaceRoot, '.sandcastle', '.env')));
@@ -124,26 +134,6 @@ suite('WorkspaceBootstrap', () => {
     );
   });
 
-  test('adds plugin-installed skills paths to .gitignore during bootstrap', async () => {
-    await syncWorkspaceStarterCore(repoRoot(), workspaceRoot, { starterRoot });
-
-    const gitignore = fs.readFileSync(path.join(workspaceRoot, '.gitignore'), 'utf8');
-    assert.match(gitignore, /# Local Codex\/plugin-installed skills/);
-    assert.match(gitignore, /^\.agents\/skills\/$/m);
-    assert.match(gitignore, /^\.cursor\/skills$/m);
-    assert.match(gitignore, /^skills-lock\.json$/m);
-  });
-
-  test('does not duplicate plugin-installed skills gitignore rules', async () => {
-    await syncWorkspaceStarterCore(repoRoot(), workspaceRoot, { starterRoot });
-    await syncWorkspaceStarterCore(repoRoot(), workspaceRoot, { starterRoot });
-
-    const gitignore = fs.readFileSync(path.join(workspaceRoot, '.gitignore'), 'utf8');
-    assert.strictEqual((gitignore.match(/^\.agents\/skills\/$/gm) ?? []).length, 1);
-    assert.strictEqual((gitignore.match(/^\.cursor\/skills$/gm) ?? []).length, 1);
-    assert.strictEqual((gitignore.match(/^skills-lock\.json$/gm) ?? []).length, 1);
-  });
-
   test('adds missing team file inside an existing empty teams directory', async () => {
     fs.mkdirSync(path.join(workspaceRoot, '.acp', 'teams'), { recursive: true });
 
@@ -151,6 +141,25 @@ suite('WorkspaceBootstrap', () => {
 
     assert.ok(fs.existsSync(path.join(workspaceRoot, '.acp', 'teams', 'feature-team.yaml')));
     assert.ok(result.created.includes('.acp/teams/feature-team.yaml'));
+  });
+
+  test('adds missing .acp gitignore files to an already bootstrapped workspace', async () => {
+    fs.mkdirSync(path.join(workspaceRoot, '.acp', 'agents'), { recursive: true });
+    fs.mkdirSync(path.join(workspaceRoot, '.acp', 'pipelines'), { recursive: true });
+    fs.mkdirSync(path.join(workspaceRoot, '.acp', 'teams'), { recursive: true });
+    fs.writeFileSync(path.join(workspaceRoot, '.acp', '.bootstrap-version'), '1\n', 'utf8');
+    fs.writeFileSync(path.join(workspaceRoot, '.acp', 'agents', 'planner.md'), 'custom planner\n', 'utf8');
+
+    const result = await syncWorkspaceStarterCore(repoRoot(), workspaceRoot, { starterRoot });
+
+    assert.ok(result.created.includes('.acp/.gitignore'));
+    assert.ok(result.created.includes('.acp/agents/.gitignore'));
+    assert.ok(result.created.includes('.acp/pipelines/.gitignore'));
+    assert.ok(result.created.includes('.acp/teams/.gitignore'));
+    assert.strictEqual(
+      fs.readFileSync(path.join(workspaceRoot, '.acp', 'agents', 'planner.md'), 'utf8'),
+      'custom planner\n',
+    );
   });
 
   test('writes .acp/.bootstrap-version when absent', async () => {

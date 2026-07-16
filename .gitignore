@@ -1,6 +1,5 @@
 # Dependencies
 node_modules
-
 # Build outputs (compiled JS / maps / type info)
 out/
 dist/
@@ -8,32 +7,20 @@ dist/
 */out/
 tsconfig.tsbuildinfo
 *.vsix
-
 # Downloaded VS Code test installs
 .vscode-test/
-
 # Generated ACP pipeline saves (runtime)
 .acp/pipelines/save/
-
-# Local Codex/plugin-installed skills & agent state
-.agents/skills/
-.cursor/skills
 .pi/
 */.pi/
 !plugin-pi/.pi/
 !plugin-pi/.pi/**
-
 # Sandcastle local state
 .sandcastle/
 !plugin-pi/.pi/.acp/.sandcastle/
 !plugin-pi/.pi/.acp/.sandcastle/**
-
-# Lock file for locally installed skills
-skills-lock.json
-
 # OS / editor noise
 .DS_Store
 Thumbs.db
-
 # Local plans & temp artifacts
 temp/

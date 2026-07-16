@@ -42,24 +42,22 @@ Un pipeline valide apparaît comme un agent virtuel dans la vue Agents. L'utilis
 1. `acp.pipeline.enabled` doit être à `true`.
 2. Le fichier YAML doit être dans `.acp/pipelines`.
 3. Le YAML doit utiliser `version: 2`.
-4. Chaque agent référencé par `primitives.*.agent` doit exister dans `acp.agents`.
+4. Chaque agent référencé par `primitives.*.agent` doit exister dans `.acp/acp-agents.json`.
 5. Les agents qui modifient le workspace doivent rester après une étape `approval`.
 
 Exemple de configuration d'agents attendue :
 
 ```json
 {
-  "acp.agents": {
-    "Codex CLI": {
-      "command": "npx",
-      "args": ["@zed-industries/codex-acp@latest"],
-      "env": {}
-    },
-    "Vibe": {
-      "command": "vibe-acp",
-      "args": [],
-      "env": {}
-    }
+  "Codex CLI": {
+    "command": "npx",
+    "args": ["@zed-industries/codex-acp@latest"],
+    "env": {}
+  },
+  "Vibe": {
+    "command": "vibe-acp",
+    "args": [],
+    "env": {}
   }
 }
 ```
@@ -381,7 +379,7 @@ planner:
 
 Champs :
 
-- `agent` : nom exact d'un agent dans `acp.agents`.
+- `agent` : nom exact d'un agent dans `.acp/acp-agents.json`.
 - `output` : `markdown` ou `proposed_plan`.
 - `sideEffects` : `none` ou `workspace`.
 - `prompt` : prompt envoyé à l'agent ACP.
@@ -489,7 +487,7 @@ Cette règle protège le workspace : tout ce qui peut modifier les fichiers doit
 ## Comment l'utiliser dans VS Code
 
 1. Créer ou modifier un fichier dans `.acp/pipelines`.
-2. Vérifier que les agents indiqués existent dans `acp.agents`.
+2. Vérifier que les agents indiqués existent dans `.acp/acp-agents.json`.
 3. Recharger la fenêtre VS Code si l'agent virtuel n'apparaît pas immédiatement.
 4. Ouvrir la vue ACP Client.
 5. Sélectionner l'agent virtuel dont le nom correspond au `title` du YAML.
@@ -574,7 +572,7 @@ steps:
 | Message ou symptôme | Cause probable | Correction |
 |---------------------|----------------|------------|
 | L'agent virtuel n'apparaît pas | YAML invalide, mauvais dossier, ou `acp.pipeline.enabled` à `false`. | Vérifier `.acp/pipelines`, les logs ACP et le setting. |
-| `Missing configured ACP pipeline agent(s)` | Un nom dans `agent:` n'existe pas dans `acp.agents`. | Corriger le YAML ou ajouter l'agent dans les settings. |
+| `Missing configured ACP pipeline agent(s)` | Un nom dans `agent:` n'existe pas dans `.acp/acp-agents.json`. | Corriger le YAML ou ajouter l'agent dans `.acp/acp-agents.json`. |
 | `version must be 2` | Ancien DSL v1 ou champ absent. | Passer le fichier au format v2. |
 | `workspace side effects before an approval step` | Une étape qui modifie le workspace est placée avant approbation. | Déplacer cette étape après `type: approval`. |
 | `cannot use workspace side effects` dans un parallèle | Une branche parallèle essaie de modifier le workspace. | Garder les branches parallèles en read-only. |
@@ -618,7 +616,7 @@ Les équipes apparaissent comme des agents virtuels dans la vue Agents, avec une
 | `Titre (invalide)` dans la vue Agents | YAML invalide ou rôle manquant | Vérifier l'infobulle pour l'erreur, corriger le fichier team |
 | Équipe n'apparaît pas | `acp.pipeline.enabled` à `false` ou fichier hors `.acp/teams/` | Activer le setting, déplacer le fichier |
 | `roles.planner is required` | Rôle planner manquant | Ajouter le rôle planner avec agent et instructions |
-| `roles.<rôle>.agent references missing ACP agent` | Agent non configuré dans `acp.agents` | Ajouter l'agent dans les paramètres |
+| `roles.<rôle>.agent references missing ACP agent` | Agent non configuré dans `.acp/acp-agents.json` | Ajouter l'agent dans `.acp/acp-agents.json` |
 | `roles.<rôle>.instructions could not be resolved` | Fichier d'instructions introuvable | Créer le fichier ou corriger le chemin |
 
 Voir la [documentation complète des Équipes d'agents](./agent-teams.md) pour plus de détails.

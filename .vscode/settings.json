@@ -1,5 +1,0 @@
-{
-	"typescript.tsdk": "node_modules/typescript/lib",
-	"acp.pipeline.enabled": true,
-	"acp.sandcastle.promotion": "autoApply"
-}

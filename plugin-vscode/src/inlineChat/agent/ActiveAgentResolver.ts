@@ -32,7 +32,7 @@ export class SessionBackedActiveAgentResolver implements ActiveAgentResolver {
       name => resolveAgent(name, cwd)?.kind === 'configured',
     );
     if (!fallback) {
-      throw new Error('No ACP agent configured. Add agents in acp.agents settings.');
+      throw new Error('No ACP agent configured. Add agents in .acp/acp-agents.json.');
     }
     return this.toRunnable(fallback);
   }

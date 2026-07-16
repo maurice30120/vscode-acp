@@ -46,7 +46,7 @@ export async function runEphemeralRun(input: EphemeralRunInput): Promise<Ephemer
   const { workspaceCwd: cwd, agentName, promptText, onSessionUpdate, signal } = input;
   const config = getAgentConfig(agentName);
   if (!config) {
-    throw new Error(`EphemeralRun agent "${agentName}" is not configured in acp.agents.`);
+    throw new Error(`EphemeralRun agent "${agentName}" is not configured in .acp/acp-agents.json.`);
   }
 
   const sessionUpdateHandler = new SessionUpdateHandler();

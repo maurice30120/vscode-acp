@@ -59,7 +59,7 @@ mkdir -p .acp/agents
 # Créez planner.md, implementer.md, reviewer.md avec des prompts spécifiques aux rôles
 ```
 
-4. Assurez-vous que tous les agents référencés existent dans vos paramètres VS Code `acp.agents`
+4. Assurez-vous que tous les agents référencés existent dans `.acp/acp-agents.json`
 5. Rechargez VS Code si l'équipe n'apparaît pas immédiatement
 6. Connectez-vous à l'agent virtuel "Feature Team" depuis la vue Agents
 7. Envoyez votre demande — l'équipe va planifier, demander une approbation, implémenter et relire
@@ -86,7 +86,7 @@ orchestrator:           # Optionnel : métadonnée uniquement en v1
   agent: Codex CLI      # Champ de métadonnée ; NE S'EXÉCUTE PAS comme un LLM d'orchestration
 roles:                  # Requis
   planner:             # Rôle requis
-    agent: Codex CLI    # Requis : doit exister dans acp.agents
+    agent: Codex CLI    # Requis : doit exister dans .acp/acp-agents.json
     instructions: .acp/agents/planner.md  # Requis : chemin vers les instructions Markdown
   implementer:          # Rôle requis
     agent: Vibe
@@ -112,7 +112,7 @@ roles:                  # Requis
 | `roles.implementer` | object | Oui | Rôle d'implémentation. Peut modifier le workspace. |
 | `roles.reviewer` | object | Oui | Rôle de revue. Analyse la sortie de l'implémentation. |
 | `roles.tester` | object | Non | Rôle de test optionnel. S'exécute après le reviewer. |
-| `roles.<rôle>.agent` | string | Oui | Nom d'un agent ACP configuré dans `acp.agents` |
+| `roles.<rôle>.agent` | string | Oui | Nom d'un agent ACP configuré dans `.acp/acp-agents.json` |
 | `roles.<rôle>.instructions` | string | Oui | Chemin vers le fichier Markdown avec les instructions spécifiques au rôle |
 
 ### Champs interdits dans les définitions de rôles
@@ -133,7 +133,7 @@ Cela provoquera des erreurs de validation.
 - `tester` — optionnel (peut être omis)
 
 ### Références d'agents
-- Chaque agent nommé dans `roles.<rôle>.agent` DOIT exister dans les paramètres `acp.agents`
+- Chaque agent nommé dans `roles.<rôle>.agent` DOIT exister dans `.acp/acp-agents.json`
 - Le champ `orchestrator.agent` (s'il est présent) doit également référencer un agent existant
 
 ### Fichiers d'instructions
@@ -446,7 +446,7 @@ Fournissez un retour clair sur les écarts.
 | `Titre de l'équipe (invalide)` dans la vue Agents | Échec de la validation YAML | Vérifiez l'infobulle pour l'erreur spécifique, corrigez le YAML |
 | L'équipe n'apparaît pas | `acp.pipeline.enabled` est false, ou le fichier n'est pas dans `.acp/teams/` | Activez le paramètre, déplacez le fichier au bon endroit |
 | `roles.<rôle> is required` | Rôle requis manquant | Ajoutez le rôle manquant à votre définition d'équipe |
-| `roles.<rôle>.agent references missing ACP agent` | Agent non configuré | Ajoutez l'agent à `acp.agents` dans les paramètres |
+| `roles.<rôle>.agent references missing ACP agent` | Agent non configuré | Ajoutez l'agent à `.acp/acp-agents.json` |
 | `roles.<rôle>.instructions could not be resolved` | Fichier d'instructions introuvable | Créez le fichier ou corrigez le chemin |
 | `version must be 1` | Numéro de version incorrect | Définissez `version: 1` |
 | `roles.<rôle> is not an allowed role` | Nom de rôle invalide | Utilisez uniquement : planner, implementer, reviewer, tester |

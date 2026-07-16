@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as vscode from 'vscode';
 
 import * as yaml from 'js-yaml';
 import {
@@ -15,6 +14,7 @@ import { isPipelineEnabled } from './PipelineConfig';
 import { resolveWorkspaceIdentity } from '../core/WorkspaceIdentity';
 import { resolveAgent } from './VirtualAgentCatalog';
 import { log } from '../utils/Logger';
+import { getAgentConfigs } from './AgentConfig';
 
 export type {
   CompiledTeamMetadata,
@@ -162,5 +162,5 @@ export function parsePipelineYaml(
 }
 
 function readAgentConfigs(): Record<string, unknown> {
-  return vscode.workspace.getConfiguration('acp').get<Record<string, unknown>>('agents', {});
+  return getAgentConfigs();
 }

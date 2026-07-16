@@ -1,9 +1,13 @@
 import * as vscode from 'vscode';
 
 import {
+  AGENT_CONFIG_RELATIVE_PATH,
   getAgentConfig,
+  getAgentConfigs,
   getAgentNames,
   isSandcastleAgentConfig,
+  removeAgentConfig,
+  upsertAgentConfig,
 } from '../config/AgentConfig';
 import { fetchRegistry } from '../config/RegistryClient';
 import { classifyAgentError } from '../core/AgentError';
@@ -47,7 +51,7 @@ export function registerCommands({
     const agentNames = getAgentNames();
     if (agentNames.length === 0) {
       vscode.window.showWarningMessage(
-        'No ACP agents configured. Add agents in Settings > ACP > Agents.',
+        `No ACP agents configured. Add agents in ${AGENT_CONFIG_RELATIVE_PATH}.`,
       );
       return undefined;
     }
@@ -391,21 +395,17 @@ export function registerCommands({
     });
     const args = argsStr ? argsStr.split(/\s+/) : [];
 
-    const config = vscode.workspace.getConfiguration('acp');
-    const agents: Record<string, any> = { ...(config.get<Record<string, any>>('agents') || {}) };
-    agents[name] = { command, args };
-    await config.update('agents', agents, vscode.ConfigurationTarget.Global);
+    await upsertAgentConfig(name, { command, args });
     sessionTreeProvider.refresh();
-    vscode.window.showInformationMessage(`Agent "${name}" added.`);
+    vscode.window.showInformationMessage(`Agent "${name}" added to ${AGENT_CONFIG_RELATIVE_PATH}.`);
     sendEvent('agent/added');
   });
 
   const removeAgentCmd = vscode.commands.registerCommand('acp.removeAgent', async (item?: any) => {
-    const config = vscode.workspace.getConfiguration('acp');
-    const agents: Record<string, any> = { ...(config.get<Record<string, any>>('agents') || {}) };
+    const agents = getAgentConfigs();
     const agentNames = Object.keys(agents);
     if (agentNames.length === 0) {
-      vscode.window.showInformationMessage('No agents configured.');
+      vscode.window.showInformationMessage(`No agents configured in ${AGENT_CONFIG_RELATIVE_PATH}.`);
       return;
     }
 
@@ -424,10 +424,9 @@ export function registerCommands({
       await sessionManager.disconnectAgent(name);
     }
 
-    delete agents[name];
-    await config.update('agents', agents, vscode.ConfigurationTarget.Global);
+    await removeAgentConfig(name);
     sessionTreeProvider.refresh();
-    vscode.window.showInformationMessage(`Agent "${name}" removed.`);
+    vscode.window.showInformationMessage(`Agent "${name}" removed from ${AGENT_CONFIG_RELATIVE_PATH}.`);
     sendEvent('agent/removed', { agentName: name });
   });
 

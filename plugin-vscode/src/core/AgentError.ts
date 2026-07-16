@@ -68,7 +68,7 @@ export function classifyAgentError(error: unknown): ClassifiedAgentError {
     return {
       kind: 'missing-pipeline-agent',
       message,
-      actionHint: 'Check .acp/pipelines/*.yaml and configured acp.agents.',
+      actionHint: 'Check .acp/pipelines/*.yaml and configured .acp/acp-agents.json.',
     };
   }
 

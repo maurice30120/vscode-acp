@@ -8,13 +8,13 @@
   ],
   "scripts": {
     "compile": "npm run compile -w acp-client",
+    "clean": "npm run clean -w acp-client --",
     "watch": "npm run watch -w acp-client",
     "package": "npm run package -w acp-client",
     "test": "npm run test -w acp-client",
     "lint": "npm run lint -w acp-client",
     "compile-tests": "npm run compile-tests -w acp-client",
-    "test:pi": "npm run test -w @acp-client/pi-extension",
-    "build:pipeline": "npm run build -w @acp-client/pipeline"
+    "test:pi": "npm run test -w @acp-client/pi-extension"
   },
   "engines": {
     "node": ">=22.19.0"
