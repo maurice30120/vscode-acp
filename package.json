@@ -2,7 +2,7 @@
   "name": "vscode-acp-workspace",
   "private": true,
   "workspaces": [
-    "root/acp-pipeline",
+    "acp-pipeline",
     "plugin-vscode",
     "plugin-pi"
   ],

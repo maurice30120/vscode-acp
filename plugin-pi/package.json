@@ -25,7 +25,7 @@
     "pi": "npm run pi:install && npm run pi:smoke"
   },
   "dependencies": {
-    "@acp-client/pipeline": "file:../root/acp-pipeline",
+    "@acp-client/pipeline": "file:../acp-pipeline",
     "@agentclientprotocol/sdk": "^0.21.1",
     "@ai-hero/sandcastle": "^0.10.0",
     "@earendil-works/pi-coding-agent": "^0.80.3",
