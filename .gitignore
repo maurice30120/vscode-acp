@@ -20,7 +20,6 @@ tsconfig.tsbuildinfo
 .cursor/skills
 .pi/
 */.pi/
-.acp/
 !plugin-pi/.pi/
 !plugin-pi/.pi/**
 
