@@ -49,6 +49,21 @@ suite('ProviderRunError', () => {
     fs.rmSync(repo, { recursive: true, force: true });
   });
 
+  test('enrichProviderRunError surfaces Pi Go usage limit as a UI-ready message', () => {
+    const error = enrichProviderRunError(
+      new Error([
+        'pi exited with code 1:',
+        'Error: 429 GoUsageLimitError: usage limit reached for opencode-go/kimi-k2.6',
+      ].join('\n')),
+      { provider: 'pi', cwd: process.cwd() },
+    );
+
+    assert.strictEqual(
+      error.message,
+      'Pi Sandcastle failed before writing: provider returned 429 GoUsageLimitError for opencode-go/kimi-k2.6, so no write tool was executed.',
+    );
+  });
+
   test('readLatestCodexRolloutError returns undefined when no sessions exist', () => {
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'provider-run-error-empty-'));
     assert.strictEqual(readLatestCodexRolloutError(repo), undefined);

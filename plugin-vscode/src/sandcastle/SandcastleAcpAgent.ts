@@ -41,7 +41,7 @@ interface BridgeSession {
   notifications: Promise<void>;
 }
 
-type SandcastleRunStatus = 'starting' | 'running' | 'completed' | 'cancelled' | 'failed';
+type SandcastleRunStatus = 'starting' | 'completed' | 'cancelled' | 'failed';
 
 type SandcastleStatusInput = {
   status: SandcastleRunStatus;
@@ -55,14 +55,6 @@ export interface SandcastleRuntime {
   createProvider(config: BridgeConfig): AgentProvider;
   createSandboxProvider(config: BridgeConfig, cwd: string): CreateSandboxOptions['sandbox'];
 }
-
-export interface SandcastleAcpAgentOptions {
-  heartbeatIntervalMs?: number;
-  providerStatusIntervalMs?: number;
-}
-
-const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
-const DEFAULT_PROVIDER_STATUS_INTERVAL_MS = 1_000;
 
 function logSandcastleActivity(message: string): void {
   process.stderr.write(`[${new Date().toISOString()}] ${message}\n`);
@@ -81,7 +73,6 @@ export class SandcastleAcpAgent implements Agent {
     private readonly connection: AgentSideConnection,
     private readonly config: BridgeConfig,
     private readonly runtime: SandcastleRuntime,
-    private readonly options: SandcastleAcpAgentOptions = {},
   ) {}
 
   /**
@@ -163,16 +154,8 @@ export class SandcastleAcpAgent implements Agent {
     const controller = new AbortController();
     session.activeRun = controller;
     let streamedText = false;
-    let heartbeat: NodeJS.Timeout | undefined;
     const startedAt = new Date().toISOString();
     let lastProviderEventAt: string | undefined;
-    let lastProviderStatusAtMs = 0;
-    const stopHeartbeat = (): void => {
-      if (heartbeat) {
-        clearInterval(heartbeat);
-        heartbeat = undefined;
-      }
-    };
 
     try {
       const sandbox = await this.ensureSandbox(session);
@@ -180,19 +163,10 @@ export class SandcastleAcpAgent implements Agent {
         status: 'starting',
         startedAt,
       });
-      heartbeat = setInterval(() => {
-        if (session.activeRun === controller && !controller.signal.aborted) {
-          void this.enqueueSandcastleStatus(session, {
-            status: 'running',
-            startedAt,
-            lastProviderEventAt,
-          });
-        }
-      }, this.options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS);
       const result = await sandbox.run({
         agent: this.runtime.createProvider(this.config),
         prompt: buildPromptWithHistory(session.history, promptText),
-        maxIterations: 1,
+        maxIterations: this.config.maxIterations,
         signal: controller.signal,
         idleTimeoutSeconds: 600,
         name: `${this.config.provider}-${session.id.slice(0, 8)}`,
@@ -201,17 +175,6 @@ export class SandcastleAcpAgent implements Agent {
           path: path.join('.sandcastle', 'logs', `acp-${session.id}.log`),
           onAgentStreamEvent: event => {
             lastProviderEventAt = new Date().toISOString();
-            const nowMs = Date.now();
-            const providerStatusIntervalMs = this.options.providerStatusIntervalMs ?? DEFAULT_PROVIDER_STATUS_INTERVAL_MS;
-            if (nowMs - lastProviderStatusAtMs >= providerStatusIntervalMs) {
-              lastProviderStatusAtMs = nowMs;
-              logSandcastleActivity(`Sandcastle provider activity: sessionId=${session.id}, provider=${this.config.provider}, type=${event.type}, timestamp=${lastProviderEventAt}`);
-              void this.enqueueSandcastleStatus(session, {
-                status: 'running',
-                startedAt,
-                lastProviderEventAt,
-              });
-            }
             if (event.type === 'text' && event.message) {
               streamedText = true;
             }
@@ -220,7 +183,6 @@ export class SandcastleAcpAgent implements Agent {
         },
       });
 
-      stopHeartbeat();
       await session.notifications;
       if (!streamedText && result.stdout.trim()) {
         await this.sendText(session.id, result.stdout.trim());
@@ -236,7 +198,6 @@ export class SandcastleAcpAgent implements Agent {
       });
       return { stopReason: 'end_turn' };
     } catch (error) {
-      stopHeartbeat();
       if (controller.signal.aborted) {
         await this.enqueueSandcastleStatus(session, {
           status: 'cancelled',
@@ -255,7 +216,6 @@ export class SandcastleAcpAgent implements Agent {
         cwd: session.cwd,
       });
     } finally {
-      stopHeartbeat();
       if (session.activeRun === controller) {
         session.activeRun = undefined;
       }

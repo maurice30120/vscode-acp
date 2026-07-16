@@ -65,8 +65,10 @@ suite('AgentConfig pipeline', () => {
               return {
                 'Gemini CLI': { command: 'gemini' },
                 'Codex CLI': { command: 'codex' },
+                'Pi Agent': { command: 'pi-acp' },
                 'Claude Code': { command: 'claude' },
                 'Cursor CLI': { command: 'cursor' },
+                'Pi Sandcastle': { transport: 'sandcastle', provider: 'pi', model: 'opencode-go/kimi-k2.6' },
                 'Cursor Sandcastle': { transport: 'sandcastle', provider: 'cursor', model: 'composer-2' },
                 Vibe: { command: 'vibe' },
               };

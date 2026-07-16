@@ -13,7 +13,8 @@
       "transport": "sandcastle",
       "provider": "pi",
       "model": "opencode-go/kimi-k2.6",
-      "effort": "high"
+      "effort": "high",
+      "maxIterations": 5
     }
   }
 }

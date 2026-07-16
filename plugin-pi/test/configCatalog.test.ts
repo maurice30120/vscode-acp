@@ -159,6 +159,7 @@ test("parseSandcastleConfig validates dedicated Sandcastle config", () => {
 					provider: "codex",
 					model: "gpt-5",
 					effort: "medium",
+					maxIterations: 6,
 					displayName: "Codex in Sandcastle",
 					env: { FOO: "bar" },
 					skills: false,
@@ -183,6 +184,7 @@ test("parseSandcastleConfig validates dedicated Sandcastle config", () => {
 	assert.equal(config.agents["Codex Sandcastle"].provider, "codex");
 	assert.equal(config.agents["Codex Sandcastle"].model, "gpt-5");
 	assert.equal(config.agents["Codex Sandcastle"].effort, "medium");
+	assert.equal(config.agents["Codex Sandcastle"].maxIterations, 6);
 	assert.equal(config.agents["Codex Sandcastle"].displayName, "Codex in Sandcastle");
 	assert.deepEqual(config.agents["Codex Sandcastle"].env, { FOO: "bar" });
 	assert.equal(config.agents["Codex Sandcastle"].skills, false);
@@ -200,6 +202,7 @@ test("parseSandcastleConfig reports explicit field errors", () => {
 					provider: "claude",
 					model: " ",
 					effort: "max",
+					maxIterations: 21,
 					env: { TOKEN: 123 },
 				},
 				MissingTransport: {
@@ -216,6 +219,7 @@ test("parseSandcastleConfig reports explicit field errors", () => {
 	assert.match(errors, /agents\.Bad\.provider/);
 	assert.match(errors, /agents\.Bad\.model/);
 	assert.match(errors, /agents\.Bad\.effort/);
+	assert.match(errors, /agents\.Bad\.maxIterations/);
 	assert.match(errors, /agents\.Bad\.env\.TOKEN/);
 	assert.match(errors, /agents\.MissingTransport\.transport/);
 });

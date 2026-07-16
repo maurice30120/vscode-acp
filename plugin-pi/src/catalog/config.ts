@@ -20,6 +20,8 @@ const DEFAULT_INSTRUCTIONS_MAX_BYTES = 256 * 1024;
 const SANDCASTLE_PROVIDERS = new Set<string>(['codex', 'cursor', 'pi', 'vibe']);
 const SANDCASTLE_EFFORTS = new Set<string>(['low', 'medium', 'high', 'xhigh']);
 const SANDCASTLE_PROMOTIONS = new Set<string>(['ask', 'autoApply', 'autoReject']);
+const MIN_SANDCASTLE_MAX_ITERATIONS = 1;
+const MAX_SANDCASTLE_MAX_ITERATIONS = 20;
 const TIMEOUT_KEYS = [
   'initializeMs',
   'newSessionMs',
@@ -254,8 +256,11 @@ function parseSandcastleAgent(
     ? undefined
     : readSandcastleEffort(value.effort, `agents.${name}.effort`, errors);
   const env = value.env === undefined ? undefined : readStringRecord(value.env, `agents.${name}.env`, errors);
+  const maxIterations = value.maxIterations === undefined
+    ? undefined
+    : readSandcastleMaxIterations(value.maxIterations, `agents.${name}.maxIterations`, errors);
 
-  if (!provider || !model || effort === null || env === null) {
+  if (!provider || !model || effort === null || env === null || maxIterations === null) {
     return null;
   }
 
@@ -264,6 +269,7 @@ function parseSandcastleAgent(
     provider,
     model,
     effort: effort ?? undefined,
+    maxIterations: maxIterations ?? undefined,
     displayName: typeof value.displayName === 'string' ? value.displayName : undefined,
     env,
     skills: typeof value.skills === 'boolean' ? value.skills : undefined,
@@ -299,6 +305,23 @@ function readSandcastleEffort(
     return value as SandcastleEffort;
   }
   errors.push(`${scope} must be "low", "medium", "high", or "xhigh".`);
+  return null;
+}
+
+function readSandcastleMaxIterations(
+  value: unknown,
+  scope: string,
+  errors: string[],
+): number | null {
+  if (
+    typeof value === 'number'
+    && Number.isInteger(value)
+    && value >= MIN_SANDCASTLE_MAX_ITERATIONS
+    && value <= MAX_SANDCASTLE_MAX_ITERATIONS
+  ) {
+    return value;
+  }
+  errors.push(`${scope} must be an integer between ${MIN_SANDCASTLE_MAX_ITERATIONS} and ${MAX_SANDCASTLE_MAX_ITERATIONS}.`);
   return null;
 }
 

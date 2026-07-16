@@ -28,7 +28,7 @@ suite('DefaultSandcastleRuntime', () => {
     const agentsDir = path.join(repo, '.agents', 'skills');
     fs.mkdirSync(agentsDir, { recursive: true });
 
-    const mounts = buildSandboxMounts({ provider: 'codex', model: 'gpt-5.4', imageName: 'img' }, repo);
+    const mounts = buildSandboxMounts({ provider: 'codex', model: 'gpt-5.4', imageName: 'img', maxIterations: 1 }, repo);
 
     assert.ok(mounts.some(mount => mount.sandboxPath === '.agents'));
     assert.ok(mounts.some(mount => mount.sandboxPath === '/home/agent/.codex'));

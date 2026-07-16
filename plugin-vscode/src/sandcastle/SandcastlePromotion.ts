@@ -25,6 +25,8 @@ export interface FinishEphemeralRunOptions {
   onStatus?: PipelineStepStatusHandler;
 }
 
+const NO_CHANGES_MESSAGE = 'Sandcastle run produced no text, no tool calls, and no file diff.';
+
 type PromotionChoice = 'diff' | 'apply' | 'reject';
 
 /**
@@ -99,10 +101,10 @@ export class SandcastlePromotion {
     if (decision === 'discard_no_changes') {
       onStatus?.({
         status: 'implementing',
-        message: 'Sandcastle run completed with no file changes.',
+        message: NO_CHANGES_MESSAGE,
       });
       await this.ui.discard(connection, sessionId);
-      void vscode.window.showInformationMessage('Sandcastle run completed with no file changes.');
+      void vscode.window.showInformationMessage(NO_CHANGES_MESSAGE);
       return 'no_changes';
     }
     if (decision === 'auto_apply') {

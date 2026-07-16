@@ -338,7 +338,7 @@ export class EphemeralAcpRunner {
 		if (decision === "discard_no_changes") {
 			input.onStatus?.({
 				status: "implementing",
-				message: "Sandcastle run completed with no file changes.",
+				message: "Sandcastle run produced no text, no tool calls, and no file diff.",
 			});
 			await connected.connInfo.connection.extMethod("sandcastle/reject", { sessionId });
 			return "no_changes";

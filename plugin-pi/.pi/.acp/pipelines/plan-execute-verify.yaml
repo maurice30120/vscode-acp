@@ -4,7 +4,7 @@ title: Plan Execute Verify
 
 primitives:
   planner:
-    agent: Pi Agent
+    agent: Codex CLI
     output: proposed_plan
     sideEffects: none
     permissions: allowAll
@@ -16,7 +16,7 @@ primitives:
       {{userPrompt}}
 
   implementer:
-    agent: Pi Agent
+    agent: Pi Sandcastle
     output: markdown
     sideEffects: workspace
     permissions: ask

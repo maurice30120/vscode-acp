@@ -116,7 +116,7 @@ export class SandcastleBridgeAgent implements Agent {
       const result = await sandbox.run({
         agent: this.runtime.createProvider(this.config),
         prompt: promptText,
-        maxIterations: 1,
+        maxIterations: this.config.maxIterations,
         signal: controller.signal,
         idleTimeoutSeconds: 600,
         name: `${this.config.provider}-${session.id.slice(0, 8)}`,

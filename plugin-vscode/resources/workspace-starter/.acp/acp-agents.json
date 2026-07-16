@@ -36,6 +36,7 @@
     "provider": "pi",
     "model": "opencode-go/kimi-k2.6",
     "effort": "high",
+    "maxIterations": 5,
     "env": {}
   },
   "OpenCode": {

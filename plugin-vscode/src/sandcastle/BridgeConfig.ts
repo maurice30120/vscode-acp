@@ -5,6 +5,7 @@ export interface BridgeConfig {
   provider: SandcastleProviderName;
   model: string;
   effort?: 'low' | 'medium' | 'high' | 'xhigh';
+  maxIterations: number;
   imageName: string;
   env?: Record<string, string>;
 }
@@ -38,13 +39,30 @@ export function parseBridgeConfig(argv: string[], env: NodeJS.ProcessEnv): Bridg
     throw new Error(`Unsupported effort value: ${effort}`);
   }
 
+  const maxIterations = readMaxIterations(readArg('--max-iterations'), provider);
+
   return {
     provider,
     model,
     effort: effort as BridgeConfig['effort'],
+    maxIterations,
     imageName: env.ACP_SANDCASTLE_IMAGE || 'acp-client-sandcastle:local',
     env: Object.fromEntries(
       Object.entries(env).filter(([, value]) => typeof value === 'string'),
     ) as Record<string, string>,
   };
+}
+
+function readMaxIterations(value: string | undefined, provider: SandcastleProviderName): number {
+  if (value === undefined) {
+    return provider === 'pi' ? 5 : 1;
+  }
+  if (!/^\d+$/.test(value)) {
+    throw new Error('Expected --max-iterations to be an integer between 1 and 20.');
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 20) {
+    throw new Error('Expected --max-iterations to be an integer between 1 and 20.');
+  }
+  return parsed;
 }

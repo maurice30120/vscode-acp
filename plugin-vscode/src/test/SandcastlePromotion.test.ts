@@ -103,6 +103,7 @@ suite('SandcastlePromotion', () => {
 
   test('promote auto-discards when there are no file changes', async () => {
     const calls: string[] = [];
+    const statuses: string[] = [];
     const connection = {
       extMethod: async (method: string) => {
         calls.push(method);
@@ -114,10 +115,13 @@ suite('SandcastlePromotion', () => {
     };
     const promotion = new SandcastlePromotion({} as any);
 
-    const outcome = await promotion.promote(connection, 'session-2');
+    const outcome = await promotion.promote(connection, 'session-2', event => {
+      statuses.push(event.message ?? '');
+    });
 
     assert.strictEqual(outcome, 'no_changes');
     assert.deepStrictEqual(calls, ['sandcastle/preview', 'sandcastle/reject']);
+    assert.deepStrictEqual(statuses, ['Sandcastle run produced no text, no tool calls, and no file diff.']);
   });
 
   test('promote autoApply skips the promotion UI', async () => {
