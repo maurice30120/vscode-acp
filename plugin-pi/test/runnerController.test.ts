@@ -28,35 +28,41 @@ import {
 
 test("mocked ACP runner collects agent_message_chunk text", async () => {
 	const workspace = createTempWorkspace();
+	let capturedPermissions: string | undefined;
 	const runner = new EphemeralAcpRunner(workspace, {
 		getAgentConfigs: () => ({ "Codex CLI": { command: "codex" } }),
-		connector: async (input) => ({
-			agentId: "agent_1",
-			connInfo: {
-				initResponse: {},
-				client: undefined,
-				connection: {
-					newSession: async () => ({ sessionId: "s1" }),
-					prompt: async () => {
-						input.sessionUpdateHandler.handleUpdate(textChunk("s1", "hello "));
-						input.sessionUpdateHandler.handleUpdate(textChunk("s1", "world"));
-						return { stopReason: "end_turn" };
+		connector: async (input) => {
+			capturedPermissions = input.permissions;
+			return {
+				agentId: "agent_1",
+				connInfo: {
+					initResponse: {},
+					client: undefined,
+					connection: {
+						newSession: async () => ({ sessionId: "s1" }),
+						prompt: async () => {
+							input.sessionUpdateHandler.handleUpdate(textChunk("s1", "hello "));
+							input.sessionUpdateHandler.handleUpdate(textChunk("s1", "world"));
+							return { stopReason: "end_turn" };
+						},
+						cancel: async () => {},
+						authenticate: async () => ({}),
 					},
-					cancel: async () => {},
-					authenticate: async () => ({}),
-				},
-			} as any,
-			dispose: () => {},
-		}),
+				} as any,
+				dispose: () => {},
+			};
+		},
 	});
 
 	const result = await runner.runAgent({
 		workspaceCwd: workspace,
 		agentName: "Codex CLI",
 		promptText: "prompt",
+		permissions: "allowAll",
 	});
 
 	assert.equal(result.text, "hello world");
+	assert.equal(capturedPermissions, "allowAll");
 });
 
 test("EphemeralAcpRunner routes Sandcastle agents to the Sandcastle connector", async () => {
