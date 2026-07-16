@@ -33,11 +33,36 @@ export interface EphemeralRunResult {
   sandbox?: EphemeralRunSandboxContext;
 }
 
+export interface EphemeralRunCollectionState {
+  collectedText: string;
+}
+
 export interface EphemeralRunInput extends EphemeralRunOptions {
   workspaceCwd: string;
   agentName: string;
   promptText: string;
   permissions?: PipelinePermissions;
+}
+
+export function handleEphemeralSessionUpdate(
+  update: SessionNotification,
+  sessionId: string | null,
+  state: EphemeralRunCollectionState,
+  onSessionUpdate?: (update: SessionNotification) => void,
+): void {
+  if (sessionId && update.sessionId !== sessionId) {
+    return;
+  }
+
+  const updateData = update.update as any;
+  if (updateData?.sessionUpdate === 'agent_message_chunk') {
+    const content = updateData.content;
+    if (content?.type === 'text' && typeof content.text === 'string') {
+      state.collectedText += content.text;
+    }
+  }
+
+  onSessionUpdate?.(update);
 }
 
 /**
@@ -58,7 +83,7 @@ export async function runEphemeralRun(input: EphemeralRunInput): Promise<Ephemer
   const sessionUpdateHandler = new SessionUpdateHandler();
   const authHandler = new SessionAuthHandler(new AgentManager());
   let sessionId: string | null = null;
-  let collectedText = '';
+  const collectionState: EphemeralRunCollectionState = { collectedText: '' };
   let connInfo: ConnectionInfo | null = null;
   let disposeRun = (): void => {};
 
@@ -84,19 +109,7 @@ export async function runEphemeralRun(input: EphemeralRunInput): Promise<Ephemer
   signal?.addEventListener('abort', onAbort, { once: true });
 
   const listener = (update: SessionNotification) => {
-    if (sessionId && update.sessionId !== sessionId) {
-      return;
-    }
-
-    const updateData = update.update as any;
-    if (updateData?.sessionUpdate === 'agent_message_chunk') {
-      const content = updateData.content;
-      if (content?.type === 'text' && typeof content.text === 'string') {
-        collectedText += content.text;
-      }
-    }
-
-    onSessionUpdate?.(update);
+    handleEphemeralSessionUpdate(update, sessionId, collectionState, onSessionUpdate);
   };
 
   sessionUpdateHandler.addListener(listener);
@@ -154,7 +167,7 @@ export async function runEphemeralRun(input: EphemeralRunInput): Promise<Ephemer
     }
 
     const result: EphemeralRunResult = {
-      text: collectedText.trim(),
+      text: collectionState.collectedText.trim(),
     };
 
     if (isSandcastleAgentConfig(config)) {

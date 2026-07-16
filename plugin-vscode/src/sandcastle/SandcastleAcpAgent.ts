@@ -58,9 +58,11 @@ export interface SandcastleRuntime {
 
 export interface SandcastleAcpAgentOptions {
   heartbeatIntervalMs?: number;
+  providerStatusIntervalMs?: number;
 }
 
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
+const DEFAULT_PROVIDER_STATUS_INTERVAL_MS = 1_000;
 
 function logSandcastleActivity(message: string): void {
   process.stderr.write(`[${new Date().toISOString()}] ${message}\n`);
@@ -164,6 +166,7 @@ export class SandcastleAcpAgent implements Agent {
     let heartbeat: NodeJS.Timeout | undefined;
     const startedAt = new Date().toISOString();
     let lastProviderEventAt: string | undefined;
+    let lastProviderStatusAtMs = 0;
     const stopHeartbeat = (): void => {
       if (heartbeat) {
         clearInterval(heartbeat);
@@ -198,12 +201,17 @@ export class SandcastleAcpAgent implements Agent {
           path: path.join('.sandcastle', 'logs', `acp-${session.id}.log`),
           onAgentStreamEvent: event => {
             lastProviderEventAt = new Date().toISOString();
-            logSandcastleActivity(`Sandcastle provider stream: sessionId=${session.id}, provider=${this.config.provider}, type=${event.type}, timestamp=${lastProviderEventAt}`);
-            void this.enqueueSandcastleStatus(session, {
-              status: 'running',
-              startedAt,
-              lastProviderEventAt,
-            });
+            const nowMs = Date.now();
+            const providerStatusIntervalMs = this.options.providerStatusIntervalMs ?? DEFAULT_PROVIDER_STATUS_INTERVAL_MS;
+            if (nowMs - lastProviderStatusAtMs >= providerStatusIntervalMs) {
+              lastProviderStatusAtMs = nowMs;
+              logSandcastleActivity(`Sandcastle provider activity: sessionId=${session.id}, provider=${this.config.provider}, type=${event.type}, timestamp=${lastProviderEventAt}`);
+              void this.enqueueSandcastleStatus(session, {
+                status: 'running',
+                startedAt,
+                lastProviderEventAt,
+              });
+            }
             if (event.type === 'text' && event.message) {
               streamedText = true;
             }

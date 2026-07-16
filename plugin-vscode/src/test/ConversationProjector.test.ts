@@ -136,6 +136,70 @@ suite('ConversationProjector', () => {
     }]);
   });
 
+  test('pipeline sandcastle_status active → enriched sessionUpdate', () => {
+    const update = {
+      sessionId: 'sandcastle-inner-session',
+      update: {
+        sessionUpdate: 'sandcastle_status',
+        status: 'running',
+        provider: 'pi',
+        elapsedMs: 12_000,
+      },
+    } as any;
+    const projection = projector.project(
+      {
+        kind: 'pipeline-session-update',
+        event: {
+          sessionId: 'pipeline-session',
+          phase: 'implementer',
+          update,
+          role: 'implementer',
+          agentName: 'Pi Sandcastle',
+        },
+      },
+      ctx('pipeline-session'),
+    );
+
+    assert.deepStrictEqual(projection.sessionEffects, {
+      sessionId: 'sandcastle-inner-session',
+    });
+    assert.deepStrictEqual(projection.webviewMessages, [{
+      type: 'sessionUpdate',
+      update: update.update,
+      sessionId: 'pipeline-session',
+      phase: 'implementer',
+      role: 'implementer',
+      agentName: 'Pi Sandcastle',
+    }]);
+    assert.strictEqual(projection.shouldForwardToActiveConversation, true);
+  });
+
+  test('pipeline sandcastle_status inactive → no webview messages', () => {
+    const projection = projector.project(
+      {
+        kind: 'pipeline-session-update',
+        event: {
+          sessionId: 'pipeline-session',
+          phase: 'implementer',
+          update: {
+            sessionId: 'sandcastle-inner-session',
+            update: {
+              sessionUpdate: 'sandcastle_status',
+              status: 'running',
+              provider: 'pi',
+            },
+          } as any,
+          role: 'implementer',
+          agentName: 'Pi Sandcastle',
+        },
+      },
+      ctx('other-session'),
+    );
+
+    assert.deepStrictEqual(projection.webviewMessages, []);
+    assert.strictEqual(projection.shouldForwardToActiveConversation, false);
+  });
+
   test('pipeline-plan-ready with plan → assistant chunk + pipelinePlanReady when active', () => {
     const projection = projector.project(
       {

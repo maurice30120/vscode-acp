@@ -33,6 +33,7 @@ class FakeRuntime implements SandcastleRuntime {
   waitForAbort = false;
   runDelayMs = 0;
   emitStreamText = true;
+  rawStreamEventCount = 0;
 
   createProvider(): any {
     return {
@@ -72,6 +73,15 @@ class FakeRuntime implements SandcastleRuntime {
           await new Promise((resolve) => setTimeout(resolve, this.runDelayMs));
         }
         fs.writeFileSync(path.join(worktree, 'sentinel.txt'), prompt, 'utf8');
+        if (runOptions.logging?.type === 'file') {
+          for (let index = 0; index < this.rawStreamEventCount; index += 1) {
+            runOptions.logging.onAgentStreamEvent?.({
+              type: 'raw',
+              message: `raw-${index}`,
+              timestamp: new Date(),
+            } as any);
+          }
+        }
         if (this.emitStreamText && runOptions.logging?.type === 'file') {
           runOptions.logging.onAgentStreamEvent?.({
             type: 'text',
@@ -187,6 +197,26 @@ suite('SandcastleAcpAgent', () => {
     );
     assert.ok(runningStatuses.length > 0);
     assert.deepStrictEqual(textUpdates.map(update => update.update.content?.text), ['done']);
+    await agent.dispose();
+  });
+
+  test('coalesces provider activity status updates', async () => {
+    const connection = new FakeConnection();
+    const runtime = new FakeRuntime();
+    runtime.rawStreamEventCount = 5;
+    runtime.emitStreamText = false;
+    const agent = new SandcastleAcpAgent(connection as unknown as AgentSideConnection, {
+      provider: 'codex', model: 'test', imageName: 'fake',
+    }, runtime, { heartbeatIntervalMs: 30_000, providerStatusIntervalMs: 1_000 });
+    const { sessionId } = await agent.newSession({ cwd: repo, mcpServers: [] });
+
+    await agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'raw burst' }] });
+
+    const runningStatuses = connection.updates.filter(update =>
+      update.update.sessionUpdate === 'sandcastle_status' && update.update.status === 'running',
+    );
+    assert.strictEqual(runningStatuses.length, 1);
+    assert.strictEqual(typeof runningStatuses[0].update.lastProviderEventAt, 'string');
     await agent.dispose();
   });
 

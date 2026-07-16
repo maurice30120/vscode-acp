@@ -97,6 +97,10 @@ function isActiveSession(sessionId: string, activeSessionId: string | null): boo
   return sessionId === activeSessionId;
 }
 
+function isSandcastleStatusUpdate(update: SessionNotification['update']): boolean {
+  return (update as any)?.sessionUpdate === 'sandcastle_status';
+}
+
 export class DefaultConversationProjector implements ConversationProjector {
   project(
     input: ConversationProjectorInput,
@@ -145,11 +149,13 @@ export class DefaultConversationProjector implements ConversationProjector {
       isLoading: ctx.isLoading(event.sessionId),
     });
     const shouldForward = isActiveSession(event.sessionId, ctx.activeSessionId);
+    const shouldForwardSandcastleStatus = shouldForward && isSandcastleStatusUpdate(event.update.update);
+    const shouldForwardToWebview = shouldForward || shouldForwardSandcastleStatus;
 
     return {
       sessionId: event.sessionId,
       sessionEffects,
-      webviewMessages: shouldForward
+      webviewMessages: shouldForwardToWebview
         ? [{
             type: 'sessionUpdate',
             update: event.update.update,
@@ -157,9 +163,9 @@ export class DefaultConversationProjector implements ConversationProjector {
             phase: event.phase,
             role: event.role,
             agentName: event.agentName,
-          }]
+        }]
         : [],
-      shouldForwardToActiveConversation: shouldForward,
+      shouldForwardToActiveConversation: shouldForwardToWebview,
     };
   }
 

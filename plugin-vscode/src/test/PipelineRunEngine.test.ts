@@ -375,6 +375,46 @@ suite('PipelineRunEngine', () => {
     }
   });
 
+  test('forwards Sandcastle status session updates from implementer step', async () => {
+    const events: any[] = [];
+    const engine = createEngine({
+      runAcpAgent: async (kind, _prompt, onSessionUpdate) => {
+        if (kind === 'implement') {
+          onSessionUpdate?.({
+            sessionId: 'sandcastle-inner-session',
+            update: {
+              sessionUpdate: 'sandcastle_status',
+              status: 'running',
+              provider: 'pi',
+              elapsedMs: 1_000,
+            } as any,
+          });
+          return 'implemented successfully';
+        }
+        return '<proposed_plan>\nPlan\n</proposed_plan>';
+      },
+    });
+    engine.on('session-update', (event: any) => {
+      events.push(event);
+    });
+
+    try {
+      await engine.createPlan('session-1', 'build feature', PLAN_EXECUTE_VERIFY_PIPELINE.title);
+      await engine.approvePlan('session-1', '<proposed_plan>\nPlan\n</proposed_plan>');
+
+      const statusEvent = events.find(event =>
+        event.update.update.sessionUpdate === 'sandcastle_status',
+      );
+      assert.ok(statusEvent);
+      assert.strictEqual(statusEvent.sessionId, 'session-1');
+      assert.strictEqual(statusEvent.update.sessionId, 'sandcastle-inner-session');
+      assert.strictEqual(statusEvent.role, 'implementer');
+      assert.strictEqual(statusEvent.agentName, 'Vibe');
+    } finally {
+      await engine.dispose();
+    }
+  });
+
   test('createPlan revises pending plan when user sends follow-up message', async () => {
     const calls: Array<{ kind: string; prompt: string }> = [];
     const planReadyEvents: Array<{ plan: string; revised?: boolean }> = [];

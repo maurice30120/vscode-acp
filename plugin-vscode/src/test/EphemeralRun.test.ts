@@ -1,7 +1,11 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 
-import { runEphemeralRun } from '../core/EphemeralRun';
+import {
+  handleEphemeralSessionUpdate,
+  runEphemeralRun,
+  type EphemeralRunCollectionState,
+} from '../core/EphemeralRun';
 import { isRunAbortedError, RunAbortedError } from '../core/RunAbortedError';
 
 suite('RunAbortedError', () => {
@@ -45,5 +49,66 @@ suite('EphemeralRun abort', () => {
       }),
       (error: unknown) => isRunAbortedError(error),
     );
+  });
+});
+
+suite('EphemeralRun session updates', () => {
+  test('forwards sandcastle_status without collecting assistant text', () => {
+    const state: EphemeralRunCollectionState = { collectedText: '' };
+    const forwarded: any[] = [];
+
+    handleEphemeralSessionUpdate(
+      {
+        sessionId: 'session-1',
+        update: {
+          sessionUpdate: 'sandcastle_status',
+          status: 'running',
+          provider: 'pi',
+          elapsedMs: 1_000,
+        } as any,
+      },
+      'session-1',
+      state,
+      update => forwarded.push(update),
+    );
+    handleEphemeralSessionUpdate(
+      {
+        sessionId: 'session-1',
+        update: {
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text: 'provider text' },
+        },
+      } as any,
+      'session-1',
+      state,
+      update => forwarded.push(update),
+    );
+
+    assert.strictEqual(state.collectedText, 'provider text');
+    assert.deepStrictEqual(forwarded.map(update => update.update.sessionUpdate), [
+      'sandcastle_status',
+      'agent_message_chunk',
+    ]);
+  });
+
+  test('ignores updates from another ephemeral session', () => {
+    const state: EphemeralRunCollectionState = { collectedText: '' };
+    const forwarded: any[] = [];
+
+    handleEphemeralSessionUpdate(
+      {
+        sessionId: 'other-session',
+        update: {
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text: 'ignored' },
+        },
+      } as any,
+      'session-1',
+      state,
+      update => forwarded.push(update),
+    );
+
+    assert.strictEqual(state.collectedText, '');
+    assert.deepStrictEqual(forwarded, []);
   });
 });
