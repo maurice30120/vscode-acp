@@ -210,6 +210,97 @@ suite('WebviewAppState', () => {
     assert.strictEqual(next.orchestration.roleOutputs[0]?.role, 'implementer');
   });
 
+  test('setActivePipelineRole finalizes previous role output during a running turn', () => {
+    let state = createInitialState(emptyPersistedState());
+    state = appReducer(state, { type: 'promptStart', turnId: 'turn-1' });
+    state = appReducer(state, {
+      type: 'setActivePipelineRole',
+      role: 'implementer',
+      agentName: 'builder',
+    });
+    state = appReducer(state, { type: 'appendAssistantChunk', text: 'implemented feature' });
+
+    const switched = appReducer(state, {
+      type: 'setActivePipelineRole',
+      role: 'reviewer',
+      agentName: 'review-bot',
+    });
+
+    assert.strictEqual(switched.isProcessing, true);
+    assert.notStrictEqual(switched.currentTurn, null);
+    assert.strictEqual(switched.currentTurn?.assistantText, '');
+    assert.strictEqual(switched.persisted.chatHistory.length, 0);
+    assert.strictEqual(switched.orchestration.activeRole, 'reviewer');
+    assert.strictEqual(switched.orchestration.activeAgentName, 'review-bot');
+    assert.strictEqual(switched.orchestration.roleOutputs.length, 1);
+    assert.strictEqual(switched.orchestration.roleOutputs[0]?.role, 'implementer');
+    assert.strictEqual(switched.orchestration.roleOutputs[0]?.agentName, 'builder');
+    assert.strictEqual(switched.orchestration.roleOutputs[0]?.text, 'implemented feature');
+    assert.strictEqual(switched.orchestration.roleOutputs[0]?.title, 'Implementer (builder)');
+
+    const withReviewOutput = appReducer(switched, { type: 'appendAssistantChunk', text: 'review passed' });
+    const finished = appReducer(withReviewOutput, { type: 'finalizeTeamRoleTurn' });
+
+    assert.strictEqual(finished.isProcessing, false);
+    assert.strictEqual(finished.currentTurn, null);
+    assert.strictEqual(finished.persisted.chatHistory.length, 0);
+    assert.strictEqual(finished.orchestration.roleOutputs.length, 2);
+    assert.strictEqual(finished.orchestration.roleOutputs[1]?.role, 'reviewer');
+    assert.strictEqual(finished.orchestration.roleOutputs[1]?.agentName, 'review-bot');
+    assert.strictEqual(finished.orchestration.roleOutputs[1]?.text, 'review passed');
+    assert.strictEqual(finished.orchestration.roleOutputs[1]?.title, 'Reviewer (review-bot)');
+  });
+
+  test('appendPipelinePlan finalizes planner turn without assistant history entry', () => {
+    let state = createInitialState(emptyPersistedState());
+    state = appReducer(state, { type: 'promptStart', turnId: 'turn-1' });
+    state = appReducer(state, {
+      type: 'appendPlanningDraftChunk',
+      text: '<proposed_plan>Implement it</proposed_plan>',
+    });
+
+    const next = appReducer(state, {
+      type: 'appendPipelinePlan',
+      plan: '<proposed_plan>Implement it</proposed_plan>',
+      role: 'planner',
+      agentName: 'Planner',
+    });
+
+    assert.strictEqual(next.isProcessing, false);
+    assert.strictEqual(next.currentTurn, null);
+    assert.strictEqual(next.persisted.chatHistory.length, 0);
+    assert.strictEqual(next.orchestration.plan?.status, 'pending');
+    assert.strictEqual(next.orchestration.plan?.plan, '<proposed_plan>Implement it</proposed_plan>');
+  });
+
+  test('revisePipelinePlan finalizes planner turn without assistant history entry', () => {
+    let state = createInitialState(emptyPersistedState());
+    state = appReducer(state, {
+      type: 'appendPipelinePlan',
+      plan: '<proposed_plan>Initial</proposed_plan>',
+      role: 'planner',
+      agentName: 'Planner',
+    });
+    state = appReducer(state, { type: 'promptStart', turnId: 'turn-2' });
+    state = appReducer(state, {
+      type: 'appendPlanningDraftChunk',
+      text: '<proposed_plan>Revised</proposed_plan>',
+    });
+
+    const next = appReducer(state, {
+      type: 'revisePipelinePlan',
+      plan: '<proposed_plan>Revised</proposed_plan>',
+    });
+
+    assert.strictEqual(next.isProcessing, false);
+    assert.strictEqual(next.currentTurn, null);
+    assert.strictEqual(next.persisted.chatHistory.length, 0);
+    assert.strictEqual(next.orchestration.plan?.status, 'pending');
+    assert.strictEqual(next.orchestration.plan?.plan, '<proposed_plan>Revised</proposed_plan>');
+    assert.strictEqual(next.orchestration.plan?.role, 'planner');
+    assert.strictEqual(next.orchestration.plan?.agentName, 'Planner');
+  });
+
   test('clearChat resets orchestration slice', () => {
     let state = createInitialState(emptyPersistedState());
     state = appReducer(state, {

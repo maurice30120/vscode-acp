@@ -1,5 +1,5 @@
 import type { AppState, PipelineAction } from './types';
-import { formatPipelineRoleLabel } from './helpers';
+import { commitCurrentTurnToHistory, formatPipelineRoleLabel } from './helpers';
 
 const PIPELINE_ACTIONS = new Set<PipelineAction['type']>([
   'appendPipelinePlan',
@@ -18,9 +18,17 @@ export function isPipelineAction(action: { type: string }): action is PipelineAc
 
 export function pipelineReducer(state: AppState, action: PipelineAction): AppState {
   switch (action.type) {
-    case 'appendPipelinePlan':
+    case 'appendPipelinePlan': {
+      const chatHistory = commitCurrentTurnToHistory(
+        state.persisted.chatHistory,
+        state.currentTurn,
+      );
       return {
         ...state,
+        persisted: {
+          ...state.persisted,
+          chatHistory,
+        },
         orchestration: {
           ...state.orchestration,
           plan: {
@@ -31,11 +39,22 @@ export function pipelineReducer(state: AppState, action: PipelineAction): AppSta
             implementerUsesSandcastle: action.implementerUsesSandcastle,
           },
         },
+        isProcessing: false,
+        currentTurn: null,
       };
+    }
 
-    case 'revisePipelinePlan':
+    case 'revisePipelinePlan': {
+      const chatHistory = commitCurrentTurnToHistory(
+        state.persisted.chatHistory,
+        state.currentTurn,
+      );
       return {
         ...state,
+        persisted: {
+          ...state.persisted,
+          chatHistory,
+        },
         orchestration: {
           ...state.orchestration,
           plan: {
@@ -47,7 +66,10 @@ export function pipelineReducer(state: AppState, action: PipelineAction): AppSta
               action.implementerUsesSandcastle ?? state.orchestration.plan?.implementerUsesSandcastle,
           },
         },
+        isProcessing: false,
+        currentTurn: null,
       };
+    }
 
     case 'updatePipelineTimeline':
       return {
@@ -66,10 +88,11 @@ export function pipelineReducer(state: AppState, action: PipelineAction): AppSta
       ) {
         return state;
       }
+      const nextState = finalizeActiveRoleOutput(state);
       return {
-        ...state,
+        ...nextState,
         orchestration: {
-          ...state.orchestration,
+          ...nextState.orchestration,
           activeRole: action.role,
           activeAgentName: nextAgentName,
         },
@@ -160,4 +183,35 @@ export function pipelineReducer(state: AppState, action: PipelineAction): AppSta
     default:
       return state;
   }
+}
+
+function finalizeActiveRoleOutput(state: AppState): AppState {
+  const { activeRole, activeAgentName } = state.orchestration;
+  const assistantText = state.currentTurn?.assistantText;
+  if (!activeRole || activeRole === 'planner' || !assistantText?.trim() || !state.currentTurn) {
+    return state;
+  }
+
+  const roleLabel = formatPipelineRoleLabel(activeRole);
+  const agentSuffix = activeAgentName ? ` (${activeAgentName})` : '';
+
+  return {
+    ...state,
+    orchestration: {
+      ...state.orchestration,
+      roleOutputs: [
+        ...state.orchestration.roleOutputs,
+        {
+          role: activeRole,
+          agentName: activeAgentName ?? undefined,
+          text: assistantText,
+          title: `${roleLabel}${agentSuffix}`,
+        },
+      ],
+    },
+    currentTurn: {
+      ...state.currentTurn,
+      assistantText: '',
+    },
+  };
 }
