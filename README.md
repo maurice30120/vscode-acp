@@ -59,6 +59,7 @@ npm run vsx -w acp-client
 - Extension VS Code : [`plugin-vscode/README.fr.md`](plugin-vscode/README.fr.md)
 - Pipeline partagé : [`acp-pipeline/README.md`](acp-pipeline/README.md)
 - Plugin Pi : [`plugin-pi/README.md`](plugin-pi/README.md)
+- Roadmap monorepo : [`ROADMAP.md`](ROADMAP.md)
 - Décision d'architecture monorepo : [`plugin-vscode/doc_fr/adr/0017-monorepo-npm-workspaces.md`](plugin-vscode/doc_fr/adr/0017-monorepo-npm-workspaces.md)
 - Décision pipeline v2 canonique : [`plugin-vscode/doc_fr/adr/0018-pipeline-v2-catalogue-canonique.md`](plugin-vscode/doc_fr/adr/0018-pipeline-v2-catalogue-canonique.md)
 - Décision `promptFile` partagé : [`plugin-vscode/doc_fr/adr/0019-promptfile-pipeline-partage.md`](plugin-vscode/doc_fr/adr/0019-promptfile-pipeline-partage.md)

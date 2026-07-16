@@ -4,7 +4,7 @@ Roadmap du plugin Pi pour les pipelines ACP (`@acp-client/pi-extension`).
 Le plugin orchestre plusieurs agents ACP externes via des pipelines déclaratifs
 et s'intègre à l'hôte Pi (`@earendil-works/pi-coding-agent`).
 
-Pour le contexte global de l'extension VS Code, voir [`../../ROADMAP.md`](../../ROADMAP.md).
+Vue d'ensemble monorepo : [`../../ROADMAP.md`](../../ROADMAP.md) — le détail des réalisations et des plans spécifiques à Pi vit dans ce fichier.
 
 ---
 

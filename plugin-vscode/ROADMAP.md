@@ -1,5 +1,7 @@
 # Roadmap ACP Client
 
+Vue d'ensemble monorepo : [`../ROADMAP.md`](../ROADMAP.md)
+
 Cette roadmap regroupe l'état d'avancement, les idées d'évolution et les possibilités pour ACP Client, une extension VS Code permettant de connecter l'éditeur à des agents compatibles avec l'Agent Client Protocol.
 
 ## Objectifs du Projet

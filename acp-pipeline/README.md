@@ -71,3 +71,7 @@ npm run build -w @acp-client/pipeline
 ```
 
 Le build produit `dist/`, qui est consomme par l'extension pendant `npm run compile`.
+
+## Roadmap
+
+Voir la section `@acp-client/pipeline` dans [`../ROADMAP.md`](../ROADMAP.md).
