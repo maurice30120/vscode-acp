@@ -992,6 +992,22 @@ body {
   word-break: break-word;
 }
 
+.sandcastle-status-row {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 var(--acp-space-xs);
+  padding: 3px var(--acp-space-sm);
+  border: 1px solid var(--acp-border);
+  border-radius: var(--acp-radius-sm);
+  color: var(--acp-text-secondary);
+  background: var(--vscode-editorWidget-background);
+  font-size: var(--acp-font-size-sm);
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .debug-filters {
   align-items: center;
   border-bottom: 1px solid var(--vscode-panel-border);

@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import type { JSX } from 'react';
 
-import type { CurrentToolCall, ToolCallHistoryItem } from '../chatTypes';
+import type { CurrentToolCall, CurrentTurnStatus, ToolCallHistoryItem } from '../chatTypes';
 import { PlanningDraftBlock } from './PlanningDraftBlock';
 import { ThoughtBlock, type ThoughtBlockProps } from './ThoughtBlock';
 import { TurnTools } from './TurnTools';
@@ -16,6 +16,7 @@ export type TurnBlockProps = {
   turnKey: string;
   thought: ThoughtBlockProps | null;
   planningDraftText?: string;
+  status?: CurrentTurnStatus | null;
   assistantText?: string;
   toolCalls: CurrentToolCall[] | TurnToolHistoryItem[];
   collapsed: boolean;
@@ -27,6 +28,7 @@ function TurnBlockComponent({
   turnKey,
   thought,
   planningDraftText,
+  status,
   assistantText,
   toolCalls,
   collapsed,
@@ -36,7 +38,8 @@ function TurnBlockComponent({
   const hasAssistantContent = typeof assistantText === 'string' && assistantText.trim().length > 0;
   const hasAssistant = hasAssistantContent;
   const hasPlanningDraft = typeof planningDraftText === 'string' && planningDraftText.trim().length > 0;
-  const hasVisibleContent = Boolean(thought) || hasPlanningDraft || hasAssistant || toolCalls.length > 0;
+  const hasStatus = Boolean(status);
+  const hasVisibleContent = Boolean(thought) || hasPlanningDraft || hasStatus || hasAssistant || toolCalls.length > 0;
 
   if (!hasVisibleContent) {
     return null;
@@ -46,6 +49,7 @@ function TurnBlockComponent({
     <div className="turn" key={turnKey}>
       {thought ? <ThoughtBlock {...thought} /> : null}
       {hasPlanningDraft ? <PlanningDraftBlock text={planningDraftText ?? ''} /> : null}
+      {status ? <SandcastleStatusRow status={status} /> : null}
       {hasAssistant ? (
         <div className={`message assistant md-rendered`}>
           <MarkdownDisplay onMentionClick={onMentionClick}>
@@ -59,3 +63,25 @@ function TurnBlockComponent({
 }
 
 export const TurnBlock = memo(TurnBlockComponent);
+
+function formatElapsed(elapsedMs?: number): string | null {
+  if (typeof elapsedMs !== 'number' || !Number.isFinite(elapsedMs)) {
+    return null;
+  }
+  const elapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  const minutes = Math.floor(elapsedSeconds / 60);
+  const seconds = elapsedSeconds % 60;
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
+function SandcastleStatusRow({ status }: { status: CurrentTurnStatus }): JSX.Element {
+  const elapsed = formatElapsed(status.elapsedMs);
+  const provider = status.provider ? ` ${status.provider}` : '';
+  const verb = status.status === 'starting' ? 'starting' : 'running';
+  const detail = elapsed ? ` for ${elapsed}` : '';
+  return (
+    <div className="sandcastle-status-row" title={status.worktreePath}>
+      Sandcastle{provider} {verb} in sandbox{detail}
+    </div>
+  );
+}

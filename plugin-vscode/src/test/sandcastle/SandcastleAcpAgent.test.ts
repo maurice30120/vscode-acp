@@ -31,6 +31,8 @@ class FakeConnection {
 class FakeRuntime implements SandcastleRuntime {
   readonly prompts: string[] = [];
   waitForAbort = false;
+  runDelayMs = 0;
+  emitStreamText = true;
 
   createProvider(): any {
     return {
@@ -66,8 +68,11 @@ class FakeRuntime implements SandcastleRuntime {
             runOptions.signal?.addEventListener('abort', () => reject(runOptions.signal?.reason), { once: true });
           });
         }
+        if (this.runDelayMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, this.runDelayMs));
+        }
         fs.writeFileSync(path.join(worktree, 'sentinel.txt'), prompt, 'utf8');
-        if (runOptions.logging?.type === 'file') {
+        if (this.emitStreamText && runOptions.logging?.type === 'file') {
           runOptions.logging.onAgentStreamEvent?.({
             type: 'text',
             message: 'done',
@@ -133,6 +138,58 @@ suite('SandcastleAcpAgent', () => {
     await agent.dispose();
   });
 
+  test('emits Sandcastle status before provider text and terminal completion', async () => {
+    const connection = new FakeConnection();
+    const runtime = new FakeRuntime();
+    const agent = new SandcastleAcpAgent(connection as unknown as AgentSideConnection, {
+      provider: 'codex', model: 'test', imageName: 'fake',
+    }, runtime);
+    const { sessionId } = await agent.newSession({ cwd: repo, mcpServers: [] });
+
+    await agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'make a change' }] });
+
+    const firstStatusIndex = connection.updates.findIndex(update =>
+      update.update.sessionUpdate === 'sandcastle_status' && update.update.status === 'starting',
+    );
+    const textIndex = connection.updates.findIndex(update =>
+      update.update.sessionUpdate === 'agent_message_chunk' && update.update.content?.text === 'done',
+    );
+    const completedStatus = connection.updates.find(update =>
+      update.update.sessionUpdate === 'sandcastle_status' && update.update.status === 'completed',
+    );
+    assert.ok(firstStatusIndex >= 0);
+    assert.ok(textIndex >= 0);
+    assert.ok(firstStatusIndex < textIndex);
+    assert.ok(completedStatus);
+    assert.strictEqual(completedStatus.update.provider, 'codex');
+    assert.strictEqual(completedStatus.update.model, 'test');
+    assert.strictEqual(typeof completedStatus.update.elapsedMs, 'number');
+    await agent.dispose();
+  });
+
+  test('emits heartbeat while provider stays silent', async () => {
+    const connection = new FakeConnection();
+    const runtime = new FakeRuntime();
+    runtime.runDelayMs = 30;
+    runtime.emitStreamText = false;
+    const agent = new SandcastleAcpAgent(connection as unknown as AgentSideConnection, {
+      provider: 'codex', model: 'test', imageName: 'fake',
+    }, runtime, { heartbeatIntervalMs: 5 });
+    const { sessionId } = await agent.newSession({ cwd: repo, mcpServers: [] });
+
+    await agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'silent work' }] });
+
+    const runningStatuses = connection.updates.filter(update =>
+      update.update.sessionUpdate === 'sandcastle_status' && update.update.status === 'running',
+    );
+    const textUpdates = connection.updates.filter(update =>
+      update.update.sessionUpdate === 'agent_message_chunk',
+    );
+    assert.ok(runningStatuses.length > 0);
+    assert.deepStrictEqual(textUpdates.map(update => update.update.content?.text), ['done']);
+    await agent.dispose();
+  });
+
   test('rebuilds bounded history and rejects the next sandbox', async () => {
     const connection = new FakeConnection();
     const runtime = new FakeRuntime();
@@ -164,6 +221,26 @@ suite('SandcastleAcpAgent', () => {
     );
     await agent.cancel({ sessionId });
     assert.strictEqual((await running).stopReason, 'cancelled');
+    await agent.dispose();
+  });
+
+  test('emits terminal cancelled status without assistant text', async () => {
+    const connection = new FakeConnection();
+    const runtime = new FakeRuntime();
+    runtime.waitForAbort = true;
+    const agent = new SandcastleAcpAgent(connection as unknown as AgentSideConnection, {
+      provider: 'codex', model: 'test', imageName: 'fake',
+    }, runtime, { heartbeatIntervalMs: 5 });
+    const { sessionId } = await agent.newSession({ cwd: repo, mcpServers: [] });
+
+    const running = agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'wait' }] });
+    await agent.cancel({ sessionId });
+
+    assert.strictEqual((await running).stopReason, 'cancelled');
+    assert.ok(connection.updates.some(update =>
+      update.update.sessionUpdate === 'sandcastle_status' && update.update.status === 'cancelled',
+    ));
+    assert.ok(!connection.updates.some(update => update.update.sessionUpdate === 'agent_message_chunk'));
     await agent.dispose();
   });
 });

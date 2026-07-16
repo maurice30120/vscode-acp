@@ -1,6 +1,7 @@
 import type {
   ChatWebviewSharedState,
   CurrentTurn,
+  CurrentTurnStatus,
   ModelsState,
   ModesState,
   PersistedWebviewState,
@@ -64,6 +65,7 @@ export type AppAction =
   | { type: 'updateAvailableCommands'; commands: SlashCommand[] }
   | { type: 'appendThoughtChunk'; text: string }
   | { type: 'setCurrentThoughtOpen'; isOpen: boolean }
+  | { type: 'setCurrentTurnStatus'; status: CurrentTurnStatus | null }
   | { type: 'appendAssistantChunk'; text: string }
   | { type: 'appendPlanningDraftChunk'; text: string }
   | { type: 'appendToolCall'; toolCallId: string; title: string; status: ToolCallStatus }
@@ -125,6 +127,7 @@ export type ChatAction = Extract<
   | { type: 'promptEnd' }
   | { type: 'appendThoughtChunk' }
   | { type: 'setCurrentThoughtOpen' }
+  | { type: 'setCurrentTurnStatus' }
   | { type: 'appendAssistantChunk' }
   | { type: 'appendPlanningDraftChunk' }
   | { type: 'appendToolCall' }

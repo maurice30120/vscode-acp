@@ -28,6 +28,7 @@ export function createCurrentTurn(turnId: string): CurrentTurn {
     assistantText: '',
     planningDraft: '',
     thought: null,
+    status: null,
     toolCalls: [],
     historyToolCallIndexes: [],
   };

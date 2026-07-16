@@ -80,6 +80,34 @@ export function mapSessionUpdateToActions(update: SessionUpdate, phase?: Pipelin
       ];
     }
 
+    case 'sandcastle_status': {
+      const status = 'status' in update ? update.status : undefined;
+      if (
+        status !== 'starting' &&
+        status !== 'running' &&
+        status !== 'completed' &&
+        status !== 'cancelled' &&
+        status !== 'failed'
+      ) {
+        return [];
+      }
+      if (status === 'completed' || status === 'cancelled' || status === 'failed') {
+        return [{ type: 'setCurrentTurnStatus', status: null }];
+      }
+      return [{
+        type: 'setCurrentTurnStatus',
+        status: {
+          kind: 'sandcastle',
+          status,
+          provider: 'provider' in update && typeof update.provider === 'string' ? update.provider : undefined,
+          model: 'model' in update && typeof update.model === 'string' ? update.model : undefined,
+          worktreePath: 'worktreePath' in update && typeof update.worktreePath === 'string' ? update.worktreePath : undefined,
+          updatedAt: 'updatedAt' in update && typeof update.updatedAt === 'string' ? update.updatedAt : undefined,
+          elapsedMs: 'elapsedMs' in update && typeof update.elapsedMs === 'number' ? update.elapsedMs : undefined,
+        },
+      }];
+    }
+
     case 'plan':
       return [
         {

@@ -24,8 +24,9 @@ function normalizeAgentName(agentName: string): string {
 
 function readAgentConfigs(
   agentConfigs?: Record<string, AgentConfigEntry>,
+  workspaceCwd?: string,
 ): Record<string, AgentConfigEntry> {
-  return agentConfigs ?? getAgentConfigs();
+  return agentConfigs ?? getAgentConfigs(workspaceCwd);
 }
 
 /**
@@ -34,10 +35,10 @@ function readAgentConfigs(
 export function resolveAgent(
   agentName: string,
   workspaceCwd: string = resolveWorkspaceIdentity().cwd,
-  agentConfigs: Record<string, AgentConfigEntry> = readAgentConfigs(),
+  agentConfigs?: Record<string, AgentConfigEntry>,
 ): AgentResolution | null {
   const normalized = normalizeAgentName(agentName);
-  const configs = readAgentConfigs(agentConfigs);
+  const configs = readAgentConfigs(agentConfigs, workspaceCwd);
 
   if (configs[normalized]) {
     return {
@@ -83,9 +84,10 @@ export function isRunnableVirtualAgent(
 }
 
 export function listConfiguredAgentNames(
-  agentConfigs: Record<string, AgentConfigEntry> = readAgentConfigs(),
+  agentConfigs?: Record<string, AgentConfigEntry>,
+  workspaceCwd?: string,
 ): string[] {
-  return Object.keys(agentConfigs);
+  return Object.keys(readAgentConfigs(agentConfigs, workspaceCwd));
 }
 
 /**
@@ -93,10 +95,11 @@ export function listConfiguredAgentNames(
  */
 export function listSelectableAgentNames(
   workspaceCwd: string = resolveWorkspaceIdentity().cwd,
-  agentConfigs: Record<string, AgentConfigEntry> = readAgentConfigs(),
+  agentConfigs?: Record<string, AgentConfigEntry>,
 ): string[] {
-  const configured = listConfiguredAgentNames(agentConfigs);
-  const pipelineNames = getPipelineAgentNames(workspaceCwd, agentConfigs);
+  const configs = readAgentConfigs(agentConfigs, workspaceCwd);
+  const configured = listConfiguredAgentNames(configs);
+  const pipelineNames = getPipelineAgentNames(workspaceCwd, configs);
   const virtualNames = pipelineNames.filter(name => !configured.includes(name));
 
   return [...configured, ...virtualNames];
@@ -104,7 +107,7 @@ export function listSelectableAgentNames(
 
 export function getPipelineDefinitionsForWorkspace(
   workspaceCwd: string = resolveWorkspaceIdentity().cwd,
-  agentConfigs: Record<string, AgentConfigEntry> = readAgentConfigs(),
+  agentConfigs?: Record<string, AgentConfigEntry>,
 ): PipelineDefinition[] {
-  return getPipelineDefinitions(workspaceCwd, agentConfigs);
+  return getPipelineDefinitions(workspaceCwd, readAgentConfigs(agentConfigs, workspaceCwd));
 }

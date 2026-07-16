@@ -46,6 +46,10 @@ export interface EphemeralRunInput extends EphemeralRunOptions {
  */
 export async function runEphemeralRun(input: EphemeralRunInput): Promise<EphemeralRunResult> {
   const { workspaceCwd: cwd, agentName, promptText, permissions, onSessionUpdate, signal } = input;
+  if (signal?.aborted) {
+    throw new RunAbortedError();
+  }
+
   const config = getAgentConfig(agentName);
   if (!config) {
     throw new Error(`EphemeralRun agent "${agentName}" is not configured in .acp/acp-agents.json.`);

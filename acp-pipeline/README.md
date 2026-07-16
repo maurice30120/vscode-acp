@@ -72,6 +72,30 @@ npm run build -w @acp-client/pipeline
 
 Le build produit `dist/`, qui est consomme par l'extension pendant `npm run compile`.
 
+## Tests
+
+Les tests sont ecrits avec le runner natif Node.js (`node:test` + `node:assert/strict`).
+
+```bash
+# Lancer la suite complete (build package + compilation tests + execution)
+npm run test -w @acp-client/pipeline
+
+# Watch mode (dev only)
+npm run test:watch -w @acp-client/pipeline
+```
+
+Structure :
+
+- `test/PipelineValidator.test.ts` — validation YAML v2, erreurs structurelles, templates, parallele.
+- `test/PipelinePromptFileResolver.test.ts` — resolution `promptFile`, securite path, taille max.
+- `test/PipelineGraphCompiler.test.ts` — substitution `renderTemplate`.
+- `test/PipelineRunRegistry.test.ts` — annulation, abort controller.
+- `test/engine/PipelineRoleLabels.test.ts` — mapping roles/phases.
+- `test/helpers.ts` — fixtures et utilitaires partages.
+
+Les tests importent l'**API publique compilee** (`../dist/index.js`) et non les sources.
+Le script `test` s'assure toujours de `npm run build` avant de compiler et executer la suite.
+
 ## Roadmap
 
 Voir la section `@acp-client/pipeline` dans [`../ROADMAP.md`](../ROADMAP.md).

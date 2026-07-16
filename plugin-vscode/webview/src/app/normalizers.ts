@@ -26,6 +26,16 @@ import type {
 } from '../chatTypes';
 import { normalizePipelinePlanStatus as normalizeSharedPipelinePlanStatus } from '../../../src/ui/PipelineTypes';
 
+function normalizeSandcastleRunStatus(value: unknown) {
+  return value === 'starting' ||
+    value === 'running' ||
+    value === 'completed' ||
+    value === 'cancelled' ||
+    value === 'failed'
+    ? value
+    : undefined;
+}
+
 export function normalizeModesState(value: unknown): ModesState | null {
   if (!value || typeof value !== 'object') {
     return null;
@@ -285,6 +295,19 @@ export function normalizeSessionUpdate(value: unknown): SessionUpdate {
         toolCallId: typeof candidate.toolCallId === 'string' ? candidate.toolCallId : undefined,
         title: typeof candidate.title === 'string' ? candidate.title : undefined,
         status: normalizeToolCallStatus(candidate.status),
+      };
+
+    case 'sandcastle_status':
+      return {
+        sessionUpdate,
+        status: normalizeSandcastleRunStatus(candidate.status),
+        provider: typeof candidate.provider === 'string' ? candidate.provider : undefined,
+        model: typeof candidate.model === 'string' ? candidate.model : undefined,
+        worktreePath: typeof candidate.worktreePath === 'string' ? candidate.worktreePath : undefined,
+        startedAt: typeof candidate.startedAt === 'string' ? candidate.startedAt : undefined,
+        updatedAt: typeof candidate.updatedAt === 'string' ? candidate.updatedAt : undefined,
+        elapsedMs: typeof candidate.elapsedMs === 'number' ? candidate.elapsedMs : undefined,
+        lastProviderEventAt: typeof candidate.lastProviderEventAt === 'string' ? candidate.lastProviderEventAt : undefined,
       };
 
     case 'plan':

@@ -129,4 +129,90 @@ suite('HostMessageRouter', () => {
 
     assert.ok(result.actions.some(action => action.type === 'appendAssistantChunk'));
   });
+
+  test('sandcastle_status updates current turn without appending chat history', () => {
+    let state = createInitialState(emptyPersistedState());
+    state = appReducer(state, { type: 'promptStart', turnId: 'turn-1' });
+
+    const result = routeHostMessage(
+      {
+        type: 'sessionUpdate',
+        update: {
+          sessionUpdate: 'sandcastle_status',
+          status: 'running',
+          provider: 'pi',
+          model: 'test-model',
+          worktreePath: '/tmp/worktree',
+          elapsedMs: 12_000,
+        },
+      },
+      {
+        getState: () => state,
+        refs: {
+          sharedVersion: 0,
+          sharedUpdatedAt: 0,
+          orchestrationVersion: 0,
+          orchestrationUpdatedAt: 0,
+          fileSearchRequestId: 0,
+          turnCounter: 0,
+        },
+      },
+    );
+
+    assert.deepStrictEqual(result.actions, [{
+      type: 'setCurrentTurnStatus',
+      status: {
+        kind: 'sandcastle',
+        status: 'running',
+        provider: 'pi',
+        model: 'test-model',
+        worktreePath: '/tmp/worktree',
+        updatedAt: undefined,
+        elapsedMs: 12_000,
+      },
+    }]);
+
+    state = result.actions.reduce(appReducer, state);
+    assert.strictEqual(state.currentTurn?.status?.kind, 'sandcastle');
+    assert.deepStrictEqual(state.persisted.chatHistory, []);
+
+    state = appReducer(state, { type: 'promptEnd' });
+    assert.strictEqual(state.currentTurn, null);
+    assert.deepStrictEqual(state.persisted.chatHistory, []);
+  });
+
+  test('terminal sandcastle_status clears current turn status', () => {
+    let state = createInitialState(emptyPersistedState());
+    state = appReducer(state, { type: 'promptStart', turnId: 'turn-1' });
+    state = appReducer(state, {
+      type: 'setCurrentTurnStatus',
+      status: { kind: 'sandcastle', status: 'running', provider: 'codex' },
+    });
+
+    const result = routeHostMessage(
+      {
+        type: 'sessionUpdate',
+        update: {
+          sessionUpdate: 'sandcastle_status',
+          status: 'completed',
+          provider: 'codex',
+        },
+      },
+      {
+        getState: () => state,
+        refs: {
+          sharedVersion: 0,
+          sharedUpdatedAt: 0,
+          orchestrationVersion: 0,
+          orchestrationUpdatedAt: 0,
+          fileSearchRequestId: 0,
+          turnCounter: 0,
+        },
+      },
+    );
+
+    state = result.actions.reduce(appReducer, state);
+    assert.strictEqual(state.currentTurn?.status, null);
+    assert.deepStrictEqual(state.persisted.chatHistory, []);
+  });
 });

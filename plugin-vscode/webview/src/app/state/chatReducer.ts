@@ -18,6 +18,7 @@ const CHAT_ACTIONS = new Set<ChatAction['type']>([
   'promptEnd',
   'appendThoughtChunk',
   'setCurrentThoughtOpen',
+  'setCurrentTurnStatus',
   'appendAssistantChunk',
   'appendPlanningDraftChunk',
   'appendToolCall',
@@ -160,6 +161,20 @@ export function chatReducer(state: AppState, action: ChatAction): AppState {
           thought: { ...state.currentTurn.thought, isOpen: action.isOpen },
         },
       };
+
+    case 'setCurrentTurnStatus': {
+      const currentTurn = action.status ? ensureCurrentTurn(state) : state.currentTurn;
+      if (!currentTurn) {
+        return state;
+      }
+      return {
+        ...state,
+        currentTurn: {
+          ...currentTurn,
+          status: action.status,
+        },
+      };
+    }
 
     case 'appendAssistantChunk': {
       const currentTurn = ensureCurrentTurn(state);

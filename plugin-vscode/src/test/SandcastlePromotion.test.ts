@@ -1,4 +1,7 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import * as vscode from 'vscode';
 
 import { SandcastleApplyError, SandcastlePromotion } from '../sandcastle/SandcastlePromotion';
@@ -25,10 +28,15 @@ suite('SandcastlePromotion', () => {
   });
 
   test('resolves the active Sandcastle session once for promotion actions', async () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'sandcastle-promotion-'));
+    fs.mkdirSync(path.join(workspace, '.acp'), { recursive: true });
+    fs.writeFileSync(
+      path.join(workspace, '.acp', 'acp-agents.json'),
+      JSON.stringify({ Sandbox: { transport: 'sandcastle', provider: 'codex', model: 'gpt-5' } }),
+      'utf8',
+    );
     vscode.workspace.getConfiguration = () => ({
-      get: (key: string, fallback?: unknown) => key === 'agents'
-        ? { Sandbox: { transport: 'sandcastle', provider: 'codex', model: 'gpt-5' } }
-        : fallback,
+      get: (key: string, fallback?: unknown) => key === 'defaultWorkingDirectory' ? workspace : fallback,
     }) as vscode.WorkspaceConfiguration;
     const calls: string[] = [];
     const connection = { extMethod: async () => ({}) };
@@ -46,9 +54,13 @@ suite('SandcastlePromotion', () => {
       },
     } as any;
 
-    await new SandcastlePromotion(sessions, ui).apply();
+    try {
+      await new SandcastlePromotion(sessions, ui).apply();
 
-    assert.deepStrictEqual(calls, ['connection:sandbox-1', 'apply:sandbox-1']);
+      assert.deepStrictEqual(calls, ['connection:sandbox-1', 'apply:sandbox-1']);
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
   });
 
   test('finishEphemeralRun discards silently when sideEffects is none', async () => {

@@ -25,7 +25,7 @@ export class SessionBackedActiveAgentResolver implements ActiveAgentResolver {
     const activeName = this.getActiveAgentName();
 
     if (activeName && !isVirtualAgentName(activeName, cwd)) {
-      return this.toRunnable(activeName);
+      return this.toRunnable(activeName, cwd);
     }
 
     const fallback = listSelectableAgentNames(cwd).find(
@@ -34,11 +34,11 @@ export class SessionBackedActiveAgentResolver implements ActiveAgentResolver {
     if (!fallback) {
       throw new Error('No ACP agent configured. Add agents in .acp/acp-agents.json.');
     }
-    return this.toRunnable(fallback);
+    return this.toRunnable(fallback, cwd);
   }
 
-  private toRunnable(name: string): RunnableInlineAgent {
-    const cfg = getAgentConfig(name);
+  private toRunnable(name: string, cwd: string): RunnableInlineAgent {
+    const cfg = getAgentConfig(name, cwd);
     return { name, displayName: cfg?.displayName ?? name };
   }
 }

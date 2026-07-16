@@ -2,6 +2,8 @@ export type ChatRole = 'user' | 'assistant' | 'error' | 'info';
 
 export type ToolCallStatus = 'pending' | 'running' | 'completed' | 'failed';
 
+export type SandcastleRunStatus = 'starting' | 'running' | 'completed' | 'cancelled' | 'failed';
+
 export type PlanEntryStatus = 'completed' | 'in_progress' | 'pending' | string;
 
 export type MarkdownRenderItem = {
@@ -236,6 +238,18 @@ export type ToolCallStatusUpdate = {
   status?: ToolCallStatus;
 };
 
+export type SandcastleStatusUpdate = {
+  sessionUpdate: 'sandcastle_status';
+  status?: SandcastleRunStatus;
+  provider?: string;
+  model?: string;
+  worktreePath?: string;
+  startedAt?: string;
+  updatedAt?: string;
+  elapsedMs?: number;
+  lastProviderEventAt?: string;
+};
+
 export type CurrentModeUpdate = {
   sessionUpdate: 'current_mode_update';
   currentModeId?: string | null;
@@ -258,6 +272,7 @@ export type SessionUpdate =
   | AgentThoughtChunkUpdate
   | ToolCallUpdate
   | ToolCallStatusUpdate
+  | SandcastleStatusUpdate
   | PlanUpdate
   | CurrentModeUpdate
   | AvailableCommandsUpdate
@@ -280,11 +295,22 @@ export type CurrentToolCall = {
   status: ToolCallStatus;
 };
 
+export type CurrentTurnStatus = {
+  kind: 'sandcastle';
+  status: SandcastleRunStatus;
+  provider?: string;
+  model?: string;
+  worktreePath?: string;
+  updatedAt?: string;
+  elapsedMs?: number;
+};
+
 export type CurrentTurn = {
   turnId: string;
   assistantText: string;
   planningDraft: string;
   thought: CurrentThought | null;
+  status: CurrentTurnStatus | null;
   toolCalls: CurrentToolCall[];
   historyToolCallIndexes: number[];
 };

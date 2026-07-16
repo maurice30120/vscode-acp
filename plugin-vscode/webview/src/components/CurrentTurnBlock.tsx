@@ -50,6 +50,7 @@ function CurrentTurnBlockComponent({
         collapsed={collapsed}
         onToggleTools={handleToggleTools}
         thought={thought}
+        status={currentTurn.status ?? null}
         toolCalls={currentTurn.toolCalls}
         turnKey="current-turn"
         onMentionClick={onMentionClick}

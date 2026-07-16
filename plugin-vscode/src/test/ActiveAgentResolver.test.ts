@@ -1,4 +1,7 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import * as vscode from 'vscode';
 
 import {
@@ -9,31 +12,34 @@ import { repoRoot } from './repoRoot';
 
 suite('ActiveAgentResolver', () => {
   let originalGetConfiguration: typeof vscode.workspace.getConfiguration;
+  let workspaceRoot: string;
+
+  function writeAgents(agents: Record<string, unknown>, workspace = workspaceRoot): void {
+    fs.mkdirSync(path.join(workspace, '.acp'), { recursive: true });
+    fs.writeFileSync(
+      path.join(workspace, '.acp', 'acp-agents.json'),
+      `${JSON.stringify(agents, null, 2)}\n`,
+      'utf8',
+    );
+  }
 
   setup(() => {
+    workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'active-agent-resolver-'));
+    writeAgents({
+      Codex: { command: 'echo', displayName: 'Codex Agent' },
+      Vibe: { command: 'echo' },
+    });
     originalGetConfiguration = vscode.workspace.getConfiguration;
-    vscode.workspace.getConfiguration = function() {
-      return {
-        get: (key: string, defaultValue?: unknown) => {
-          if (key === 'agents') {
-            return {
-              Codex: { command: 'echo', displayName: 'Codex Agent' },
-              Vibe: { command: 'echo' },
-            };
-          }
-          return defaultValue;
-        },
-      } as any;
-    };
   });
 
   teardown(() => {
     vscode.workspace.getConfiguration = originalGetConfiguration;
+    fs.rmSync(workspaceRoot, { recursive: true, force: true });
   });
 
   test('active configured non-virtual agent resolves to itself', () => {
     const resolver = new SessionBackedActiveAgentResolver(
-      () => '/repo',
+      () => workspaceRoot,
       () => 'Codex',
     );
     const agent = resolver.resolveRunnableAgent();
@@ -43,29 +49,15 @@ suite('ActiveAgentResolver', () => {
 
   test('no active session falls back to first configured agent', () => {
     const resolver = new SessionBackedActiveAgentResolver(
-      () => '/repo',
+      () => workspaceRoot,
       () => undefined,
     );
     const agent = resolver.resolveRunnableAgent();
-    assert.strictEqual(resolveAgent(agent.name, '/repo')?.kind, 'configured');
+    assert.strictEqual(resolveAgent(agent.name, workspaceRoot)?.kind, 'configured');
   });
 
   test('active virtual agent session falls back to first configured agent', () => {
     const workspaceRoot = repoRoot();
-    vscode.workspace.getConfiguration = function() {
-      return {
-        get: (key: string, defaultValue?: unknown) => {
-          if (key === 'agents') {
-            return {
-              'Cursor CLI': { command: 'echo' },
-              'Cursor Sandcastle': { transport: 'sandcastle', provider: 'cursor', model: 'composer-2' },
-              Vibe: { command: 'echo' },
-            };
-          }
-          return defaultValue;
-        },
-      } as any;
-    };
 
     const resolver = new SessionBackedActiveAgentResolver(
       () => workspaceRoot,
@@ -77,7 +69,7 @@ suite('ActiveAgentResolver', () => {
 
   test('missing displayName falls back to agent name', () => {
     const resolver = new SessionBackedActiveAgentResolver(
-      () => '/repo',
+      () => workspaceRoot,
       () => 'Vibe',
     );
     const agent = resolver.resolveRunnableAgent();
@@ -86,22 +78,22 @@ suite('ActiveAgentResolver', () => {
   });
 
   test('no configured agents throws explicit error', () => {
-    vscode.workspace.getConfiguration = function() {
-      return {
-        get: (_key: string, defaultValue?: unknown) => defaultValue,
-      } as ReturnType<typeof vscode.workspace.getConfiguration>;
-    };
+    const emptyWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'no-acp-agents-workspace-'));
 
     const resolver = new SessionBackedActiveAgentResolver(
-      () => '/tmp/no-acp-agents-workspace',
+      () => emptyWorkspace,
       () => undefined,
     );
 
-    assert.throws(
-      () => resolver.resolveRunnableAgent(),
-      (error: unknown) =>
-        error instanceof Error
-        && error.message.includes('No ACP agent configured'),
-    );
+    try {
+      assert.throws(
+        () => resolver.resolveRunnableAgent(),
+        (error: unknown) =>
+          error instanceof Error
+          && error.message.includes('No ACP agent configured'),
+      );
+    } finally {
+      fs.rmSync(emptyWorkspace, { recursive: true, force: true });
+    }
   });
 });

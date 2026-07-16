@@ -54,6 +54,7 @@ suite('WorkspaceBootstrap', () => {
 
     const agentNames = listSelectableAgentNames(workspaceRoot, {
       'Cursor CLI': { command: 'cursor-agent' },
+      'Pi Sandcastle': { transport: 'sandcastle', provider: 'pi', model: 'opencode-go/kimi-k2.6' },
       Vibe: { command: 'vibe' },
     } as any);
 
