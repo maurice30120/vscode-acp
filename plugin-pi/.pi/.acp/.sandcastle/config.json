@@ -1,0 +1,19 @@
+{
+  "promotion": "ask",
+  "agents": {
+    "Vibe Sandcastle": {
+      "transport": "sandcastle",
+      "provider": "vibe",
+      "model": "mistral-large-latest",
+      "env": {
+        "VIBE_HOME": ".sandcastle/vibe-home"
+      }
+    },
+    "Pi Sandcastle": {
+      "transport": "sandcastle",
+      "provider": "pi",
+      "model": "opencode-go/kimi-k2.6",
+      "effort": "high"
+    }
+  }
+}

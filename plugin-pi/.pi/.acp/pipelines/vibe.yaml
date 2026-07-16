@@ -1,0 +1,18 @@
+version: 2
+id: vibe
+title: Vibe
+
+primitives:
+  implement:
+    agent: Vibe
+    output: markdown
+    sideEffects: none
+    prompt: |
+      Implement the user's request in the current workspace.
+
+      User request:
+      {{userPrompt}}
+
+steps:
+  - id: implement
+    use: implement

@@ -1,0 +1,553 @@
+{
+  "name": "acp-client",
+  "displayName": "ACP Client: Universal AI Agent Protocol",
+  "description": "Connect VS Code to any AI coding agent via the Agent Client Protocol (ACP). Seamlessly integrate with GitHub Copilot, Claude Code, Gemini, and other ACP-compatible agents.",
+  "version": "0.2.2",
+  "publisher": "damien-huyet",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0",
+    "vscode": "^1.85.0"
+  },
+  "icon": "resources/icon.png",
+  "bugs": {
+    "url": "https://github.com/maurice30120/vscode-acp/issues"
+  },
+  "homepage": "https://github.com/maurice30120/vscode-acp/blob/main/README.md",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/maurice30120/vscode-acp.git"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "keywords": [
+    "acp",
+    "agent",
+    "ai",
+    "coding agent",
+    "copilot"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:damien.inlineChat.open"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "acp-client",
+          "title": "ACP Client",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "acp-client": [
+        {
+          "id": "acp-sessions",
+          "name": "Agents",
+          "type": "tree"
+        },
+        {
+          "id": "acp-chat",
+          "name": "Chat",
+          "type": "webview"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "acp-sessions",
+        "contents": "No agents configured.\n[Add Agent](command:acp.addAgent)\nConfigure agents in .acp/acp-agents.json or browse the [Agent Registry](command:acp.browseRegistry)."
+      },
+      {
+        "view": "acp-chat",
+        "contents": "Start chatting with an AI coding agent.\n[Connect to Agent](command:acp.connectAgent)\nSelect an agent from the list above to begin."
+      }
+    ],
+    "commands": [
+      {
+        "command": "damien.inlineChat.open",
+        "title": "Damien: Inline Chat"
+      },
+      {
+        "command": "acp.connectAgent",
+        "title": "ACP: Connect to Agent",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "acp.connectAgentWithCurrentContext",
+        "title": "ACP: Connect With Current Context",
+        "icon": "$(references)"
+      },
+      {
+        "command": "acp.newConversation",
+        "title": "ACP: New Conversation",
+        "icon": "$(add)"
+      },
+      {
+        "command": "acp.sendPrompt",
+        "title": "ACP: Send Prompt"
+      },
+      {
+        "command": "acp.cancelTurn",
+        "title": "ACP: Cancel Current Turn",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "acp.disconnectAgent",
+        "title": "ACP: Disconnect Agent",
+        "icon": "$(debug-disconnect)"
+      },
+      {
+        "command": "acp.openChat",
+        "title": "ACP: Open Chat Panel"
+      },
+      {
+        "command": "acp.openChatEditor",
+        "title": "ACP: Open Chat in Editor"
+      },
+      {
+        "command": "acp.moveChatToEditor",
+        "title": "ACP: Move Chat to Editor"
+      },
+      {
+        "command": "acp.addAgent",
+        "title": "ACP: Add Agent Configuration",
+        "icon": "$(add)"
+      },
+      {
+        "command": "acp.removeAgent",
+        "title": "ACP: Remove Agent"
+      },
+      {
+        "command": "acp.showLog",
+        "title": "ACP: Show Log"
+      },
+      {
+        "command": "acp.bootstrapWorkspace",
+        "title": "ACP: Initialize Workspace Templates",
+        "icon": "$(folder-library)"
+      },
+      {
+        "command": "acp.showTraffic",
+        "title": "ACP: Show Protocol Traffic"
+      },
+      {
+        "command": "acp.openDebugSnapshot",
+        "title": "ACP: Open Debug Snapshot",
+        "icon": "$(bug)"
+      },
+      {
+        "command": "acp.browseRegistry",
+        "title": "ACP: Browse Agent Registry"
+      },
+      {
+        "command": "acp.setMode",
+        "title": "ACP: Set Agent Mode"
+      },
+      {
+        "command": "acp.setModel",
+        "title": "ACP: Set Agent Model"
+      },
+      {
+        "command": "acp.enableEditorContextLink",
+        "title": "ACP: Enable Editor Context Link",
+        "icon": "$(pin)",
+        "when": "!acp.editorContextLinked"
+      },
+      {
+        "command": "acp.disableEditorContextLink",
+        "title": "ACP: Disable Editor Context Link",
+        "icon": "$(pinned)",
+        "when": "acp.editorContextLinked"
+      },
+      {
+        "command": "acp.refreshAgents",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "acp.enablePipelineAgents",
+        "title": "ACP: Enable Pipeline Agents",
+        "icon": "$(play)"
+      },
+      {
+        "command": "acp.disablePipelineAgents",
+        "title": "ACP: Disable Pipeline Agents",
+        "icon": "$(debug-pause)"
+      },
+      {
+        "command": "acp.sandcastle.showDiff",
+        "title": "ACP: Sandcastle Show Diff"
+      },
+      {
+        "command": "acp.sandcastle.apply",
+        "title": "ACP: Sandcastle Apply Changes"
+      },
+      {
+        "command": "acp.sandcastle.reject",
+        "title": "ACP: Sandcastle Reject Changes"
+      },
+      {
+        "command": "acp.refreshSessions",
+        "title": "ACP: Refresh Sessions"
+      },
+      {
+        "command": "acp.openSession",
+        "title": "ACP: Open Session"
+      },
+      {
+        "command": "acp.openSessionWithCurrentContext",
+        "title": "ACP: Open Session With Current Context",
+        "icon": "$(references)"
+      },
+      {
+        "command": "acp.loadMoreSessions",
+        "title": "ACP: Load More Sessions"
+      },
+      {
+        "command": "acp.copySessionId",
+        "title": "Copy Session ID"
+      },
+      {
+        "command": "acp.forgetSession",
+        "title": "Forget Session"
+      },
+      {
+        "command": "acp.restartAgent",
+        "title": "ACP: Restart Agent",
+        "icon": "$(debug-restart)"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "acp.openSession",
+          "when": "false"
+        },
+        {
+          "command": "acp.connectAgentWithCurrentContext",
+          "when": "false"
+        },
+        {
+          "command": "acp.openSessionWithCurrentContext",
+          "when": "false"
+        },
+        {
+          "command": "acp.loadMoreSessions",
+          "when": "false"
+        },
+        {
+          "command": "acp.copySessionId",
+          "when": "false"
+        },
+        {
+          "command": "acp.forgetSession",
+          "when": "false"
+        },
+        {
+          "command": "acp.enableEditorContextLink",
+          "when": "!acp.editorContextLinked"
+        },
+        {
+          "command": "acp.disableEditorContextLink",
+          "when": "acp.editorContextLinked"
+        },
+        {
+          "command": "acp.enablePipelineAgents",
+          "when": "!acp.pipelineEnabled"
+        },
+        {
+          "command": "acp.disablePipelineAgents",
+          "when": "acp.pipelineEnabled"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "acp.addAgent",
+          "when": "view == acp-sessions",
+          "group": "navigation@1"
+        },
+        {
+          "command": "acp.refreshAgents",
+          "when": "view == acp-sessions",
+          "group": "navigation@3"
+        },
+        {
+          "command": "acp.enablePipelineAgents",
+          "when": "view == acp-sessions && !acp.pipelineEnabled",
+          "group": "navigation@2"
+        },
+        {
+          "command": "acp.disablePipelineAgents",
+          "when": "view == acp-sessions && acp.pipelineEnabled",
+          "group": "navigation@2"
+        },
+        {
+          "command": "acp.browseRegistry",
+          "when": "view == acp-sessions"
+        },
+        {
+          "command": "acp.newConversation",
+          "when": "view == acp-chat",
+          "group": "navigation@1"
+        },
+        {
+          "command": "acp.openChatEditor",
+          "when": "view == acp-chat",
+          "group": "navigation@0"
+        },
+        {
+          "command": "acp.enableEditorContextLink",
+          "when": "view == acp-chat && !acp.editorContextLinked",
+          "group": "navigation@3"
+        },
+        {
+          "command": "acp.disableEditorContextLink",
+          "when": "view == acp-chat && acp.editorContextLinked",
+          "group": "navigation@3"
+        },
+        {
+          "command": "acp.cancelTurn",
+          "when": "view == acp-chat && acp.turnInProgress",
+          "group": "navigation@4"
+        },
+        {
+          "command": "acp.disconnectAgent",
+          "when": "view == acp-chat",
+          "group": "navigation@5"
+        },
+        {
+          "command": "acp.showLog",
+          "when": "view == acp-chat"
+        },
+        {
+          "command": "acp.showTraffic",
+          "when": "view == acp-chat"
+        },
+        {
+          "command": "acp.openDebugSnapshot",
+          "when": "view == acp-chat",
+          "group": "navigation@6"
+        },
+        {
+          "command": "acp.restartAgent",
+          "when": "view == acp-chat"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "acp.connectAgent",
+          "when": "view == acp-sessions && viewItem == agent-disconnected",
+          "group": "inline"
+        },
+        {
+          "command": "acp.disconnectAgent",
+          "when": "view == acp-sessions && viewItem == agent-connected",
+          "group": "inline"
+        },
+        {
+          "command": "acp.removeAgent",
+          "when": "view == acp-sessions && viewItem =~ /^agent/"
+        },
+        {
+          "command": "acp.connectAgentWithCurrentContext",
+          "when": "view == acp-sessions && viewItem =~ /^agent/",
+          "group": "context@1"
+        },
+        {
+          "command": "acp.restartAgent",
+          "when": "view == acp-sessions && viewItem == agent-connected"
+        },
+        {
+          "command": "acp.refreshSessions",
+          "when": "view == acp-sessions && viewItem =~ /^agent/",
+          "group": "session@1"
+        },
+        {
+          "command": "acp.copySessionId",
+          "when": "view == acp-sessions && viewItem =~ /^session/",
+          "group": "session@1"
+        },
+        {
+          "command": "acp.openSessionWithCurrentContext",
+          "when": "view == acp-sessions && viewItem =~ /^session/",
+          "group": "inline"
+        },
+        {
+          "command": "acp.forgetSession",
+          "when": "view == acp-sessions && viewItem == session-local",
+          "group": "session@2"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "damien.inlineChat.open",
+        "key": "ctrl+i",
+        "mac": "cmd+i",
+        "when": "editorTextFocus && !editorReadonly"
+      },
+      {
+        "command": "acp.openChat",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a"
+      },
+      {
+        "command": "acp.cancelTurn",
+        "key": "escape",
+        "when": "acp.turnInProgress"
+      }
+    ],
+    "configuration": {
+      "title": "ACP Client",
+      "properties": {
+        "acp.autoApprovePermissions": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "allowAll"
+          ],
+          "default": "ask",
+          "description": "Automatically approve agent permission requests. 'ask' always prompts, 'allowAll' approves everything."
+        },
+        "acp.sandcastle.promotion": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "autoApply",
+            "autoReject"
+          ],
+          "default": "ask",
+          "description": "How Sandcastle workspace changes are promoted after a run. Applies only to patch promotion after the implementer step — it does not auto-approve the plan. 'ask' shows Apply/Reject once (View Diff does not loop). 'autoApply' merges without prompting (yolo). 'autoReject' discards without prompting."
+        },
+        "acp.defaultWorkingDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "Default working directory for agent sessions. Leave empty to use the current workspace folder."
+        },
+        "acp.logTraffic": {
+          "type": "boolean",
+          "default": true,
+          "description": "Log all ACP protocol traffic to the output channel."
+        },
+        "acp.terminal.visible": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show ACP command executions in VS Code terminals for debugging. When disabled, command output is still captured for the agent without creating visible terminals."
+        },
+        "acp.pipeline.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable workspace-defined LangGraph pipeline agents from .acp/pipelines/*.yaml."
+        },
+        "acp.instructions.maxBytes": {
+          "type": "number",
+          "default": 262144,
+          "description": "Maximum size in bytes for Markdown promptFile files referenced by pipeline primitives."
+        },
+        "acp.skills.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable wiring of workspace skills from .agents/skills for configured ACP agents."
+        },
+        "acp.skills.directory": {
+          "type": "string",
+          "default": ".agents/skills",
+          "description": "Relative path from the workspace root where agent skills are discovered."
+        },
+        "acp.skills.maxCatalogBytes": {
+          "type": "number",
+          "default": 65536,
+          "description": "Maximum size in bytes for the injected skills catalog on the first prompt of a session."
+        },
+        "acp.skills.agents": {
+          "type": "array",
+          "default": [
+            "Cursor CLI",
+            "Codex Sandcastle",
+            "Cursor Sandcastle",
+            "Pi Sandcastle"
+          ],
+          "description": "ACP agent names that receive skills catalog injection and Sandcastle skill mounts."
+        },
+        "acp.workspaceBootstrap.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Provision workspace templates (.acp, .agents, .sandcastle scaffold) for missing files on activation."
+        },
+        "acp.workspaceBootstrap.autoOnActivation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically initialize workspace templates when the extension activates."
+        },
+        "acp.workspaceBootstrap.includePipelineArchive": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include archived pipelines from .acp/pipelines/save/ when bootstrapping the workspace."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "clean": "node scripts/clean.mjs",
+    "compile": "npm run build -w @acp-client/pipeline && webpack",
+    "watch": "npm run build -w @acp-client/pipeline && webpack --watch",
+    "package": "npm run sync:workspace-starter && npm run build -w @acp-client/pipeline && webpack --mode production --devtool hidden-source-map",
+    "sync:workspace-starter": "node scripts/sync-workspace-starter.mjs",
+    "vsx": "vsce package --no-dependencies",
+    "clean-tests": "node scripts/clean.mjs out",
+    "compile-tests": "npm run clean-tests && npm run build -w @acp-client/pipeline && tsc -p tsconfig.compile-tests.json --incremental false",
+    "lint": "cd .. && eslint -c plugin-vscode/eslint.config.mjs \"plugin-vscode/src/**/*.ts\" \"acp-pipeline/src/**/*.ts\" \"plugin-pi/src/**/*.ts\" --max-warnings 0",
+    "sandcastle:smoke:codex": "npm run compile && node scripts/sandcastle-smoke.mjs codex apply",
+    "sandcastle:smoke:cursor": "npm run compile && node scripts/sandcastle-smoke.mjs cursor reject",
+    "pretest": "npm run sync:workspace-starter && npm run compile-tests && npm run compile && npm run lint",
+    "test": "vscode-test",
+    "vscode:dts": "vscode-dts dev"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^0.21.1",
+    "@acp-client/pipeline": "file:../acp-pipeline",
+    "@langchain/core": "^1.1.49",
+    "@langchain/langgraph": "^1.4.2",
+    "@vscode/codicons": "^0.0.45",
+    "@vscode/extension-telemetry": "^1.5.0",
+    "js-yaml": "^4.1.1",
+    "jsdom": "^29.1.1",
+    "marked": "^15.0.0",
+    "minisearch": "^7.2.0",
+    "prism-react-renderer": "^2.4.1",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@ai-hero/sandcastle": "^0.10.0",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@vscode/dts": "^0.4.1",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1",
+    "@vscode/vsce": "^3.7.1",
+    "eslint": "^9.0.0",
+    "ts-loader": "^9.5.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0",
+    "webpack": "^5.95.0",
+    "webpack-cli": "^5.1.0"
+  },
+  "enabledApiProposals": [
+    "editorInsets"
+  ]
+}

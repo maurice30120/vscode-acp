@@ -1,0 +1,23 @@
+{
+  "name": "vscode-acp-workspace",
+  "private": true,
+  "workspaces": [
+    "acp-pipeline",
+    "plugin-vscode",
+    "plugin-pi"
+  ],
+  "scripts": {
+    "compile": "npm run compile -w acp-client",
+    "clean": "npm run clean -w acp-client --",
+    "watch": "npm run watch -w acp-client",
+    "package": "npm run package -w acp-client",
+    "test": "npm run test -w acp-client",
+    "lint": "npm run lint -w acp-client",
+    "compile-tests": "npm run compile-tests -w acp-client",
+    "test:pi": "npm run test -w @acp-client/pi-extension",
+    "vsx": "npm run vsx -w acp-client"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

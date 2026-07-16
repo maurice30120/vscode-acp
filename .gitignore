@@ -1,0 +1,26 @@
+# Dependencies
+node_modules
+# Build outputs (compiled JS / maps / type info)
+out/
+dist/
+*/dist/
+*/out/
+tsconfig.tsbuildinfo
+*.vsix
+# Downloaded VS Code test installs
+.vscode-test/
+# Generated ACP pipeline saves (runtime)
+.acp/pipelines/save/
+.pi/
+*/.pi/
+!plugin-pi/.pi/
+!plugin-pi/.pi/**
+# Sandcastle local state
+.sandcastle/
+!plugin-pi/.pi/.acp/.sandcastle/
+!plugin-pi/.pi/.acp/.sandcastle/**
+# OS / editor noise
+.DS_Store
+Thumbs.db
+# Local plans & temp artifacts
+temp/
