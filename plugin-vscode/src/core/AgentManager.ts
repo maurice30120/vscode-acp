@@ -8,6 +8,7 @@ import {
   isSandcastleAgentConfig,
   type AgentConfigEntry,
 } from '../config/AgentConfig';
+import { loadSandcastleEnv } from '../sandcastle/SandcastleEnv';
 
 /**
  * Escape a single argument for safe inclusion in a shell command string.
@@ -89,6 +90,7 @@ export class AgentManager extends EventEmitter {
     const child = (() => {
       if (isSandcastleAgentConfig(config)) {
         const bridgePath = path.join(__dirname, 'sandcastle-acp-bridge.js');
+        const sandcastleEnv = cwd ? loadSandcastleEnv(cwd) : {};
         return spawn(process.execPath, [
           bridgePath,
           '--provider', config.provider,
@@ -99,6 +101,7 @@ export class AgentManager extends EventEmitter {
           cwd: cwd || undefined,
           env: {
             ...process.env,
+            ...sandcastleEnv,
             ...(config.env || {}),
             ELECTRON_RUN_AS_NODE: '1',
           },

@@ -4,6 +4,7 @@ import { AgentProcessManager, observeAgentProcessExit, type ProcessAgentConfig }
 import { ConnectionManager, type ConnectionInfo } from './connectionManager.js';
 import { type ConnectedAcpAgent } from './defaultConnector.js';
 import type { PartialAcpOperationTimeouts } from './operationGuards.js';
+import { loadSandcastleEnv } from './sandcastleEnv.js';
 import { SessionUpdateHandler } from './sessionUpdateHandler.js';
 import type { Logger, PiPermissionContext, SandcastleAgentConfig } from '../types.js';
 
@@ -19,7 +20,10 @@ export interface SandcastleConnectorInput {
 
 export type SandcastleConnector = (input: SandcastleConnectorInput) => Promise<ConnectedAcpAgent>;
 
-export function buildSandcastleBridgeProcessConfig(config: SandcastleAgentConfig): ProcessAgentConfig {
+export function buildSandcastleBridgeProcessConfig(
+  config: SandcastleAgentConfig,
+  workspaceCwd = process.cwd(),
+): ProcessAgentConfig {
   const bridgePath = fileURLToPath(new URL('../sandcastle/bridge.js', import.meta.url));
   const args = [
     bridgePath,
@@ -31,9 +35,12 @@ export function buildSandcastleBridgeProcessConfig(config: SandcastleAgentConfig
   if (config.effort) {
     args.push('--effort', config.effort);
   }
+  const fileEnv = loadSandcastleEnv(workspaceCwd);
   const env = {
+    ...fileEnv,
     ...(config.env ?? {}),
     ACP_SANDCASTLE_IMAGE: config.env?.ACP_SANDCASTLE_IMAGE
+      ?? fileEnv.ACP_SANDCASTLE_IMAGE
       ?? process.env.ACP_SANDCASTLE_IMAGE
       ?? 'acp-client-sandcastle:local',
   };
@@ -54,7 +61,7 @@ export const sandcastleConnector: SandcastleConnector = async (input) => {
     timeouts: input.timeouts,
   });
 
-  const processConfig = buildSandcastleBridgeProcessConfig(input.config);
+  const processConfig = buildSandcastleBridgeProcessConfig(input.config, input.workspaceCwd);
   const agentInstance = agentManager.spawnAgent(input.agentName, processConfig, input.workspaceCwd);
   const agentId = agentInstance.id;
   const processExit = observeAgentProcessExit(agentInstance);

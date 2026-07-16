@@ -31,6 +31,13 @@
     "model": "composer-2",
     "env": {}
   },
+  "Pi Sandcastle": {
+    "transport": "sandcastle",
+    "provider": "pi",
+    "model": "claude-sonnet-4-6",
+    "effort": "high",
+    "env": {}
+  },
   "OpenCode": {
     "command": "npx",
     "args": [

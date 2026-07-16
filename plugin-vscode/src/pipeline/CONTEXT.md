@@ -12,8 +12,8 @@ _À éviter_ : agent pipeline (quand on parle de l’entrée d’arbre), faux ag
 Workflow déclaratif (YAML sous `.acp/pipelines/` du workspace) compilé en graphe LangGraph : étapes séquentielles, branches parallèles et portes d’approbation optionnelles.
 _À éviter_ : workflow (générique), graphe (implémentation)
 
-**AgentTeam** :
-Raccourci déclaratif (YAML sous `.acp/teams/`) compilé en Pipeline multi-rôles standard (planner, approbation, implementer, reviewer, tester optionnel). Un VirtualAgent porté par une équipe reste un VirtualAgent dans l’arbre.
+**Pipeline canonique** :
+Workflow déclaratif YAML sous `.acp/pipelines/`. Les anciens raccourcis `.acp/teams/` ont été supprimés ; les workflows rôle-basés doivent être exprimés en pipeline v2 standard.
 _À éviter_ : squad, crew, multi-agent (générique)
 
 **PipelineStep** :
@@ -27,7 +27,7 @@ _À éviter_ : confirmation, étape de revue
 ## Exécution
 
 **OrchestrationRun** :
-Une exécution unique d’un Pipeline ou AgentTeam pour une Conversation virtual — un id ProtocolSession, un fil de chat visible, blocs de timeline dans ChatHistory.
+Une exécution unique d’un Pipeline pour une Conversation virtual — un id ProtocolSession, un fil de chat visible, blocs de timeline dans ChatHistory.
 _À éviter_ : session pipeline (ambigu avec SessionRecord)
 
 **EphemeralRun** :

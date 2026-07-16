@@ -11,7 +11,7 @@ L'extension supporte deux transports de conversation :
 | Transport | Exemples | Exécution |
 |-----------|----------|-----------|
 | **ACP natif** | Claude, Codex CLI, bridge Sandcastle | Agent ACP lancé sur stdio |
-| **Virtuel** | Agents pipeline et équipes d'agents | LangGraph in-process, sans processus ACP enfant |
+| **Virtuel** | Agents pipeline | LangGraph in-process, sans processus ACP enfant |
 
 Les deux transports doivent paraître identiques à l'utilisateur (arbre des agents, webview chat, historique, transfert de contexte). La structure du code ne reflétait pas cette séparation.
 
@@ -64,13 +64,12 @@ Les deux transports doivent paraître identiques à l'utilisateur (arbre des age
 
 ### Neutres
 
-- Le comportement visible par l'utilisateur est inchangé : pipelines et équipes apparaissent toujours comme des agents dans l'arbre et le chat, comme les agents ACP natifs.
-- La promotion Sandcastle exige toujours une session active Sandcastle ; l'orchestration n'affiche la passerelle de promotion que lorsque l'étape implementer utilise Sandcastle ([ADR-0012](0012-equipes-agents.md), [ADR-0013](../docs/adr/0013-acp-sandcastle-bridge.md)).
+- Le comportement visible par l'utilisateur est inchangé : les pipelines apparaissent toujours comme des agents dans l'arbre et le chat, comme les agents ACP natifs.
+- La promotion Sandcastle exige toujours une session active Sandcastle ; l'orchestration n'affiche la passerelle de promotion que lorsque l'étape implementer utilise Sandcastle ([ADR-0013](../docs/adr/0013-acp-sandcastle-bridge.md)).
 
 
 ## ADRs liés
 
 - [ADR-0005 : Pipeline A2A ACP](0005-a2a-acp-pipeline.md) — moteur d'orchestration LangGraph consommé par `OrchestrationRuntime`
-- [ADR-0012 : Équipes d'agents](0012-equipes-agents.md) — agents virtuels compilés en pipelines
 - [ADR-0013 : Bridge ACP Sandcastle](../docs/adr/0013-acp-sandcastle-bridge.md) — transport ACP natif avec promotion
 - [ADR-0014 : Historique de prompts Sandcastle borné](../docs/adr/0014-sandcastle-bounded-prompt-history.md)

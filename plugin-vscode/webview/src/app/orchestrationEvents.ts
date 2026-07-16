@@ -1,10 +1,6 @@
 import type { PipelinePhase, PipelinePlanStatus } from '../chatTypes';
 import { normalizePipelinePhase as normalizeSharedPipelinePhase } from '../../../src/ui/PipelineTypes';
-import {
-  applyPipelineStatusToTimeline,
-  createDefaultTeamTimeline,
-  resolveTeamTimeline,
-} from './OrchestrationProjector';
+import { createDefaultTeamTimeline } from './OrchestrationProjector';
 import type { AppAction } from './state';
 
 export type OrchestrationHostMessage = {
@@ -12,7 +8,6 @@ export type OrchestrationHostMessage = {
   plan?: string;
   role?: PipelinePhase;
   agentName?: string;
-  teamId?: string;
   implementerUsesSandcastle?: boolean;
   revised?: boolean;
 } | {
@@ -24,10 +19,6 @@ export type OrchestrationHostMessage = {
   stepId?: string;
   role?: PipelinePhase;
   agentName?: string;
-  teamId?: string;
-} | {
-  type: 'reviewerRerunReady';
-  output?: string;
 };
 
 export function normalizePipelinePhase(value: unknown): PipelinePhase | undefined {
@@ -51,7 +42,7 @@ export function normalizePipelineStatus(value: unknown): PipelinePlanStatus | nu
 
 export function mapOrchestrationMessageToActions(
   message: OrchestrationHostMessage,
-  currentTimeline: ReturnType<typeof createDefaultTeamTimeline>,
+  _currentTimeline: ReturnType<typeof createDefaultTeamTimeline>,
 ): AppAction[] {
   switch (message.type) {
     case 'pipelinePlanReady': {
@@ -77,13 +68,6 @@ export function mapOrchestrationMessageToActions(
             },
       ];
 
-      if (typeof message.teamId === 'string' && message.revised !== true) {
-        actions.push({
-          type: 'updatePipelineTimeline',
-          timeline: createDefaultTeamTimeline(false),
-        });
-      }
-
       return actions;
     }
 
@@ -101,17 +85,6 @@ export function mapOrchestrationMessageToActions(
         });
       }
 
-      if (typeof message.teamId === 'string') {
-        actions.push({
-          type: 'updatePipelineTimeline',
-          timeline: applyPipelineStatusToTimeline(
-            resolveTeamTimeline(currentTimeline),
-            typeof message.status === 'string' ? message.status : undefined,
-            typeof message.stepId === 'string' ? message.stepId : undefined,
-          ),
-        });
-      }
-
       const role = normalizePipelinePhase(message.role);
       if (role) {
         actions.push({
@@ -123,17 +96,6 @@ export function mapOrchestrationMessageToActions(
 
       return actions;
     }
-
-    case 'reviewerRerunReady':
-      if (typeof message.output !== 'string') {
-        return [];
-      }
-      return [{
-        type: 'appendPipelineRoleOutput',
-        role: 'reviewer-rerun',
-        text: message.output,
-        title: 'Review (rerun)',
-      }];
 
     default:
       return [];

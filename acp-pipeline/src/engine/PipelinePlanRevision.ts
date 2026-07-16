@@ -2,12 +2,11 @@ import type { SessionNotification } from '@agentclientprotocol/sdk';
 import { INTERRUPT } from '@langchain/langgraph';
 
 import type { PipelineDefinition, PipelinePrimitiveDefinition } from '../PipelineTypes';
-import type { CompiledTeamMetadata } from '../AgentTeamCompiler';
 import type { PipelineSessionUpdateEvent } from '../PipelineEvents';
 import type { PendingApprovalState, PipelineRunState } from '../PipelineRunRegistry';
 import { extractSingleProposedPlan } from '../ProposedPlan';
 import type { PipelineTimelineEmitter } from './PipelineTimelineEmitter';
-import { buildRevisionPrompt, findPlannerStepId, formatPipelineRoleLabel } from './PipelineRoleLabels';
+import { buildRevisionPrompt, findPlannerStepId } from './PipelineRoleLabels';
 
 export interface PlanRevisionDependencies {
   findPrimitiveForExecutorKind: (
@@ -20,7 +19,6 @@ export interface PlanRevisionDependencies {
     promptText: string,
     onSessionUpdate?: (update: SessionNotification) => void,
   ) => Promise<string>;
-  readTeamContext: (pipeline: PipelineDefinition) => CompiledTeamMetadata | undefined;
   emitPlanReady: (
     sessionId: string,
     state: PipelineRunState,
@@ -46,8 +44,6 @@ export async function revisePendingPlan(
   }
 
   const plannerStepId = findPlannerStepId(state.pipeline);
-  const teamContext = deps.readTeamContext(state.pipeline);
-  const plannerRole = teamContext?.roleByStepId[plannerStepId];
   const plannerPrimitive = deps.findPrimitiveForExecutorKind(state.pipeline, plannerStepId);
   const revisionPrompt = buildRevisionPrompt(
     state.originalUserPrompt,
@@ -58,17 +54,14 @@ export async function revisePendingPlan(
   state.revisionCount += 1;
   state.abortController = new AbortController();
 
-  const statusMessage = plannerRole
-    ? `${formatPipelineRoleLabel(plannerRole)} (${plannerPrimitive.agent})…`
-    : `Revising plan with ${plannerPrimitive.agent}...`;
+  const statusMessage = `Revising plan with ${plannerPrimitive.agent}...`;
   timeline.emitStatus(
     sessionId,
     'planning',
     statusMessage,
     plannerStepId,
     undefined,
-    teamContext,
-    plannerRole,
+    plannerStepId,
     plannerPrimitive.agent,
   );
 
@@ -83,9 +76,8 @@ export async function revisePendingPlan(
           phase: plannerStepId,
           update,
           stepId: plannerStepId,
-          role: plannerRole,
-          agentName: plannerRole ? teamContext?.agentByRole[plannerRole] : undefined,
-          teamId: teamContext?.teamId,
+          role: plannerStepId,
+          agentName: plannerPrimitive.agent,
         });
       },
     );

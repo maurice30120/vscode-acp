@@ -26,7 +26,7 @@ Cette roadmap regroupe l'état d'avancement, les idées d'évolution et les poss
 ### Orchestration multi-agents
 
 - Pipelines LangGraph v2 déclaratifs (`.acp/pipelines/*.yaml`) exposés comme agents virtuels.
-- Équipes d'agents (`.acp/teams/*.yaml`) compilées en pipeline v2 à l'exécution (planner → approbation → implementer → reviewer → tester).
+- Consolidation effectuée : pipelines v2 (`.acp/pipelines/*.yaml`) comme format canonique unique.
 - Pipeline `plan-execute-verify` et catalogue d'exemples dans `.acp/pipelines/save/`.
 - Instructions partagées par rôle via `InstructionResolver` et fichiers `.acp/agents/*.md`.
 - Runs éphémères (`EphemeralRun`, `EphemeralSandcastleRun`) pour les étapes pipeline et l'inline chat.
@@ -59,7 +59,7 @@ Cette roadmap regroupe l'état d'avancement, les idées d'évolution et les poss
 - Registre d'agents ACP découvrables.
 - Chat inline expérimental (API `editorInsets`).
 - Erreurs agent classifiées (`AgentError` : command-not-found, auth, quota, handshake, …).
-- Runtime extension modulaire + sessions virtuelles pour pipelines/équipes (ADR-0015).
+- Runtime extension modulaire + sessions virtuelles pour pipelines (ADR-0015).
 - ~40 fichiers de tests couvrant sessions, pipelines, sandcastle, permissions, webview, etc.
 
 ### Architecture et documentation
@@ -133,7 +133,7 @@ Base fonctionnelle en place ; l'expérience reste surtout invisible et limitée 
 **Couverture agents et orchestration** :
 
 - Étendre ou documenter le support pour les agents ACP natifs (Claude, Vibe, Gemini, Codex CLI, …).
-- Skills par rôle dans les équipes / pipelines (ex. `tester` → skill TDD).
+- Skills par rôle dans les pipelines (ex. `tester` → skill TDD).
 - Rapprocher skills et `InstructionResolver` : format partageable, pas de duplication instructions vs skills.
 - Vérifier le parcours inline chat et Sandcastle multi-tours (lecture skill dans le conteneur + invocation `/skill`).
 
@@ -142,34 +142,18 @@ Base fonctionnelle en place ; l'expérience reste surtout invisible et limitée 
 - Guide dédié `docs/skills.md` (format, settings, agents supportés, limites Sandcastle).
 - Glossaire `src/skills/CONTEXT.md` aligné sur `CONTEXT-MAP.md`.
 
-### Consolidation Pipeline vs Feature Team
+### Consolidation Pipeline V2
 
-Aujourd'hui deux formats d'orchestration coexistent et se chevauchent :
-
-- **Pipelines v2** (`.acp/pipelines/*.yaml`) — format déclaratif complet (`primitives` + `steps`), flexible, ~34 exemples dans `save/`.
-- **Teams v1 / Feature Team** (`.acp/teams/*.yaml`) — format rôle-basé simplifié (`planner` → `approval` → `implementer` → `reviewer` → `tester`) compilé en pipeline v2 au runtime par `AgentTeamCompiler`.
-
-**Constat** : les teams sont un **sous-ensemble strict** des pipelines. Le compilateur (`AgentTeamCompiler`, `buildPlannerPrompt`/`buildImplementerPrompt`/…) génère toujours la même structure de steps et les mêmes prompts à partir d'un format plus limité. Deux mécanismes parallèles pour le même résultat = charge cognitive, duplication de code, deux sources de doc/exemples à maintenir.
-
-**Objectif : comprendre la différence puis ne garder qu'un seul format.**
-
-- Auditer les cas d'usage réels : qui utilise `feature-team.yaml` vs `pev.yaml` ? Le format team apporte-t-il une valeur (ergonomie rôle, instructions par rôle) que le pipeline ne couvre pas ?
-- Décider du format unique : conserver **pipelines v2** comme format canonique (plus expressif) et faire disparaître teams, **ou** promouvoir un format rôle unique (si la valeur ergonomique l'emporte) en abandonnant les pipelines low-level.
-- Quelle que l'issue :
-  - Supprimer l'autre format + son compilateur (`AgentTeamCompiler`, `AgentTeamConfig`, `compileTeamToPipeline`, `serializeCompiledTeamPipeline`, `TeamRunSnapshotStore`, `TeamReviewerRerun`).
-  - Migrer les exemples existants (`.acp/teams/feature-team.yaml`, `.acp/agents/*.md` par rôle) vers le format retenu.
-  - Supprimer la commande `acp.showCompiledTeamPipeline` et le flag associé.
-  - Mettre à jour `docs/agent-teams.md`, les ADR concernés, `CONTEXT-MAP.md`.
-- Documenter la décision dans un ADR (rationale du format retenu, migration).
+**Fait** : VS Code est aligné avec Pi sur un seul format canonique, **pipeline v2** (`.acp/pipelines/*.yaml`). Le DSL `.acp/teams/*.yaml`, `Feature Team`, le compilateur team et les commandes associées ont été retirés. Les prompts de rôles sont conservés via `promptFile` dans le pipeline `Plan Execute Verify`.
 
 ### Simplifier l'appel
 
-Réduire la friction pour lancer un pipeline/équipe depuis le workspace :
+Réduire la friction pour lancer un pipeline depuis le workspace :
 
 - Un seul point d'entrée dans l'UI (aujourd'hui `runPipeline` + sélection d'agent virtuel) — clarifier le parcours « choisir un workflow → lancer ».
 - Defaults sensibles : agent cible, modèle, cwd hérités de la session courante plutôt qu'à re-spécifier.
 - Lancer un pipeline directement depuis un fichier `.acp/pipelines/*.yaml` ouvert (action inline / CodeLens).
-- Réduire le nombre d'étapes de confirmation avant le premier tour (surtout après consolidation pipeline/team).
+- Réduire le nombre d'étapes de confirmation avant le premier tour.
 - Aligner l'appel pipeline et l'appel agent simple sur la même surface (un agent = un pipeline à une étape ?).
 
 ### Améliorer l'UI
@@ -226,7 +210,7 @@ Réduire la friction pour lancer un pipeline/équipe depuis le workspace :
 - Centre de diagnostic : bundle de support filtré depuis les snapshots debug.
 - Politiques de permissions par workspace ou par profil d'agent.
 
-> Les idées spécifiques au plugin pi (`plugin-pi`) — visualisation des changes depuis pi, connexion à l'agent via pi, consolidation pipeline/team côté plugin — sont dans `plugin-pi/ROADMAP.md`.
+> Les idées spécifiques au plugin pi (`plugin-pi`) — visualisation des changes depuis pi, connexion à l'agent via pi, consolidation pipeline v2 côté plugin — sont dans `plugin-pi/ROADMAP.md`.
 
 ---
 
@@ -250,7 +234,7 @@ Reste à prévoir :
 
 ### 2. Instructions partagées — partiel
 
-**Fait** : `InstructionResolver` + fichiers `.acp/agents/*.md` pour les équipes d'agents.
+**Fait** : `InstructionResolver` + fichiers `.acp/agents/*.md` réutilisables par les pipelines via `promptFile`.
 
 Reste à prévoir :
 
@@ -300,7 +284,7 @@ Reste à prévoir :
 
 ### 7. Exemples prêts à l'emploi — partiel
 
-**Fait** : pipelines dans `.acp/pipelines/save/`, équipe `feature-team` dans `.acp/teams/`, doc `docs/agent-teams.md`.
+**Fait** : pipelines dans `.acp/pipelines/save/`, pipeline canonique `Plan Execute Verify`, doc pipeline v2.
 
 Reste à prévoir :
 

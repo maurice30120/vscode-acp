@@ -1,9 +1,12 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 import { SessionManager } from '../core/SessionManager';
 import { workspaceIdentityFromCwd } from '../core/WorkspaceIdentity';
 
-function createManager() {
+function createManager(workspaceCwd = '/test') {
   const agentManager = {
     killAll: () => undefined,
     spawnAgent: (_name: string, _config: any, _cwd: string) => ({ id: 'agent-1' }),
@@ -47,7 +50,7 @@ function createManager() {
   const manager = new SessionManager(
     agentManager as any,
     connectionManager as any,
-    () => workspaceIdentityFromCwd('/test'),
+    () => workspaceIdentityFromCwd(workspaceCwd),
   );
 
   manager.setTestConfigs({
@@ -885,6 +888,48 @@ suite('SessionManager', () => {
     assert.strictEqual(manager.isVirtualSession(result.sessionId), true);
     assert.strictEqual(upsertCalls.length, 1);
     assert.deepStrictEqual(upsertCalls[0], ['Plan Execute Verify', '/test', result.sessionId]);
+  });
+
+  test('connectToAgent routes pipeline agent through catalog resolution when runtime predicate misses', async () => {
+    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-agent-route-'));
+    try {
+      const pipelineDir = path.join(workspaceRoot, '.acp', 'pipelines');
+      fs.mkdirSync(pipelineDir, { recursive: true });
+      fs.writeFileSync(path.join(pipelineDir, 'plan-execute-verify.yaml'), `
+version: 2
+id: plan-execute-verify
+title: Plan Execute Verify
+primitives:
+  planner:
+    agent: Agent A
+    output: proposed_plan
+    sideEffects: none
+    prompt: Plan.
+steps:
+  - id: plan
+    use: planner
+`, 'utf8');
+
+      const manager = createManager(workspaceRoot).manager;
+      manager.registerVirtualSessionRuntime({
+        canHandle: () => false,
+        createSession: (agentName: string) => ({
+          sessionId: 'pipeline_catalog',
+          agentId: 'pipeline_agent_catalog',
+          displayName: agentName,
+        }),
+        sendPrompt: async () => ({ stopReason: 'end_turn' }) as any,
+        cancel: () => undefined,
+        dispose: () => undefined,
+      });
+
+      const result = await manager.connectToAgent('Plan Execute Verify');
+
+      assert.strictEqual(result.sessionId, 'pipeline_catalog');
+      assert.strictEqual(result.transport, 'virtual');
+    } finally {
+      fs.rmSync(workspaceRoot, { recursive: true, force: true });
+    }
   });
 
   test('connectToAgent can share discussion context from a pipeline session', async () => {

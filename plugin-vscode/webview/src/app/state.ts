@@ -6,6 +6,7 @@ export {
   createCurrentTurn,
   emptyPersistedState,
   emptyOrchestrationSlice,
+  getViewportBoundedInputHeight,
   selectOrchestrationView,
   MIN_INPUT_HEIGHT,
   MAX_INPUT_HEIGHT,

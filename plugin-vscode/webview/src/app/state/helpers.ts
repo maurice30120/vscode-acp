@@ -11,6 +11,7 @@ import type { AppState } from './types';
 
 export const MIN_INPUT_HEIGHT = 90;
 export const MAX_INPUT_HEIGHT = 400;
+const MIN_VISIBLE_MESSAGES_HEIGHT = 180;
 export const FALLBACK_TURN_ID = 'fallback-turn';
 
 export function emptyPersistedState(): PersistedWebviewState {
@@ -34,6 +35,14 @@ export function createCurrentTurn(turnId: string): CurrentTurn {
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+export function getViewportBoundedInputHeight(
+  preferredHeight: number,
+  viewportHeight: number,
+): number {
+  const viewportMax = Math.max(MIN_INPUT_HEIGHT, viewportHeight - MIN_VISIBLE_MESSAGES_HEIGHT);
+  return clamp(preferredHeight, MIN_INPUT_HEIGHT, Math.min(MAX_INPUT_HEIGHT, viewportMax));
 }
 
 export function ensureSessionState(state: AppState): SessionSnapshot {

@@ -5,6 +5,9 @@ import {
   createInitialState,
   emptyPersistedState,
   emptyOrchestrationSlice,
+  getViewportBoundedInputHeight,
+  MAX_INPUT_HEIGHT,
+  MIN_INPUT_HEIGHT,
   selectOrchestrationView,
   shouldAcceptIncomingSharedState,
   type ChatWebviewSharedState,
@@ -149,6 +152,43 @@ suite('WebviewAppState', () => {
 
     assert.strictEqual(state.orchestration.activeRole, 'reviewer');
     assert.strictEqual(state.orchestration.timeline.length, 1);
+  });
+
+  test('createInitialState clamps restored input height', () => {
+    const tooTall = createInitialState({
+      version: 1,
+      updatedAt: 100,
+      chatHistory: [],
+      sessionState: null,
+      hasActiveSession: true,
+      promptText: '',
+      inputAreaHeight: 5000,
+      isProcessing: false,
+      currentTurn: null,
+      collapsedTools: {},
+    });
+
+    const tooShort = createInitialState({
+      version: 1,
+      updatedAt: 100,
+      chatHistory: [],
+      sessionState: null,
+      hasActiveSession: true,
+      promptText: '',
+      inputAreaHeight: 1,
+      isProcessing: false,
+      currentTurn: null,
+      collapsedTools: {},
+    });
+
+    assert.strictEqual(tooTall.inputAreaHeight, MAX_INPUT_HEIGHT);
+    assert.strictEqual(tooShort.inputAreaHeight, MIN_INPUT_HEIGHT);
+  });
+
+  test('viewport-bounded input height keeps messages visible in compact panels', () => {
+    assert.strictEqual(getViewportBoundedInputHeight(MAX_INPUT_HEIGHT, 520), 340);
+    assert.strictEqual(getViewportBoundedInputHeight(MAX_INPUT_HEIGHT, 1200), MAX_INPUT_HEIGHT);
+    assert.strictEqual(getViewportBoundedInputHeight(MAX_INPUT_HEIGHT, 220), MIN_INPUT_HEIGHT);
   });
 
   test('finalizeTeamRoleTurn appends pipeline output without standard prompt commit', () => {

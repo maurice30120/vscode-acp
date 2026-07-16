@@ -4,20 +4,20 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import {
   extractTemplateVariables,
+  resolvePipelinePromptFiles,
   validatePipelineDefinition,
   type PipelineDefinition,
   type PipelineValidationResult,
 } from '@acp-client/pipeline';
 
-import { getValidTeamPipelines } from './AgentTeamCatalog';
 import { isPipelineEnabled } from './PipelineConfig';
 import { resolveWorkspaceIdentity } from '../core/WorkspaceIdentity';
 import { resolveAgent } from './VirtualAgentCatalog';
 import { log } from '../utils/Logger';
 import { getAgentConfigs } from './AgentConfig';
+import { getInstructionsMaxBytes } from '../instructions/InstructionResolver';
 
 export type {
-  CompiledTeamMetadata,
   PipelineAgentStepDefinition,
   PipelineApprovalStepDefinition,
   PipelineOutputType,
@@ -29,7 +29,7 @@ export type {
   PipelineDefinition,
   PipelineValidationResult,
 } from '@acp-client/pipeline';
-export { extractTemplateVariables, validatePipelineDefinition };
+export { extractTemplateVariables, resolvePipelinePromptFiles, validatePipelineDefinition };
 
 const PIPELINE_DIR = path.join('.acp', 'pipelines');
 
@@ -40,9 +40,7 @@ export function getPipelineDefinitions(
   if (!isPipelineEnabled()) {
     return [];
   }
-  const filePipelines = loadWorkspacePipelineDefinitions(workspaceCwd, agentConfigs);
-  const teamPipelines = getValidTeamPipelines(workspaceCwd, agentConfigs);
-  return mergePipelineDefinitions(filePipelines, teamPipelines, workspaceCwd);
+  return mergePipelineDefinitions(loadWorkspacePipelineDefinitions(workspaceCwd, agentConfigs), workspaceCwd);
 }
 
 export function getPipelineAgentNames(
@@ -62,21 +60,12 @@ export function getPipelineDefinitionForAgent(
   }
 
   const normalizedName = agentName.replace(/ \(invalid\)$/, '');
-  const filePipeline = loadWorkspacePipelineDefinitions(workspaceCwd, agentConfigs)
-    .find(definition => definition.title === normalizedName);
-  const teamPipeline = getValidTeamPipelines(workspaceCwd, agentConfigs)
-    .find(definition => definition.title === normalizedName);
-
-  if (filePipeline && teamPipeline) {
-    log(`Title conflict for "${normalizedName}": both pipeline file and team YAML define this agent. Pipeline file takes precedence.`);
-  }
-
-  return filePipeline ?? teamPipeline ?? null;
+  return loadWorkspacePipelineDefinitions(workspaceCwd, agentConfigs)
+    .find(definition => definition.title === normalizedName || definition.id === normalizedName) ?? null;
 }
 
 function mergePipelineDefinitions(
   filePipelines: PipelineDefinition[],
-  teamPipelines: PipelineDefinition[],
   workspaceCwd: string,
 ): PipelineDefinition[] {
   const byTitle = new Map<string, PipelineDefinition>();
@@ -84,14 +73,6 @@ function mergePipelineDefinitions(
   for (const pipeline of filePipelines) {
     if (byTitle.has(pipeline.title)) {
       log(`Duplicate pipeline title "${pipeline.title}" in ${workspaceCwd}; keeping first definition.`);
-      continue;
-    }
-    byTitle.set(pipeline.title, pipeline);
-  }
-
-  for (const pipeline of teamPipelines) {
-    if (byTitle.has(pipeline.title)) {
-      log(`Team "${pipeline.title}" conflicts with an existing pipeline title; team definition ignored.`);
       continue;
     }
     byTitle.set(pipeline.title, pipeline);
@@ -135,7 +116,31 @@ export function loadWorkspacePipelineDefinitions(
       const text = fs.readFileSync(filePath, 'utf8');
       const result = parsePipelineYaml(text, filePath, agentConfigs);
       if (result.definition) {
-        definitions.push(result.definition);
+        const resolved = resolvePipelinePromptFiles(result.definition.primitives, {
+          workspaceCwd,
+          maxBytes: getInstructionsMaxBytes(),
+          pipelineFilePath: filePath,
+        });
+        const fatalErrors = resolved.errors.filter(error => {
+          const primitive = result.definition?.primitives[error.primitiveId];
+          return typeof primitive?.prompt !== 'string' || primitive.prompt.trim().length === 0;
+        });
+        if (fatalErrors.length > 0) {
+          log(`Ignoring invalid ACP pipeline ${filePath}: ${fatalErrors.map(error => `primitive "${error.primitiveId}" ${error.error}`).join('; ')}`);
+          continue;
+        }
+        if (resolved.errors.length > 0) {
+          log(`ACP pipeline ${filePath}: ${resolved.errors.map(error => `primitive "${error.primitiveId}" ${error.error}; using inline prompt fallback`).join('; ')}`);
+        }
+        const primitives = { ...resolved.primitives };
+        for (const error of resolved.errors) {
+          if (fatalErrors.includes(error)) {
+            continue;
+          }
+          const primitive = result.definition.primitives[error.primitiveId];
+          primitives[error.primitiveId] = { ...primitive, promptFile: undefined };
+        }
+        definitions.push({ ...result.definition, primitives });
       } else {
         log(`Ignoring invalid ACP pipeline ${filePath}: ${result.errors.join('; ')}`);
       }

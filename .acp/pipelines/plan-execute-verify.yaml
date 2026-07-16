@@ -7,6 +7,7 @@ primitives:
     agent: Cursor CLI
     output: proposed_plan
     sideEffects: none
+    promptFile: ../agents/planner.md
     prompt: |
       Create a decision-complete implementation plan only.
       Return exactly one <proposed_plan>...</proposed_plan> block.
@@ -15,9 +16,10 @@ primitives:
       {{userPrompt}}
 
   implementer:
-    agent: Vibe
+    agent: Pi Sandcastle
     output: markdown
     sideEffects: workspace
+    promptFile: ../agents/implementer.md
     prompt: |
       Implement the approved plan in the current workspace.
 
@@ -31,6 +33,7 @@ primitives:
     agent: Cursor CLI
     output: markdown
     sideEffects: none
+    promptFile: ../agents/reviewer.md
     prompt: |
       Verify whether the approved plan was completed.
       Include changed files, tests, risks, and remaining gaps.

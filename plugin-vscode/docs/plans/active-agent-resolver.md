@@ -180,7 +180,7 @@ Supprimer l’import `SessionManager` de `AcpInlineEditAgent.ts`.
 | Cas | Entrée | Résultat attendu |
 |-----|--------|------------------|
 | ConnectedAgent natif actif | `active = 'claude'`, configured | `{ name: 'claude', displayName: ... }` |
-| VirtualAgent actif | `active = 'feature-team'`, team | premier configured non virtual |
+| VirtualAgent actif | `active = 'Plan Execute Verify'`, pipeline | premier configured non virtual |
 | Aucune session active | `active = undefined` | premier configured |
 | Workspace sans agent | liste vide | throw explicite |
 | DisplayName manquant | agent sans `displayName` config | `displayName === name` |

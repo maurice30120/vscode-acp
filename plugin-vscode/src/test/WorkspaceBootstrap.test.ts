@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import { syncWorkspaceStarterCore } from '../workspace/WorkspaceBootstrapCore';
+import { listSelectableAgentNames } from '../config/VirtualAgentCatalog';
 import { repoRoot } from './repoRoot';
 
 suite('WorkspaceBootstrap', () => {
@@ -26,7 +27,7 @@ suite('WorkspaceBootstrap', () => {
     assert.ok(fs.existsSync(path.join(starterRoot, '.acp', 'agents', '.gitignore')));
     assert.ok(fs.existsSync(path.join(starterRoot, '.acp', 'pipelines', '.gitignore')));
     assert.ok(fs.existsSync(path.join(starterRoot, '.acp', 'pipelines', 'plan-execute-verify.yaml')));
-    assert.ok(fs.existsSync(path.join(starterRoot, '.acp', 'teams', '.gitignore')));
+    assert.ok(!fs.existsSync(path.join(starterRoot, '.acp', 'teams')));
     assert.ok(!fs.existsSync(path.join(starterRoot, '.sandcastle', '.env')));
 
     const manifest = JSON.parse(fs.readFileSync(path.join(starterRoot, 'MANIFEST.json'), 'utf8')) as { version: string };
@@ -42,10 +43,22 @@ suite('WorkspaceBootstrap', () => {
     assert.ok(fs.existsSync(path.join(workspaceRoot, '.acp', 'agents', '.gitignore')));
     assert.ok(fs.existsSync(path.join(workspaceRoot, '.acp', 'pipelines', '.gitignore')));
     assert.ok(fs.existsSync(path.join(workspaceRoot, '.acp', 'pipelines', 'plan-execute-verify.yaml')));
-    assert.ok(fs.existsSync(path.join(workspaceRoot, '.acp', 'teams', '.gitignore')));
+    assert.ok(!fs.existsSync(path.join(workspaceRoot, '.acp', 'teams')));
     assert.ok(fs.existsSync(path.join(workspaceRoot, '.agents', 'skills', 'tdd', 'SKILL.md')));
     assert.ok(fs.existsSync(path.join(workspaceRoot, '.sandcastle', 'Dockerfile')));
     assert.ok(!fs.existsSync(path.join(workspaceRoot, '.sandcastle', '.env')));
+  });
+
+  test('bootstrapped workspace exposes only the canonical Plan Execute Verify workflow', async () => {
+    await syncWorkspaceStarterCore(repoRoot(), workspaceRoot, { starterRoot });
+
+    const agentNames = listSelectableAgentNames(workspaceRoot, {
+      'Cursor CLI': { command: 'cursor-agent' },
+      Vibe: { command: 'vibe' },
+    } as any);
+
+    assert.ok(agentNames.includes('Plan Execute Verify'));
+    assert.ok(!agentNames.includes('Feature Team'));
   });
 
   test('second run creates nothing and leaves files byte-identical', async () => {
@@ -76,15 +89,14 @@ suite('WorkspaceBootstrap', () => {
   });
 
   test('does not overwrite an existing file with different content', async () => {
-    const existingTeamPath = path.join(workspaceRoot, '.acp', 'teams', 'feature-team.yaml');
-    fs.mkdirSync(path.dirname(existingTeamPath), { recursive: true });
-    fs.writeFileSync(existingTeamPath, 'version: 1\nid: custom-team\n', 'utf8');
+    const existingPipelinePath = path.join(workspaceRoot, '.acp', 'pipelines', 'plan-execute-verify.yaml');
+    fs.mkdirSync(path.dirname(existingPipelinePath), { recursive: true });
+    fs.writeFileSync(existingPipelinePath, 'version: 2\nid: custom\n', 'utf8');
 
     const result = await syncWorkspaceStarterCore(repoRoot(), workspaceRoot, { starterRoot });
 
-    assert.strictEqual(fs.readFileSync(existingTeamPath, 'utf8'), 'version: 1\nid: custom-team\n');
-    assert.ok(result.skipped.includes('.acp/teams/feature-team.yaml'));
-    assert.ok(fs.existsSync(path.join(workspaceRoot, '.acp', 'pipelines', 'plan-execute-verify.yaml')));
+    assert.strictEqual(fs.readFileSync(existingPipelinePath, 'utf8'), 'version: 2\nid: custom\n');
+    assert.ok(result.skipped.includes('.acp/pipelines/plan-execute-verify.yaml'));
   });
 
   test('excludes pipeline archive by default', async () => {
@@ -134,19 +146,9 @@ suite('WorkspaceBootstrap', () => {
     );
   });
 
-  test('adds missing team file inside an existing empty teams directory', async () => {
-    fs.mkdirSync(path.join(workspaceRoot, '.acp', 'teams'), { recursive: true });
-
-    const result = await syncWorkspaceStarterCore(repoRoot(), workspaceRoot, { starterRoot });
-
-    assert.ok(fs.existsSync(path.join(workspaceRoot, '.acp', 'teams', 'feature-team.yaml')));
-    assert.ok(result.created.includes('.acp/teams/feature-team.yaml'));
-  });
-
   test('adds missing .acp gitignore files to an already bootstrapped workspace', async () => {
     fs.mkdirSync(path.join(workspaceRoot, '.acp', 'agents'), { recursive: true });
     fs.mkdirSync(path.join(workspaceRoot, '.acp', 'pipelines'), { recursive: true });
-    fs.mkdirSync(path.join(workspaceRoot, '.acp', 'teams'), { recursive: true });
     fs.writeFileSync(path.join(workspaceRoot, '.acp', '.bootstrap-version'), '1\n', 'utf8');
     fs.writeFileSync(path.join(workspaceRoot, '.acp', 'agents', 'planner.md'), 'custom planner\n', 'utf8');
 
@@ -155,7 +157,6 @@ suite('WorkspaceBootstrap', () => {
     assert.ok(result.created.includes('.acp/.gitignore'));
     assert.ok(result.created.includes('.acp/agents/.gitignore'));
     assert.ok(result.created.includes('.acp/pipelines/.gitignore'));
-    assert.ok(result.created.includes('.acp/teams/.gitignore'));
     assert.strictEqual(
       fs.readFileSync(path.join(workspaceRoot, '.acp', 'agents', 'planner.md'), 'utf8'),
       'custom planner\n',

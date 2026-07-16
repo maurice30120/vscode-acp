@@ -1,9 +1,8 @@
 import type { PromptResponse } from '@agentclientprotocol/sdk';
 import type * as vscode from 'vscode';
 
-import { getTeamEntryForAgent, isValidTeamVirtualAgentName } from '../../config/AgentTeamCatalog';
 import { getPipelineDefinitionForAgent } from '../../config/PipelineCatalog';
-import { isVirtualAgentName, resolveAgent } from '../../config/VirtualAgentCatalog';
+import { isVirtualAgentName } from '../../config/VirtualAgentCatalog';
 import type { SessionManager } from '../../core/SessionManager';
 import type { VirtualSessionDescriptor, VirtualSessionRuntime } from '../../core/VirtualSessionRuntime';
 import type {
@@ -54,11 +53,6 @@ export class OrchestrationRuntime implements VirtualSessionRuntime, vscode.Dispo
   }
 
   createSession(agentName: string, cwd: string): VirtualSessionDescriptor {
-    const resolution = resolveAgent(agentName, cwd);
-    if (resolution?.kind === 'team' && !isValidTeamVirtualAgentName(agentName)) {
-      const entry = getTeamEntryForAgent(agentName);
-      throw new Error(`Invalid agent team: ${entry?.errors.join('; ') ?? 'configuration error'}`);
-    }
     this.sequence += 1;
     const identity = `${Date.now()}_${this.sequence}`;
     return {

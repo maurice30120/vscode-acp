@@ -16,6 +16,7 @@ import {
 import { PermissionHandler } from "../src/acp/permissionHandler.js";
 import { PiAcpClient } from "../src/acp/piAcpClient.js";
 import { buildSandcastleBridgeProcessConfig } from "../src/acp/sandcastleConnector.js";
+import { parseDotEnv } from "../src/acp/sandcastleEnv.js";
 import { filterEnv, validatePath } from "../src/acp/security.js";
 import { SessionUpdateHandler } from "../src/acp/sessionUpdateHandler.js";
 import { TerminalHandler } from "../src/acp/terminalHandler.js";
@@ -519,18 +520,45 @@ test("buildSandcastleBridgeProcessConfig builds node bridge command args and ima
 	assert.equal(config.env?.ACP_SANDCASTLE_IMAGE, "custom:image");
 });
 
+test("buildSandcastleBridgeProcessConfig loads provider keys from .sandcastle env", () => {
+	const workspace = createTempWorkspace();
+	fs.mkdirSync(path.join(workspace, ".sandcastle"), { recursive: true });
+	fs.writeFileSync(
+		path.join(workspace, ".sandcastle", ".env"),
+		[
+			"OPENAI_API_KEY=sk-openai",
+			"OPENCODE_API_KEY=sk-opencode",
+			"ACP_SANDCASTLE_IMAGE=file:image",
+		].join("\n"),
+		"utf8",
+	);
+
+	const config = buildSandcastleBridgeProcessConfig({
+		transport: "sandcastle",
+		provider: "pi",
+		model: "opencode-go/kimi-k2.6",
+		env: {
+			OPENCODE_API_KEY: "override-opencode",
+		},
+	}, workspace);
+
+	assert.equal(config.env?.OPENAI_API_KEY, "sk-openai");
+	assert.equal(config.env?.OPENCODE_API_KEY, "override-opencode");
+	assert.equal(config.env?.ACP_SANDCASTLE_IMAGE, "file:image");
+});
+
 test("buildSandcastleBridgeProcessConfig supports Pi and Vibe providers", () => {
 	const piConfig = buildSandcastleBridgeProcessConfig({
 		transport: "sandcastle",
 		provider: "pi",
-		model: "claude-sonnet-4-6",
+		model: "opencode-go/kimi-k2.6",
 		effort: "high",
 	});
 	assert.deepEqual(piConfig.args?.slice(1), [
 		"--provider",
 		"pi",
 		"--model",
-		"claude-sonnet-4-6",
+		"opencode-go/kimi-k2.6",
 		"--effort",
 		"high",
 	]);
@@ -548,6 +576,18 @@ test("buildSandcastleBridgeProcessConfig supports Pi and Vibe providers", () => 
 		"mistral-large-latest",
 	]);
 	assert.equal(vibeConfig.env?.VIBE_HOME, "/tmp/vibe-home");
+});
+
+test("parseDotEnv supports comments quotes and export prefixes", () => {
+	assert.deepEqual(parseDotEnv(`
+		# comment
+		export OPENCODE_API_KEY="sk-opencode"
+		OPENAI_API_KEY='sk-openai'
+		INVALID-NAME=ignored
+	`), {
+		OPENCODE_API_KEY: "sk-opencode",
+		OPENAI_API_KEY: "sk-openai",
+	});
 });
 
 test("ConnectionManager removeConnection and dispose clear tracked clients", () => {

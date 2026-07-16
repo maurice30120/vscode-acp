@@ -80,7 +80,7 @@ Le package contient aussi `.pi/.acp/.sandcastle/config.json` :
     "Pi Sandcastle": {
       "transport": "sandcastle",
       "provider": "pi",
-      "model": "claude-sonnet-4-6",
+      "model": "opencode-go/kimi-k2.6",
       "effort": "high"
     },
     "Vibe Sandcastle": {

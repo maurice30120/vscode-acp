@@ -141,13 +141,11 @@ suite('OrchestrationProjector', () => {
       {
         type: 'pipelinePlanReady',
         plan: 'ship it',
-        teamId: 'team-1',
       },
       baseTimeline,
     );
 
     assert.ok(actions.some(action => action.type === 'appendPipelinePlan'));
-    assert.ok(actions.some(action => action.type === 'updatePipelineTimeline'));
   });
 
   test('mapOrchestrationMessageToActions handles pipelineStatus', () => {
@@ -155,7 +153,6 @@ suite('OrchestrationProjector', () => {
       {
         type: 'pipelineStatus',
         status: 'implementing',
-        teamId: 'team-1',
         role: 'implementer',
         agentName: 'builder',
       },
@@ -163,22 +160,7 @@ suite('OrchestrationProjector', () => {
     );
 
     assert.ok(actions.some(action => action.type === 'updatePipelinePlanStatus'));
-    assert.ok(actions.some(action => action.type === 'updatePipelineTimeline'));
     assert.ok(actions.some(action => action.type === 'setActivePipelineRole'));
-  });
-
-  test('mapOrchestrationMessageToActions handles reviewerRerunReady', () => {
-    const actions = mapOrchestrationMessageToActions(
-      { type: 'reviewerRerunReady', output: 'looks good' },
-      baseTimeline,
-    );
-
-    assert.deepStrictEqual(actions, [{
-      type: 'appendPipelineRoleOutput',
-      role: 'reviewer-rerun',
-      text: 'looks good',
-      title: 'Review (rerun)',
-    }]);
   });
 
   test('shouldFinalizeTeamRoleTurn requires active non-planner role and assistant text', () => {

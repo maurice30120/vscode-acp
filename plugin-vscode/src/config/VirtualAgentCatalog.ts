@@ -6,21 +6,15 @@ import {
   getPipelineDefinitions,
   type PipelineDefinition,
 } from './PipelineCatalog';
-import {
-  getTeamAgentDisplayNames,
-  getTeamEntryForAgent,
-  type AgentTeamEntry,
-} from './AgentTeamCatalog';
 import { resolveWorkspaceIdentity } from '../core/WorkspaceIdentity';
 
-export type AgentResolutionKind = 'configured' | 'pipeline' | 'team';
+export type AgentResolutionKind = 'configured' | 'pipeline';
 
 export interface AgentResolution {
   kind: AgentResolutionKind;
   name: string;
   runnable: boolean;
   pipeline?: PipelineDefinition;
-  teamEntry?: AgentTeamEntry;
   errors: string[];
 }
 
@@ -35,7 +29,7 @@ function readAgentConfigs(
 }
 
 /**
- * Resolves how an agent name maps to configured, pipeline, or team virtual agents.
+ * Resolves how an agent name maps to configured or pipeline virtual agents.
  */
 export function resolveAgent(
   agentName: string,
@@ -51,18 +45,6 @@ export function resolveAgent(
       name: normalized,
       runnable: true,
       errors: [],
-    };
-  }
-
-  const teamEntry = getTeamEntryForAgent(normalized, workspaceCwd, configs);
-  if (teamEntry) {
-    return {
-      kind: 'team',
-      name: teamEntry.displayName,
-      runnable: teamEntry.errors.length === 0 && teamEntry.pipeline !== undefined,
-      pipeline: teamEntry.pipeline,
-      teamEntry,
-      errors: teamEntry.errors,
     };
   }
 
@@ -86,7 +68,7 @@ export function isVirtualAgentName(
   agentConfigs?: Record<string, AgentConfigEntry>,
 ): boolean {
   const resolution = resolveAgent(agentName, workspaceCwd, agentConfigs);
-  return resolution?.kind === 'pipeline' || resolution?.kind === 'team';
+  return resolution?.kind === 'pipeline';
 }
 
 export function isRunnableVirtualAgent(
@@ -96,7 +78,7 @@ export function isRunnableVirtualAgent(
 ): boolean {
   const resolution = resolveAgent(agentName, workspaceCwd, agentConfigs);
   return resolution !== null
-    && (resolution.kind === 'pipeline' || resolution.kind === 'team')
+    && resolution.kind === 'pipeline'
     && resolution.runnable;
 }
 
@@ -107,7 +89,7 @@ export function listConfiguredAgentNames(
 }
 
 /**
- * All agent names shown in the Agents tree: configured + virtual pipeline + virtual team.
+ * All agent names shown in the Agents tree: configured + virtual pipeline.
  */
 export function listSelectableAgentNames(
   workspaceCwd: string = resolveWorkspaceIdentity().cwd,
@@ -115,10 +97,7 @@ export function listSelectableAgentNames(
 ): string[] {
   const configured = listConfiguredAgentNames(agentConfigs);
   const pipelineNames = getPipelineAgentNames(workspaceCwd, agentConfigs);
-  const teamNames = getTeamAgentDisplayNames(workspaceCwd, agentConfigs)
-    .filter(name => !pipelineNames.includes(name.replace(/ \(invalid\)$/, '')));
-  const virtualNames = [...pipelineNames, ...teamNames]
-    .filter(name => !configured.includes(name));
+  const virtualNames = pipelineNames.filter(name => !configured.includes(name));
 
   return [...configured, ...virtualNames];
 }

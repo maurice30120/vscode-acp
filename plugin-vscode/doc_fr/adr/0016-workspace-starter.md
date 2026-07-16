@@ -17,7 +17,7 @@ Le code de copie vit dans `src/workspace/WorkspaceBootstrapCore.ts`. Le dossier 
    - Il ne doit pas être traité comme la source de vérité runtime du dépôt.
 
 2. **Centraliser les fichiers de configuration ACP sous `.acp`.**
-   - `.acp/` contient les agents, pipelines, équipes et fichiers d'instructions.
+   - `.acp/` contient les agents, pipelines v2 et fichiers d'instructions.
    - Cette règle accompagne la migration vers une configuration runtime ACP regroupée dans un seul dossier.
 
 3. **Garder les autres dossiers limités à leur rôle.**
@@ -52,4 +52,4 @@ Le code de copie vit dans `src/workspace/WorkspaceBootstrapCore.ts`. Le dossier 
 ## ADRs liés
 
 - [ADR-0005 : Pipelines de planning A2A](0005-a2a-acp-pipeline.md)
-- [ADR-0012 : Équipes d'agents](0012-equipes-agents.md)
+- [ADR-0018 : Pipeline v2 comme catalogue canonique d'orchestration](0018-pipeline-v2-catalogue-canonique.md)

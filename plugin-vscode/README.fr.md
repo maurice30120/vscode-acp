@@ -53,7 +53,7 @@ Pour les agents Sandcastle (Codex/Cursor dans Docker), compléter d’abord la [
 ### Orchestration
 
 - **Pipelines LangGraph** — moteur d’orchestration : agents virtuels depuis `.acp/pipelines/*.yaml` (portes d’approbation, étapes personnalisées, branches parallèles)
-- **Équipes d’agents** — raccourci déclaratif au-dessus des pipelines : `.acp/teams/*.yaml` compile en pipeline v2 à l’exécution (`planner` → approbation → `implementer` → `reviewer` → `tester` optionnel)
+- **Plan Execute Verify** — workflow pipeline v2 par défaut avec prompts de rôle attachés via `promptFile`
 
 ### Runtimes d’isolation
 
@@ -118,7 +118,7 @@ Les sessions **ACP natives** sont longues : le processus accumule le contexte et
 | Reset complet filesystem + contexte fournisseur | **Reject** (ou Apply si terminé), puis **Nouvelle conversation** |
 | Comparer deux implémentations | Deux sessions Sandcastle, ou Reject entre les tentatives |
 | Investigation sur plusieurs jours avec mémoire complète | Agent natif avec reprise de session |
-| Étape pipeline qui ne doit pas toucher `main` | Utiliser un agent **Sandcastle** comme implementer dans l’équipe |
+| Étape pipeline qui ne doit pas toucher `main` | Utiliser un agent **Sandcastle** pour une primitive pipeline avec effets workspace |
 
 ### Workflow Sandcastle (usage quotidien)
 
@@ -221,32 +221,16 @@ Changelog français : [docs/sandcastle-changelog-fr.md](docs/sandcastle-changelo
 
 ---
 
-## Pipelines et équipes d’agents
+## Pipelines
 
-Les pipelines et les équipes d’agents ne sont **pas deux systèmes concurrents**. Les équipes sont un DSL simplifié qui compile dans le même moteur pipeline v2 exécuté par LangGraph.
+Les pipelines v2 sont le format canonique d’orchestration. Les anciennes définitions `.acp/teams/*.yaml` ont été supprimées ; les workflows orientés rôles doivent être exprimés directement en `.acp/pipelines/*.yaml`.
 
 ```text
-Équipes d’agents (.acp/teams/*.yaml)
-        │  compilation à l’exécution (AgentTeamCompiler)
-        ▼
 Pipeline v2 (.acp/pipelines/*.yaml)
         │  graphe LangGraph
         ▼
 Agents ACP (Codex CLI, Vibe, Cursor CLI, …)
 ```
-
-| | **Pipelines** | **Équipes d’agents** |
-|---|---------------|----------------------|
-| **Rôle** | Moteur d’orchestration | Couche déclarative au-dessus |
-| **Quand l’utiliser** | Workflows custom : branches parallèles, ordre d’étapes non standard, primitives métier | Plan → approbation → implémentation → revue (et test optionnel) |
-| **Prompts** | Inline dans le YAML (`primitives.*.prompt`) | Fichiers Markdown externes (`.acp/agents/*.md`) |
-| **Flexibilité** | DSL v2 complet | Ordre des rôles fixe en v1 |
-
-**Garder les deux fonctionnalités** dans le produit : les pipelines sont le moteur ; les équipes sont le sucre ergonomique pour le cas courant.
-
-**Éviter les configs workspace en double** : si vous avez déjà `.acp/teams/feature-team.yaml`, vous n’avez généralement pas besoin d’un pipeline `plan-execute-verify` écrit à la main avec le même flux. Utiliser les pipelines bruts pour les workflows avancés (voir `.acp/pipelines/save/` pour des exemples comme la revue parallèle).
-
-### Pipelines (`.acp/pipelines/*.yaml`)
 
 Quand `acp.pipeline.enabled` est à `true`, chaque pipeline valide apparaît comme agent virtuel dans l’arbre.
 
@@ -258,29 +242,25 @@ Quand `acp.pipeline.enabled` est à `true`, chaque pipeline valide apparaît com
 
 Voir [doc_fr/pipelines-langgraph.md](doc_fr/pipelines-langgraph.md) · English: [docs/pipeline-a2a.md](docs/pipeline-a2a.md)
 
-### Équipes d’agents (`.acp/teams/*.yaml`)
-
-Workflows déclaratifs plan → implémentation → revue sans écrire le YAML pipeline à la main.
-
 ```yaml
-version: 1
-id: feature-team
-title: Feature Team
-roles:
+version: 2
+id: plan-execute-verify
+title: Plan Execute Verify
+
+primitives:
   planner:
-    agent: Codex CLI
-    instructions: .acp/agents/planner.md
-  implementer:
-    agent: Vibe
-    instructions: .acp/agents/implementer.md
-  reviewer:
-    agent: Claude Code
-    instructions: .acp/agents/reviewer.md
+    agent: Cursor CLI
+    output: proposed_plan
+    sideEffects: none
+    promptFile: ../agents/planner.md
+    prompt: |
+      Demande utilisateur :
+      {{userPrompt}}
+
+steps:
+  - id: plan
+    use: planner
 ```
-
-À l’exécution, une équipe comme `feature-team` devient un pipeline avec les étapes `planner → approval → implementer → reviewer` (et `tester` si défini). Inspecter le résultat avec **ACP: Show Compiled Team Pipeline**.
-
-Voir [doc_fr/agent-teams.md](doc_fr/agent-teams.md) · English: [docs/agent-teams.md](docs/agent-teams.md)
 
 ---
 
@@ -329,8 +309,8 @@ Désactiver par agent : `"skills": false` dans l’entrée `.acp/acp-agents.json
 | `acp.autoApprovePermissions` | `ask` | Demandes de permission : `ask` ou `allowAll` |
 | `acp.defaultWorkingDirectory` | `""` | Répertoire de travail de session ; vide = racine du workspace |
 | `acp.logTraffic` | `true` | Journaliser le JSON-RPC ACP dans le canal ACP Traffic |
-| `acp.pipeline.enabled` | `true` | Charger `.acp/pipelines/` et `.acp/teams/` |
-| `acp.instructions.maxBytes` | `262144` | Taille max des fichiers Markdown d’instructions d’équipe |
+| `acp.pipeline.enabled` | `true` | Charger `.acp/pipelines/` |
+| `acp.instructions.maxBytes` | `262144` | Taille max des fichiers Markdown `promptFile` de pipeline |
 | `acp.skills.enabled` | `true` | Activer le branchement des skills workspace |
 | `acp.skills.directory` | `.agents/skills` | Répertoire des skills à scanner |
 | `acp.skills.maxCatalogBytes` | `65536` | Taille max du catalogue injecté au 1er message |
@@ -446,7 +426,7 @@ npx @vscode/vsce package
 Extension (VS Code)
   ├── SessionManager / ConnectionManager / AgentManager
   ├── Chat webview (React)
-  ├── PipelineService + AgentTeamCompiler (LangGraph)
+  ├── PipelineService (LangGraph)
   └── Processus bridge Sandcastle (stdio ACP → Docker)
         └── @ai-hero/sandcastle → CLI Codex / Cursor
 ```
@@ -463,7 +443,6 @@ La communication avec les agents utilise ACP (JSON-RPC 2.0 sur stdio).
 |-------|----------|---------|
 | README | [README.fr.md](README.fr.md) | [README.md](README.md) |
 | Pipelines | [doc_fr/pipelines-langgraph.md](doc_fr/pipelines-langgraph.md) | [docs/pipeline-a2a.md](docs/pipeline-a2a.md) |
-| Équipes d’agents | [doc_fr/agent-teams.md](doc_fr/agent-teams.md) | [docs/agent-teams.md](docs/agent-teams.md) |
 | Sandcastle | [docs/sandcastle-changelog-fr.md](docs/sandcastle-changelog-fr.md) | [docs/sandcastle-architecture.md](docs/sandcastle-architecture.md) |
 | Promotion Apply/Reject (changements en cours) | [doc_fr/changements-sandcastle-promotion-en-cours.md](doc_fr/changements-sandcastle-promotion-en-cours.md) | — |
 | ADR | [doc_fr/adr/](doc_fr/adr/) | [docs/adr/](docs/adr/) |

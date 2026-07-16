@@ -2,7 +2,7 @@
 
 Roadmap du plugin Pi pour les pipelines ACP (`@acp-client/pi-extension`).
 Le plugin orchestre plusieurs agents ACP externes via des pipelines déclaratifs
-et des équipes d'agents, et s'intègre à l'hôte Pi (`@earendil-works/pi-coding-agent`).
+et s'intègre à l'hôte Pi (`@earendil-works/pi-coding-agent`).
 
 Pour le contexte global de l'extension VS Code, voir [`../../ROADMAP.md`](../../ROADMAP.md).
 
@@ -10,7 +10,7 @@ Pour le contexte global de l'extension VS Code, voir [`../../ROADMAP.md`](../../
 
 ## Objectifs du plugin
 
-- Exposer la puissance des pipelines/teams ACP directement depuis Pi (commande `/pipeline`, outil `run_pipeline`).
+- Exposer la puissance des pipelines ACP directement depuis Pi (commande `/pipeline`, outil `run_pipeline`).
 - Connecter et orchestrer des agents ACP externes (Codex, Claude, Gemini, Vibe, …) depuis le workspace.
 - Tirer parti de l'hôte Pi (UI, skills, `.agents/`, terminaux, permissions) comme runtime d'exécution.
 
@@ -20,7 +20,7 @@ Pour le contexte global de l'extension VS Code, voir [`../../ROADMAP.md`](../../
 
 - Découverte des agents depuis `.pi/.acp/acp-agents.json`.
 - Pipelines v2 (`.pi/.acp/pipelines/*.yaml`) : primitives + steps, étapes `approval`, validation.
-- Teams v1 (`.acp/teams/*.yaml`) : composition par rôles compilée en pipelines (`teamCatalog`, `instructionResolver`).
+- Le catalogue canonique est `.pi/.acp/pipelines/*.yaml` ; les anciens fichiers `.acp/teams/*.yaml` ne sont pas chargés.
 - Spawn + connexion ACP (`agentProcess`, `connectionManager`, `defaultConnector`), proxy fichiers/terminal/permissions.
 - Runner éphémère (`ephemeralRunner`) : connect → authenticate → prompt → collecte texte, avec abort/cancel.
 - Commande slash `/pipeline` (`list`, `run`, `approve`, `reject`, `cancel`) et outil `run_pipeline` pour le modèle.
@@ -30,26 +30,9 @@ Pour le contexte global de l'extension VS Code, voir [`../../ROADMAP.md`](../../
 
 ## Court Terme
 
-### Consolidation Pipeline vs Feature Team
+### Consolidation Pipeline V2
 
-Le plugin supporte aujourd'hui deux formats d'orchestration qui se chevauchent :
-
-- **Pipelines v2** (`.pi/.acp/pipelines/*.yaml`) — format déclaratif complet (`primitives` + `steps`), flexible.
-- **Teams v1** (`.acp/teams/*.yaml`) — format rôle-basé simplifié (`planner` → `approval` → `implementer` → `reviewer` → `tester`), compilé en pipeline v2 par `teamCatalog` + `compileTeamToPipeline`.
-
-**Constat** : les teams sont un **sous-ensemble strict** des pipelines. Le compilateur génère toujours la même structure de steps et les mêmes prompts à partir d'un format plus limité. Deux mécanismes parallèles pour le même résultat = charge cognitive, duplication de code, deux sources de doc/exemples à maintenir.
-
-**Objectif : comprendre la différence puis ne garder qu'un seul format.**
-
-- Auditer les cas d'usage réels : qui utilise les teams vs les pipelines ? Le format team apporte-t-il une valeur (ergonomie rôle, instructions par rôle) que le pipeline ne couvre pas ?
-- Décider du format unique : conserver **pipelines v2** comme format canonique (plus expressif) et faire disparaître teams, **ou** promouvoir un format rôle unique (si la valeur ergonomique l'emporte) en abandonnant les pipelines low-level.
-- Quelle que l'issue :
-  - Supprimer l'autre format + son compilateur côté plugin (`teamCatalog`, `instructionResolver`, `compileTeamToPipeline` dans `@acp-client/pipeline`).
-  - Migrer les exemples existants (`.acp/teams/`, `.pi/.acp/agents/*.md` par rôle) vers le format retenu.
-  - Mettre à jour le README du plugin et les ADR concernés.
-- Documenter la décision dans un ADR (rationale du format retenu, migration).
-
-> Note : cette consolidation est à aligner avec la même dynamique côté extension VS Code (`../../ROADMAP.md`, section « Consolidation Pipeline vs Feature Team »).
+**Fait** : Pi et VS Code utilisent maintenant les pipelines v2 comme format canonique. Pi ne lit que `.pi/.acp/pipelines/*.yaml`.
 
 ### Simplifier l'appel
 
@@ -102,7 +85,7 @@ Le plugin connecte déjà des agents ACP externes (Codex, Claude, Gemini, Vibe, 
 - Pipelines parallèles/branches (aujourd'hui strictement séquentiel) : comparaison multi-agent, fan-out/reduce.
 - Pipelines pilotés par le modèle : le modèle Pi choisit et enchaîne les pipelines selon le contexte.
 - Composition de pipelines : un pipeline appelant un autre pipeline comme étape.
-- Export/import de pipelines et teams partageables entre workspaces.
+- Export/import de pipelines partageables entre workspaces.
 
 ---
 
@@ -111,7 +94,7 @@ Le plugin connecte déjà des agents ACP externes (Codex, Claude, Gemini, Vibe, 
 | Piste | Statut |
 | ------- | -------- |
 | Couverture de tests (catalog, runner, handlers ACP) | Partiel — configCatalog + runnerController ; edge cases à compléter |
-| Consolidation pipeline/team | À faire — deux formats parallèles, décider du format unique |
+| Consolidation pipeline | Fait — pipeline v2 canonique |
 | Visualisation des changes pi dans l'UI | À faire — aujourd'hui texte seul, pas de rendu diffs/artefacts |
 | Connexion agent via pi (relay) | À faire — pi déjà exposé via `pi-acp`, relay à cadrer |
 | Hooks et persistance de runs | À faire |
@@ -121,8 +104,7 @@ Le plugin connecte déjà des agents ACP externes (Codex, Claude, Gemini, Vibe, 
 
 ## Priorités Suggérées
 
-1. **Consolidation Pipeline vs Feature Team** — auditer, décider du format unique, supprimer l'autre (court terme).
-2. **Visualiser les changes depuis pi** — canal pi → plugin pour diffs/artefacts, rendu dans l'UI Pi.
-3. **Connexion à l'agent au travers de pi** — pi comme relay ACP, surface cohérente avec les agents natifs.
-4. **Simplifier l'appel** — defaults sensibles, moins de confirmations, lancement depuis un fichier YAML.
-5. **Étendre `run_pipeline`** — paramètres riches, hooks, persistance (moyen terme).
+1. **Visualiser les changes depuis pi** — canal pi → plugin pour diffs/artefacts, rendu dans l'UI Pi.
+2. **Connexion à l'agent au travers de pi** — pi comme relay ACP, surface cohérente avec les agents natifs.
+3. **Simplifier l'appel** — defaults sensibles, moins de confirmations, lancement depuis un fichier YAML.
+4. **Étendre `run_pipeline`** — paramètres riches, hooks, persistance (moyen terme).

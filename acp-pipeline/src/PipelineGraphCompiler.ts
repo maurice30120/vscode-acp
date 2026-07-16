@@ -196,7 +196,7 @@ export class PipelineGraphCompiler {
   ): Promise<Partial<PipelineGraphState>> {
     const primitive = pipeline.primitives[primitiveId];
     this.hooks.onStepStart(stepId, primitive);
-    const prompt = renderTemplate(primitive.prompt, state);
+    const prompt = renderTemplate(primitive.prompt ?? '', state);
     const output = await this.runPrimitive(stepId, primitive, prompt, update => {
       this.hooks.onStepSessionUpdate(stepId, update);
     });
@@ -221,7 +221,7 @@ export class PipelineGraphCompiler {
   ): Promise<Partial<PipelineGraphState>> {
     const primitive = pipeline.primitives[primitiveId];
     this.hooks.onStepStart(step.id, primitive, branchId);
-    const prompt = renderTemplate(primitive.prompt, state);
+    const prompt = renderTemplate(primitive.prompt ?? '', state);
     const output = await this.runPrimitive(getParallelBranchNodeName(step.id, branchId), primitive, prompt, update => {
       this.hooks.onStepSessionUpdate(step.id, update, branchId);
     });

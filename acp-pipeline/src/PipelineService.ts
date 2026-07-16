@@ -12,7 +12,6 @@ export type {
   PipelineSessionUpdateEvent,
   PipelineExecutorKind,
 } from './PipelineEvents';
-export type { TeamRunSnapshot } from './TeamRunSnapshotStore';
 
 export interface PipelineServiceDependencies {
   getPipelineDefinitions?: () => PipelineDefinition[];
@@ -21,8 +20,6 @@ export interface PipelineServiceDependencies {
   runAcpAgent?: (...args: Parameters<AcpRunCallback>) => Promise<PipelineStepRunResult>;
   runAgent?: PipelineRunEngineDependencies['runAgent'];
   isAgentSandcastle?: PipelineRunEngineDependencies['isAgentSandcastle'];
-  getTeamPipelineForAgent?: PipelineRunEngineDependencies['getTeamPipelineForAgent'];
-  readWorkspaceDiff?: PipelineRunEngineDependencies['readWorkspaceDiff'];
   isRunAbortedError?: PipelineRunEngineDependencies['isRunAbortedError'];
 }
 
@@ -65,21 +62,5 @@ export class PipelineService extends EventEmitter {
   async dispose(): Promise<void> {
     await this.engine.dispose();
     this.removeAllListeners();
-  }
-
-  getLastTeamRunSnapshot() {
-    return this.engine.getLastTeamRunSnapshot();
-  }
-
-  getCompiledPipelineForTeam(agentName: string): PipelineDefinition | null {
-    return this.engine.getCompiledPipelineForTeam(agentName);
-  }
-
-  cancelReviewerRerun(): void {
-    this.engine.cancelReviewerRerun();
-  }
-
-  async rerunTeamReviewer(teamAgentName: string): Promise<string> {
-    return this.engine.rerunTeamReviewer(teamAgentName);
   }
 }

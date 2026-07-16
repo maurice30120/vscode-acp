@@ -28,6 +28,7 @@ import { Codicon } from './Codicon';
 export type ChatComposerProps = {
   promptText: string;
   inputAreaHeight: number;
+  effectiveInputAreaHeight?: number;
   slashSelectedIdx: number;
   openConfigDropdownId: string | null;
   isModeDropdownOpen: boolean;
@@ -73,6 +74,7 @@ export type ChatComposerProps = {
 function ChatComposerComponent({
   promptText,
   inputAreaHeight,
+  effectiveInputAreaHeight,
   slashSelectedIdx,
   openConfigDropdownId,
   isModeDropdownOpen,
@@ -197,7 +199,7 @@ function ChatComposerComponent({
     <div
       className={`input-area${disabledBySession ? ' disabled' : ''}`}
       id="inputArea"
-      style={{ height: inputAreaHeight }}
+      style={{ height: effectiveInputAreaHeight ?? inputAreaHeight }}
     >
       <div
         className={`slash-popup${isSlashPopupOpen ? ' open' : ''}`}

@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 
 import { getAgentConfig } from '../config/AgentConfig';
 
-const DEFAULT_SKILLS_AGENTS = ['Cursor CLI', 'Codex Sandcastle', 'Cursor Sandcastle'];
+const DEFAULT_SKILLS_AGENTS = ['Cursor CLI', 'Codex Sandcastle', 'Cursor Sandcastle', 'Pi Sandcastle'];
 
 export function isSkillsGloballyEnabled(): boolean {
   return vscode.workspace.getConfiguration('acp.skills').get<boolean>('enabled', true);
@@ -45,5 +45,5 @@ export function isCursorCliAgent(agentName: string): boolean {
 }
 
 export function isSandcastleSkillsAgent(agentName: string): boolean {
-  return agentName === 'Codex Sandcastle' || agentName === 'Cursor Sandcastle';
+  return agentName === 'Codex Sandcastle' || agentName === 'Cursor Sandcastle' || agentName === 'Pi Sandcastle';
 }

@@ -1,11 +1,9 @@
-import type { CompiledTeamMetadata } from "./AgentTeamCompiler";
-
 export type PipelineOutputType = "markdown" | "proposed_plan";
 export type PipelineSideEffects = "none" | "workspace";
 
 export interface PipelinePrimitiveDefinition {
 	agent: string;
-	prompt: string;
+	prompt?: string;
 	promptFile?: string;
 	skills?: string[];
 	output: PipelineOutputType;
@@ -45,9 +43,8 @@ export interface PipelineDefinition {
 	title: string;
 	primitives: Record<string, PipelinePrimitiveDefinition>;
 	steps: PipelineStepDefinition[];
-	source?: "workspace" | "team";
+	source?: "workspace";
 	filePath?: string;
-	metadata?: CompiledTeamMetadata;
 }
 
 export interface PipelineValidationResult {

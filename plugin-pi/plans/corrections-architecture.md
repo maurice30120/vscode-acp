@@ -7,7 +7,7 @@ Issu de la review d'architecture de `plugin-pi`. L'architecture est globalement 
 ## Scope
 
 - Corriger le risque de sécurité sur le seam process/terminal.
-- Clarifier la fuite de surface Sandcastle/teams du package pipeline partagé côté Pi.
+- Clarifier la fuite de surface Sandcastle du package pipeline partagé côté Pi.
 - Faire déléguer `index.ts` vers les modules runtime existants.
 - Réduire la surface publique exportée par le plugin.
 - Clarifier le bootstrap des pipelines (doc/config/templates).
@@ -42,15 +42,15 @@ Issu de la review d'architecture de `plugin-pi`. L'architecture est globalement 
 - Métacaractères shell rejetés sans exécution.
 - `npm test` vert.
 
-### 2. Isoler Sandcastle/teams hors de l'interface Pi de `@acp-client/pipeline`
+### 2. Isoler Sandcastle hors de l'interface Pi de `@acp-client/pipeline`
 
-**Problème** : `plugin-pi` rejette Sandcastle dans sa config ([src/catalog/config.ts:97](src/catalog/config.ts)), mais `@acp-client/pipeline` expose encore `isAgentSandcastle`, `getTeamPipelineForAgent`, `readWorkspaceDiff` et des méthodes team dans [PipelineService](../acp-pipeline/src/PipelineService.ts). Élargit l'interface pour Pi sans leverage.
+**Problème** : `plugin-pi` rejette Sandcastle dans sa config ([src/catalog/config.ts:97](src/catalog/config.ts)), mais `@acp-client/pipeline` expose encore `isAgentSandcastle`, `readWorkspaceDiff` et des méthodes Sandcastle dans [PipelineService](../acp-pipeline/src/PipelineService.ts). Élargit l'interface pour Pi sans leverage.
 
 **Changements** :
 
-- Définir une interface minimale `PipelineServiceDependencies` pour les pipelines purs (sans teams/Sandcastle).
-- Extraire une facade/extension séparée pour VS Code teams/Sandcastle (consommée uniquement par `plugin-vscode`).
-- `plugin-pi` dépend uniquement de l'interface minimale ; ne référence plus `isAgentSandcastle`/`getTeamPipelineForAgent`/`readWorkspaceDiff`.
+- Définir une interface minimale `PipelineServiceDependencies` pour les pipelines purs (sans Sandcastle).
+- Extraire une facade/extension séparée pour VS Code Sandcastle (consommée uniquement par `plugin-vscode`).
+- `plugin-pi` dépend uniquement de l'interface minimale ; ne référence plus `isAgentSandcastle`/`readWorkspaceDiff`.
 - Garder les statuts `implementerUsesSandcastle` côté `plugin-pi` via une propriété locale dérivée, pas via l'API partagée.
 
 **Fichiers** :
@@ -60,7 +60,7 @@ Issu de la review d'architecture de `plugin-pi`. L'architecture est globalement 
 
 **Critères d'acceptation** :
 
-- `plugin-pi` n'importe aucune API team/Sandcastle depuis `@acp-client/pipeline`.
+- `plugin-pi` n'importe aucune API Sandcastle depuis `@acp-client/pipeline`.
 - `plugin-vscode` continue de fonctionner via la facade.
 - `npm run build -w @acp-client/pipeline` vert ; `npm test` (plugin-pi) vert.
 
@@ -107,12 +107,12 @@ Issu de la review d'architecture de `plugin-pi`. L'architecture est globalement 
 
 ### 5. Clarifier le bootstrap des pipelines (doc/config/templates)
 
-**Problème** : le runtime lit `.pi/.acp/pipelines` ([src/catalog/pipelineCatalog.ts:15](src/catalog/pipelineCatalog.ts)), mais des exemples vivent sous `plugin-pi/.acp/pipelines`. Manque un seam clair de bootstrap/copie. La roadmap dit que les teams sont "réalisées" alors que les tests vérifient qu'elles sont ignorées côté Pi.
+**Problème** : le runtime lit `.pi/.acp/pipelines` ([src/catalog/pipelineCatalog.ts:15](src/catalog/pipelineCatalog.ts)), mais des exemples vivent sous `plugin-pi/.acp/pipelines`. Manque un seam clair de bootstrap/copie.
 
 **Changements** :
 
 - Ajouter un seam explicite de bootstrap/copie des pipelines templates (ou documenter que `plugin-pi/.acp/pipelines` = templates de référence, non lus au runtime).
-- Corriger la roadmap/docs : teams = ignorées côté Pi (non "réalisées").
+- Corriger la roadmap/docs pour pointer uniquement vers le catalogue pipeline v2.
 - Documenter le chemin runtime attendu `.pi/.acp/pipelines/*.yaml`.
 
 **Fichiers** :
@@ -123,7 +123,7 @@ Issu de la review d'architecture de `plugin-pi`. L'architecture est globalement 
 **Critères d'acceptation** :
 
 - Distinction template/runtime documentée et, si applicable, codée.
-- Roadmap cohérente avec les tests (teams ignorées côté Pi).
+- Roadmap cohérente avec le catalogue canonique `.pi/.acp/pipelines/*.yaml`.
 
 ## Test Plan
 

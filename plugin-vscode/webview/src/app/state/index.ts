@@ -25,12 +25,14 @@ import {
   normalizeSharedBootstrapState,
   sessionReducer,
 } from './sessionReducer';
+import { clamp, MAX_INPUT_HEIGHT, MIN_INPUT_HEIGHT } from './helpers';
 import type { AppAction, AppState } from './types';
 
 export type { AppAction, AppState } from './types';
 export {
   createCurrentTurn,
   emptyPersistedState,
+  getViewportBoundedInputHeight,
   MIN_INPUT_HEIGHT,
   MAX_INPUT_HEIGHT,
 } from './helpers';
@@ -95,7 +97,11 @@ export function createInitialState(persistedValue: unknown): AppState {
     persisted,
     orchestration: migrated.orchestration,
     promptText: shared?.promptText ?? '',
-    inputAreaHeight: shared?.inputAreaHeight ?? DEFAULT_INPUT_AREA_HEIGHT,
+    inputAreaHeight: clamp(
+      shared?.inputAreaHeight ?? DEFAULT_INPUT_AREA_HEIGHT,
+      MIN_INPUT_HEIGHT,
+      MAX_INPUT_HEIGHT,
+    ),
     isProcessing: shared?.isProcessing ?? false,
     composerUnlocked: shared?.composerUnlocked ?? persisted.hasActiveSession,
     isModeDropdownOpen: false,

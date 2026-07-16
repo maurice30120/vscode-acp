@@ -55,6 +55,22 @@ suite('AgentConfig', () => {
     assert.ok(isSandcastleAgentConfig(config));
   });
 
+  test('accepts Pi Sandcastle agents with explicit transport', () => {
+    writeConfig({
+      'Pi Sandcastle': {
+        transport: 'sandcastle',
+        provider: 'pi',
+        model: 'opencode-go/kimi-k2.6',
+        effort: 'high',
+      },
+    });
+
+    const config = getAgentConfig('Pi Sandcastle', workspaceRoot);
+    assert.ok(config);
+    assert.ok(isSandcastleAgentConfig(config));
+    assert.strictEqual(config.provider, 'pi');
+  });
+
   test('ignores invalid JSON instead of throwing', () => {
     const configPath = path.join(workspaceRoot, '.acp', 'acp-agents.json');
     fs.mkdirSync(path.dirname(configPath), { recursive: true });

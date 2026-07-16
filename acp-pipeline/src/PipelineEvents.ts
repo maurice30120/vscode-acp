@@ -1,7 +1,5 @@
 import type { SessionNotification } from '@agentclientprotocol/sdk';
 
-import type { TeamRoleId } from './AgentTeamConfig';
-
 export type PipelineStatus =
   | 'planning'
   | 'awaiting_approval'
@@ -19,9 +17,8 @@ export interface PipelineStatusEvent {
   message: string;
   stepId?: string;
   branchId?: string;
-  role?: TeamRoleId;
+  role?: string;
   agentName?: string;
-  teamId?: string;
   implementerUsesSandcastle?: boolean;
 }
 
@@ -29,9 +26,8 @@ export interface PipelinePlanReadyEvent {
   sessionId: string;
   plan: string;
   stepId: string;
-  role?: TeamRoleId;
+  role?: string;
   agentName?: string;
-  teamId?: string;
   implementerUsesSandcastle?: boolean;
   revised?: boolean;
 }
@@ -42,9 +38,8 @@ export interface PipelineSessionUpdateEvent {
   update: SessionNotification;
   stepId?: string;
   branchId?: string;
-  role?: TeamRoleId;
+  role?: string;
   agentName?: string;
-  teamId?: string;
 }
 
 export type PipelineExecutorKind = string;

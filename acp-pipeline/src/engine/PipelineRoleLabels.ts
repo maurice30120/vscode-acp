@@ -1,5 +1,4 @@
 import type { PipelineDefinition } from '../PipelineTypes';
-import type { TeamRoleId } from '../AgentTeamConfig';
 
 export function buildRevisionPrompt(originalUserPrompt: string, currentPlan: string, feedback: string): string {
   return [
@@ -15,19 +14,6 @@ export function buildRevisionPrompt(originalUserPrompt: string, currentPlan: str
     'Revise the plan based on the user\'s feedback.',
     'Return exactly one <proposed_plan>...</proposed_plan> block.',
   ].join('\n');
-}
-
-export function formatPipelineRoleLabel(role: TeamRoleId): string {
-  switch (role) {
-    case 'planner':
-      return 'Planning';
-    case 'implementer':
-      return 'Implementing';
-    case 'reviewer':
-      return 'Reviewing';
-    case 'tester':
-      return 'Testing';
-  }
 }
 
 export function getPipelineStepPhase(pipeline: PipelineDefinition, stepId: string): import('../PipelineEvents').PipelineStatus {

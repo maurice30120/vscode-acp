@@ -19,14 +19,12 @@ export type ConversationWebviewMessage =
       phase?: string;
       role?: string;
       agentName?: string;
-      teamId?: string;
     }
   | {
       type: 'pipelinePlanReady';
       plan: string;
       role?: string;
       agentName?: string;
-      teamId?: string;
       implementerUsesSandcastle?: boolean;
       revised?: boolean;
     }
@@ -37,7 +35,6 @@ export type ConversationWebviewMessage =
       stepId?: string;
       role?: string;
       agentName?: string;
-      teamId?: string;
       implementerUsesSandcastle?: boolean;
     };
 
@@ -160,7 +157,6 @@ export class DefaultConversationProjector implements ConversationProjector {
             phase: event.phase,
             role: event.role,
             agentName: event.agentName,
-            teamId: event.teamId,
           }]
         : [],
       shouldForwardToActiveConversation: shouldForward,
@@ -188,7 +184,6 @@ export class DefaultConversationProjector implements ConversationProjector {
             plan: event.plan,
             role: event.role,
             agentName: event.agentName,
-            teamId: event.teamId,
             implementerUsesSandcastle: event.implementerUsesSandcastle,
             revised: event.revised === true,
           }]
@@ -214,7 +209,6 @@ export class DefaultConversationProjector implements ConversationProjector {
             stepId: event.stepId,
             role: event.role,
             agentName: event.agentName,
-            teamId: event.teamId,
             implementerUsesSandcastle: event.implementerUsesSandcastle,
           }]
         : [],

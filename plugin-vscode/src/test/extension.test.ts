@@ -97,8 +97,6 @@ suite('Extension Test Suite', () => {
       'acp.disableEditorContextLink',
       'acp.enablePipelineAgents',
       'acp.disablePipelineAgents',
-      'acp.showCompiledTeamPipeline',
-      'acp.rerunTeamReviewer',
 	      'acp.sandcastle.showDiff',
 	      'acp.sandcastle.apply',
 	      'acp.sandcastle.reject',

@@ -536,14 +536,14 @@ dans `ROADMAP.md`).
    `shell: false` + validation que `command` est un binaire résolu, ou une
    interface séparée « shell command string » avec permission renforcée.
 
-2. **Fuite de surface Sandcastle/teams côté Pi.**
+2. **Fuite de surface Sandcastle côté Pi.**
    `plugin-pi` rejette Sandcastle dans `acp-agents.json`
    (`src/catalog/config.ts:202`), mais `@acp-client/pipeline` expose encore
-   `isAgentSandcastle`, `getTeamPipelineForAgent`, `readWorkspaceDiff` et des
-   méthodes team dans `PipelineService`. Cela élargit l'interface pour Pi sans
-   leverage. Correction envisagée : interface minimale `PipelineServiceDependencies`
-   pour les pipelines purs + facade séparée pour les teams/Sandcastle (consommée
-   uniquement par `plugin-vscode`).
+   `isAgentSandcastle`, `readWorkspaceDiff` et des méthodes Sandcastle dans
+   `PipelineService`. Cela élargit l'interface pour Pi sans leverage. Correction
+   envisagée : interface minimale `PipelineServiceDependencies` pour les
+   pipelines purs + facade séparée pour Sandcastle (consommée uniquement par
+   `plugin-vscode`).
 
 3. **`index.ts` devrait déléguer vers les modules runtime.**
    `index.ts` réimplémente l'enregistrement de `/pipeline` et `run_pipeline`
@@ -559,8 +559,8 @@ dans `ROADMAP.md`).
 5. **Bootstrap des pipelines (templates vs runtime).**
    Le runtime lit `.pi/.acp/pipelines`. Des exemples vivent aussi sous
    `plugin-pi/.acp/pipelines` (hors `.pi/`). Manque un seam clair de
-   bootstrap/copie. La roadmap mentionnait les teams comme « réalisées » alors
-   que les tests vérifient qu'elles sont ignorées côté Pi.
+   bootstrap/copie. La roadmap doit rester alignée sur le catalogue canonique
+   pipeline v2 côté Pi.
 
 ---
 

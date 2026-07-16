@@ -113,7 +113,6 @@ rmDest();
 copyFileFiltered(path.join(workspaceRoot, '.acp', '.gitignore'), '.acp/.gitignore');
 copyFileFiltered(path.join(workspaceRoot, '.acp', 'acp-agents.json'), '.acp/acp-agents.json');
 copyAcpPipelines();
-copyTree(path.join(workspaceRoot, '.acp', 'teams'), '.acp/teams');
 copyTree(path.join(workspaceRoot, '.acp', 'agents'), '.acp/agents');
 copyTree(path.join(workspaceRoot, '.agents'), '.agents');
 copySandcastleScaffold();

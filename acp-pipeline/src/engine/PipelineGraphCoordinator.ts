@@ -1,9 +1,7 @@
 import type { SessionNotification } from '@agentclientprotocol/sdk';
 import { Command, MemorySaver } from '@langchain/langgraph';
 
-import type { TeamRoleId } from '../AgentTeamConfig';
 import type { PipelineDefinition, PipelinePrimitiveDefinition } from '../PipelineTypes';
-import type { CompiledTeamMetadata } from '../AgentTeamCompiler';
 import { PipelineExecutor } from '../PipelineExecutor';
 import {
   type AcpRunCallback,
@@ -15,10 +13,7 @@ import type { PipelineSessionUpdateEvent, PipelineStatus } from '../PipelineEven
 import type { PipelineRunState } from '../PipelineRunRegistry';
 import { assertSingleProposedPlan } from '../ProposedPlan';
 import { readApprovalInterrupt } from './PipelinePlanRevision';
-import {
-  formatPipelineRoleLabel,
-  getPipelineStepPhase,
-} from './PipelineRoleLabels';
+import { getPipelineStepPhase } from './PipelineRoleLabels';
 
 export type PipelineGraphCoordinatorDeps = {
   getRunState: (sessionId: string) => PipelineRunState | undefined;
@@ -37,16 +32,13 @@ export type PipelineGraphCoordinatorDeps = {
     message: string,
     stepId?: string,
     branchId?: string,
-    teamContext?: CompiledTeamMetadata,
-    role?: TeamRoleId,
+    role?: string,
     agentName?: string,
     implementerUsesSandcastle?: boolean,
   ) => void;
   emitSessionUpdate: (event: PipelineSessionUpdateEvent) => void;
-  persistTeamSnapshot: (sessionId: string, state: PipelineRunState, result: unknown) => void;
   deleteRun: (sessionId: string) => void;
   findPrimitiveForExecutorKind: (pipeline: PipelineDefinition, kind: string) => PipelinePrimitiveDefinition;
-  readTeamContext: (pipeline: PipelineDefinition) => CompiledTeamMetadata | undefined;
   runConfiguredAcpAgent: (
     sessionId: string,
     kind: string,
@@ -67,7 +59,6 @@ export class PipelineGraphCoordinator {
   }
 
   compileGraph(sessionId: string, pipeline: PipelineDefinition): CompiledPipelineGraph {
-    const teamContext = this.deps.readTeamContext(pipeline);
     const compiler = new PipelineGraphCompiler(
       async (kind, promptText, onSessionUpdate) => {
         const output = await this.deps.runConfiguredAcpAgent(sessionId, kind, promptText, onSessionUpdate);
@@ -77,33 +68,31 @@ export class PipelineGraphCoordinator {
       {
         onStepStart: (stepId, primitive, branchId) => {
           const phase = getPipelineStepPhase(pipeline, stepId);
-          const role = teamContext?.roleByStepId[stepId];
-          const statusMessage = role
-            ? `${formatPipelineRoleLabel(role)} (${primitive.agent})…`
-            : `Running ${branchId ? `${stepId}/${branchId}` : stepId} with ${primitive.agent}...`;
+          const role = branchId ? `${stepId}/${branchId}` : stepId;
+          const statusMessage = `Running ${role} with ${primitive.agent}...`;
           this.deps.emitStatus(
             sessionId,
             phase,
             statusMessage,
             stepId,
             branchId,
-            teamContext,
             role,
             primitive.agent,
           );
         },
         onStepSessionUpdate: (stepId, update, branchId) => {
-          const role = teamContext?.roleByStepId[stepId];
-          const agentName = role ? teamContext?.agentByRole[role] : undefined;
+          const primitive = this.deps.findPrimitiveForExecutorKind(
+            pipeline,
+            branchId ? `${stepId}__${branchId}` : stepId,
+          );
           this.deps.emitSessionUpdate({
             sessionId,
             phase: branchId ? `${stepId}/${branchId}` : stepId,
             update,
             stepId,
             branchId,
-            role,
-            agentName,
-            teamId: teamContext?.teamId,
+            role: branchId ? `${stepId}/${branchId}` : stepId,
+            agentName: primitive.agent,
           });
         },
       },
@@ -149,14 +138,10 @@ export class PipelineGraphCoordinator {
       return interrupt.plan;
     }
 
-    this.deps.persistTeamSnapshot(sessionId, state, result);
     this.deps.emitStatus(
       sessionId,
       'completed',
       completionMessage,
-      undefined,
-      undefined,
-      this.deps.readTeamContext(state.pipeline),
     );
     this.deps.deleteRun(sessionId);
     return typeof (result as { lastOutput?: string })?.lastOutput === 'string'

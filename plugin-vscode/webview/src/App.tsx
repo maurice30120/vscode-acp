@@ -28,6 +28,7 @@ import {
   appReducer,
   buildWebviewPersistedBundle,
   createInitialState,
+  getViewportBoundedInputHeight,
   selectOrchestrationView,
 } from './app/state';
 import { MessageBubble } from './components/MessageBubble';
@@ -47,7 +48,8 @@ import { useSessionDisplay } from './app/useSessionDisplay';
 export function App(): JSX.Element {
   const [state, dispatch] = useReducer(appReducer, getState<unknown>(), createInitialState);
   const [cursorPosition, setCursorPosition] = useState(0);
-  
+  const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight);
+
   const stateRef = useRef(state);
   const turnCounterRef = useRef(0);
   const messagesRef = useRef<HTMLDivElement | null>(null);
@@ -55,6 +57,7 @@ export function App(): JSX.Element {
   const pendingCursorPositionRef = useRef<number | null>(null);
   const sharedVersionRef = useRef(0);
   const sharedUpdatedAtRef = useRef(0);
+  const effectiveInputAreaHeightRef = useRef(state.inputAreaHeight);
   const skipSharedSyncRef = useRef(false);
   const orchestrationVersionRef = useRef(state.orchestration.version);
   const orchestrationUpdatedAtRef = useRef(state.orchestration.updatedAt);
@@ -115,6 +118,11 @@ export function App(): JSX.Element {
   const composerPlaceholder = hasPendingPipelinePlan
     ? 'Send a message to revise the plan, or approve/reject below.'
     : placeholder;
+  const effectiveInputAreaHeight = getViewportBoundedInputHeight(
+    state.inputAreaHeight,
+    viewportHeight,
+  );
+  effectiveInputAreaHeightRef.current = effectiveInputAreaHeight;
 
   const syncPersistedBundle = (bumpShared: boolean, bumpOrchestration: boolean) => {
     if (bumpShared) {
@@ -203,6 +211,15 @@ export function App(): JSX.Element {
         dispatch(action);
       }
     });
+  }, []);
+
+  useEffect(() => {
+    const updateViewportHeight = () => {
+      setViewportHeight(window.innerHeight);
+    };
+
+    window.addEventListener('resize', updateViewportHeight);
+    return () => window.removeEventListener('resize', updateViewportHeight);
   }, []);
 
   // Handle file mention changes
@@ -391,7 +408,7 @@ export function App(): JSX.Element {
   const handleResizeStart = useCallback((event: ReactMouseEvent<HTMLDivElement>): void => {
     event.preventDefault();
     const startY = event.clientY;
-    const startHeight = stateRef.current.inputAreaHeight;
+    const startHeight = effectiveInputAreaHeightRef.current;
 
     const onMouseMove = (moveEvent: MouseEvent) => {
       const delta = startY - moveEvent.clientY;
@@ -671,6 +688,7 @@ export function App(): JSX.Element {
         fileResults={fileResults}
         fileSelectedIdx={fileSelectedIdx}
         inputAreaHeight={state.inputAreaHeight}
+        effectiveInputAreaHeight={effectiveInputAreaHeight}
         isFilePopupOpen={isFilePopupOpen}
         isModeDropdownOpen={state.isModeDropdownOpen}
         isModelDropdownOpen={state.isModelDropdownOpen}

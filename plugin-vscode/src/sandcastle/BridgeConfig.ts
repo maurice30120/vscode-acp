@@ -1,4 +1,4 @@
-export type SandcastleProviderName = 'codex' | 'cursor';
+export type SandcastleProviderName = 'codex' | 'cursor' | 'pi';
 
 /** Configuration du bridge ACP Sandcastle (fournisseur, modèle, image Docker). */
 export interface BridgeConfig {
@@ -6,6 +6,7 @@ export interface BridgeConfig {
   model: string;
   effort?: 'low' | 'medium' | 'high' | 'xhigh';
   imageName: string;
+  env?: Record<string, string>;
 }
 
 /**
@@ -23,8 +24,8 @@ export function parseBridgeConfig(argv: string[], env: NodeJS.ProcessEnv): Bridg
   };
 
   const provider = readArg('--provider');
-  if (provider !== 'codex' && provider !== 'cursor') {
-    throw new Error('Expected --provider codex|cursor.');
+  if (provider !== 'codex' && provider !== 'cursor' && provider !== 'pi') {
+    throw new Error('Expected --provider codex|cursor|pi.');
   }
 
   const model = readArg('--model')?.trim();
@@ -42,5 +43,8 @@ export function parseBridgeConfig(argv: string[], env: NodeJS.ProcessEnv): Bridg
     model,
     effort: effort as BridgeConfig['effort'],
     imageName: env.ACP_SANDCASTLE_IMAGE || 'acp-client-sandcastle:local',
+    env: Object.fromEntries(
+      Object.entries(env).filter(([, value]) => typeof value === 'string'),
+    ) as Record<string, string>,
   };
 }

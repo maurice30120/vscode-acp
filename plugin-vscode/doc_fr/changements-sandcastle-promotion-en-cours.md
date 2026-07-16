@@ -175,7 +175,7 @@ La branche sandbox est créée dans `ensureSandbox()` : `sandcastle/acp/<provide
 
 ## Permissions sandbox vs gate de promotion
 
-Trois gates à distinguer pour les équipes/pipelines avec implementer Sandcastle :
+Trois gates à distinguer pour les pipelines avec implementer Sandcastle :
 
 | Gate | Quand | Comportement |
 |------|-------|--------------|
@@ -187,7 +187,7 @@ Trois gates à distinguer pour les équipes/pipelines avec implementer Sandcastl
 planner → [GATE 0 : humain — plan] → implementer (sandbox) → [GATE 2 : Sandcastle — patch] → reviewer
 ```
 
-`acp.sandcastle.promotion: autoApply` n’affecte que la **gate 2**. Voir [doc_fr/agent-teams.md](agent-teams.md) — section « Deux gates ».
+`acp.sandcastle.promotion: autoApply` n’affecte que la **gate 2**. La gate du plan reste portée par le pipeline v2 avant l'étape `implementer`.
 
 C’est le « yolo contrôlé » d’[ADR-0011](adr/0011-sandbox-worktree.md) adapté à Sandcastle : le risque est contenu par l’isolation Docker/worktree, pas par des popups répétés à chaque outil. La gate Git (`apply --check`) reste le filet avant d’écrire dans le workspace.
 

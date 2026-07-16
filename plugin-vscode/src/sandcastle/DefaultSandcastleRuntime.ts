@@ -2,6 +2,7 @@ import {
   codex,
   createSandbox,
   cursor,
+  pi,
 } from '@ai-hero/sandcastle';
 import { docker } from '@ai-hero/sandcastle/sandboxes/docker';
 
@@ -18,6 +19,14 @@ export const defaultSandcastleRuntime: SandcastleRuntime = {
     if (config.provider === 'codex') {
       return codex(config.model, {
         effort: config.effort,
+        env: config.env,
+        captureSessions: false,
+      });
+    }
+    if (config.provider === 'pi') {
+      return pi(config.model, {
+        thinking: config.effort,
+        env: config.env,
         captureSessions: false,
       });
     }

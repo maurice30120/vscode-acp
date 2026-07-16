@@ -31,6 +31,13 @@
     "model": "composer-2",
     "env": {}
   },
+  "Pi Sandcastle": {
+    "transport": "sandcastle",
+    "provider": "pi",
+    "model": "opencode-go/kimi-k2.6",
+    "effort": "high",
+    "env": {}
+  },
   "OpenCode": {
     "command": "npx",
     "args": [

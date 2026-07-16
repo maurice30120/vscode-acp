@@ -1,7 +1,5 @@
 import type { EventEmitter } from 'node:events';
 
-import type { TeamRoleId } from '../AgentTeamConfig';
-import type { CompiledTeamMetadata } from '../AgentTeamCompiler';
 import type { PipelinePlanReadyEvent, PipelineStatus } from '../PipelineEvents';
 
 export interface PipelineTimelineEmitter {
@@ -11,8 +9,7 @@ export interface PipelineTimelineEmitter {
     message: string,
     stepId?: string,
     branchId?: string,
-    teamContext?: CompiledTeamMetadata,
-    role?: TeamRoleId,
+    role?: string,
     agentName?: string,
     implementerUsesSandcastle?: boolean,
   ): void;
@@ -21,7 +18,6 @@ export interface PipelineTimelineEmitter {
     event: PipelinePlanReadyEvent,
     approvalMessage: string,
     approvalStepId: string,
-    teamContext?: CompiledTeamMetadata,
     implementerUsesSandcastle?: boolean,
   ): void;
 }
@@ -34,7 +30,6 @@ export function createPipelineTimelineEmitter(emitter: EventEmitter): PipelineTi
       message,
       stepId,
       branchId,
-      teamContext,
       role,
       agentName,
       implementerUsesSandcastle,
@@ -47,7 +42,6 @@ export function createPipelineTimelineEmitter(emitter: EventEmitter): PipelineTi
         branchId,
         role,
         agentName,
-        teamId: teamContext?.teamId,
         implementerUsesSandcastle,
       });
     },
@@ -57,7 +51,6 @@ export function createPipelineTimelineEmitter(emitter: EventEmitter): PipelineTi
       event,
       approvalMessage,
       approvalStepId,
-      teamContext,
       implementerUsesSandcastle,
     ) {
       emitter.emit('plan-ready', event);
@@ -66,7 +59,6 @@ export function createPipelineTimelineEmitter(emitter: EventEmitter): PipelineTi
         status: 'awaiting_approval',
         message: approvalMessage,
         stepId: approvalStepId,
-        teamId: teamContext?.teamId,
         implementerUsesSandcastle,
       });
     },

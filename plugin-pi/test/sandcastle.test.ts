@@ -46,7 +46,7 @@ test("parseBridgeConfig parses provider model effort and image", () => {
 test("defaultSandcastleRuntime creates Pi and Vibe providers", () => {
 	const piProvider = defaultSandcastleRuntime.createProvider({
 		provider: "pi",
-		model: "claude-sonnet-4-6",
+		model: "opencode-go/kimi-k2.6",
 		effort: "high",
 		imageName: "fake",
 		env: { FOO: "bar" },
@@ -55,7 +55,7 @@ test("defaultSandcastleRuntime creates Pi and Vibe providers", () => {
 	assert.equal(piProvider.env.FOO, "bar");
 	assert.match(
 		piProvider.buildPrintCommand({ prompt: "hello", dangerouslySkipPermissions: true }).command,
-		/pi -p --mode json --model 'claude-sonnet-4-6' --thinking high/,
+		/pi -p --mode json --model 'opencode-go\/kimi-k2\.6' --thinking high/,
 	);
 
 	const vibeProvider = defaultSandcastleRuntime.createProvider({

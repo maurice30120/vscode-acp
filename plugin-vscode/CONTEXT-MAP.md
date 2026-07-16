@@ -7,7 +7,7 @@ Extension VS Code qui connecte l’éditeur à des agents ACP, avec orchestratio
 | Contexte | Glossaire | Domaine |
 |----------|-----------|---------|
 | [Core](./src/core/CONTEXT.md) | Agents, Conversation, SessionRecord, Discussion, ChatHistory, transport, handoff de contexte | Chat interactif, index de persistance, cycle de vie client ACP |
-| [Pipeline et orchestration](./src/pipeline/CONTEXT.md) | VirtualAgent, Pipeline, AgentTeam, EphemeralRun, OrchestrationRun | Workflows LangGraph exposés comme agents virtuels |
+| [Pipeline et orchestration](./src/pipeline/CONTEXT.md) | VirtualAgent, Pipeline, EphemeralRun, OrchestrationRun | Workflows LangGraph exposés comme agents virtuels |
 | [Sandcastle](./src/sandcastle/CONTEXT.md) | IsolatedRuntime, BridgeTranscript, Promotion, ProviderRun | Isolation worktree Docker et Apply / Reject |
 | [Inline chat](./src/inlineChat/CONTEXT.md) | InlineEdit, EditProposal, Patch, ActiveAgentResolver | Éditions en inset éditeur, parallèles au chat principal |
 

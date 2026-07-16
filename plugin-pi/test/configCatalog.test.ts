@@ -166,7 +166,7 @@ test("parseSandcastleConfig validates dedicated Sandcastle config", () => {
 				"Pi Sandcastle": {
 					transport: "sandcastle",
 					provider: "pi",
-					model: "claude-sonnet-4-6",
+					model: "opencode-go/kimi-k2.6",
 				},
 				"Vibe Sandcastle": {
 					transport: "sandcastle",
@@ -562,6 +562,9 @@ test("promptFile loads and composes the prompt (promptFile + blank line + prompt
 
 	assert.equal(definitions.length, 1);
 	const prompt = definitions[0].primitives.planner.prompt;
+	if (typeof prompt !== "string") {
+		assert.fail("expected planner prompt to be resolved");
+	}
 	assertIncludes(prompt, "You are a careful planner.");
 	assertIncludes(prompt, "User request:");
 	assert.ok(

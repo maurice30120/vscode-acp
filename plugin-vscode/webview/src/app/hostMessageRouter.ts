@@ -212,7 +212,6 @@ export function routeHostMessage(
     case 'pipelinePlanReady':
     case 'pipelinePlanApprovalFailed':
     case 'pipelineStatus':
-    case 'reviewerRerunReady':
       actions.push(...mapOrchestrationMessageToActions(
         message as OrchestrationHostMessage,
         resolveTeamTimeline(state.orchestration.timeline),

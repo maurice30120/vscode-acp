@@ -81,7 +81,7 @@ suite('AgentConfig pipeline', () => {
 
     const names = getAgentNames(repoRoot());
     assert.ok(names.includes('Plan Execute Verify'));
-    assert.ok(names.includes('Feature Team'));
+    assert.ok(!names.includes('Feature Team'));
   });
 });
 

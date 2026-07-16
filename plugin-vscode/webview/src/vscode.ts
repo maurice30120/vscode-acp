@@ -19,7 +19,7 @@ export type HostToWebviewMessage =
       activeSessionId?: string | null;
       session?: SessionSnapshot | null;
     }
-  | { type: 'sessionUpdate'; update: SessionUpdate; sessionId?: string; phase?: PipelinePhase; role?: PipelinePhase; agentName?: string; teamId?: string }
+  | { type: 'sessionUpdate'; update: SessionUpdate; sessionId?: string; phase?: PipelinePhase; role?: PipelinePhase; agentName?: string }
   | { type: 'promptStart' }
   | { type: 'promptEnd'; stopReason?: string; usage?: unknown }
   | { type: 'clearChat' }
@@ -33,10 +33,9 @@ export type HostToWebviewMessage =
   | { type: 'sessionInfoUpdate'; title?: string | null }
   | { type: 'externalUserMessage'; text: string }
   | { type: 'fileSearchResults'; requestId: number; results: FileSearchResult[] }
-  | { type: 'pipelinePlanReady'; plan: string; role?: PipelinePhase; agentName?: string; teamId?: string; implementerUsesSandcastle?: boolean; revised?: boolean }
+  | { type: 'pipelinePlanReady'; plan: string; role?: PipelinePhase; agentName?: string; implementerUsesSandcastle?: boolean; revised?: boolean }
   | { type: 'pipelinePlanApprovalFailed'; message?: string }
-  | { type: 'pipelineStatus'; status?: string; message?: string; stepId?: string; role?: PipelinePhase; agentName?: string; teamId?: string; implementerUsesSandcastle?: boolean }
-  | { type: 'reviewerRerunReady'; output: string }
+  | { type: 'pipelineStatus'; status?: string; message?: string; stepId?: string; role?: PipelinePhase; agentName?: string; implementerUsesSandcastle?: boolean }
   | { type: 'markdownRendered'; items: MarkdownRenderedItem[] }
   | { type: 'debugSnapshot'; snapshot: DebugSnapshot }
   | { type: 'hydrateSharedState'; state: ChatWebviewSharedState }

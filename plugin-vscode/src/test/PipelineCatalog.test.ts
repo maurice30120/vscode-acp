@@ -1,8 +1,13 @@
 import * as assert from 'assert';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
-import { parsePipelineYaml } from '../config/PipelineCatalog';
+import {
+  getPipelineDefinitionForAgent,
+  loadWorkspacePipelineDefinitions,
+  parsePipelineYaml,
+} from '../config/PipelineCatalog';
 import { repoRoot } from './repoRoot';
 
 const VALID_PIPELINE = `
@@ -96,6 +101,105 @@ suite('PipelineCatalog', () => {
 
     assert.deepStrictEqual(result.errors, []);
     assert.strictEqual(result.definition?.id, 'plan-execute-verify');
+  });
+
+  test('resolves promptFile content before returning workspace definitions', () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-prompt-file-'));
+    try {
+      fs.mkdirSync(path.join(workspace, '.acp', 'pipelines'), { recursive: true });
+      fs.mkdirSync(path.join(workspace, '.acp', 'agents'), { recursive: true });
+      fs.writeFileSync(path.join(workspace, '.acp', 'agents', 'planner.md'), 'Planner instructions.', 'utf8');
+      fs.writeFileSync(path.join(workspace, '.acp', 'pipelines', 'prompt-file.yaml'), `
+version: 2
+id: prompt-file
+title: Prompt File
+
+primitives:
+  plan:
+    agent: Codex
+    output: proposed_plan
+    sideEffects: none
+    promptFile: ../agents/planner.md
+    prompt: |
+      User request:
+      {{userPrompt}}
+
+steps:
+  - id: plan
+    use: plan
+`, 'utf8');
+
+      const definitions = loadWorkspacePipelineDefinitions(workspace, { Codex: {} });
+
+      assert.strictEqual(definitions.length, 1);
+      assert.strictEqual(definitions[0].primitives.plan.promptFile, undefined);
+      assert.match(definitions[0].primitives.plan.prompt ?? '', /Planner instructions\./);
+      assert.match(definitions[0].primitives.plan.prompt ?? '', /User request:/);
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps a pipeline visible when promptFile is missing but inline prompt exists', () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-missing-prompt-file-'));
+    try {
+      fs.mkdirSync(path.join(workspace, '.acp', 'pipelines'), { recursive: true });
+      fs.writeFileSync(path.join(workspace, '.acp', 'pipelines', 'inline-fallback.yaml'), `
+version: 2
+id: inline-fallback
+title: Inline Fallback
+
+primitives:
+  plan:
+    agent: Codex
+    output: proposed_plan
+    sideEffects: none
+    promptFile: ../agents/missing.md
+    prompt: |
+      User request:
+      {{userPrompt}}
+
+steps:
+  - id: plan
+    use: plan
+`, 'utf8');
+
+      const definitions = loadWorkspacePipelineDefinitions(workspace, { Codex: {} });
+
+      assert.strictEqual(definitions.length, 1);
+      assert.strictEqual(definitions[0].title, 'Inline Fallback');
+      assert.match(definitions[0].primitives.plan.prompt ?? '', /User request:/);
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  test('resolves workspace pipelines by id or title', () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-id-resolution-'));
+    try {
+      fs.mkdirSync(path.join(workspace, '.acp', 'pipelines'), { recursive: true });
+      fs.writeFileSync(path.join(workspace, '.acp', 'pipelines', 'pev.yaml'), `
+version: 2
+id: pev
+title: Plan Execute Verify
+
+primitives:
+  plan:
+    agent: Codex
+    output: proposed_plan
+    sideEffects: none
+    prompt: "{{userPrompt}}"
+
+steps:
+  - id: plan
+    use: plan
+`, 'utf8');
+
+      assert.strictEqual(getPipelineDefinitionForAgent('pev', workspace, { Codex: {} })?.title, 'Plan Execute Verify');
+      assert.strictEqual(getPipelineDefinitionForAgent('Plan Execute Verify', workspace, { Codex: {} })?.id, 'pev');
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
   });
 
   test('rejects v1 pipelines', () => {

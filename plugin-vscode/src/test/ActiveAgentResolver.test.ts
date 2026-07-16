@@ -69,7 +69,7 @@ suite('ActiveAgentResolver', () => {
 
     const resolver = new SessionBackedActiveAgentResolver(
       () => workspaceRoot,
-      () => 'Feature Team',
+      () => 'Plan Execute Verify',
     );
     const agent = resolver.resolveRunnableAgent();
     assert.strictEqual(resolveAgent(agent.name, workspaceRoot)?.kind, 'configured');

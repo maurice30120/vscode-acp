@@ -24,7 +24,6 @@ suite('HostMessageRouter', () => {
       {
         type: 'pipelineStatus',
         status: 'implementing',
-        teamId: 'team-1',
         role: 'implementer',
         agentName: 'builder',
       },
@@ -42,7 +41,7 @@ suite('HostMessageRouter', () => {
     );
 
     assert.ok(result.actions.some(action => action.type === 'setActivePipelineRole'));
-    assert.ok(result.actions.some(action => action.type === 'updatePipelineTimeline'));
+    assert.ok(result.actions.some(action => action.type === 'updatePipelinePlanStatus'));
   });
 
   test('hydrateSharedState rejection returns no actions for stale snapshot', () => {

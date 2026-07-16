@@ -5,7 +5,7 @@
 A [Visual Studio Code extension](https://marketplace.visualstudio.com/items?itemName=damien-huyet.acp-client) that connects your editor to any [Agent Client Protocol (ACP)](https://agentclientprotocol.com/) coding agent — native CLIs on the host, or isolated Codex/Cursor runs in Docker via Sandcastle.
 
 > [!NOTE]
-> Fork of [vscode-acp](https://github.com/formulahendry/vscode-acp) by [formulahendry](https://github.com/formulahendry), extended with pipelines, agent teams, Sandcastle isolation, and workspace-scoped session history.
+> Fork of [vscode-acp](https://github.com/formulahendry/vscode-acp) by [formulahendry](https://github.com/formulahendry), extended with pipelines, Sandcastle isolation, and workspace-scoped session history.
 
 ![ACP Client Screenshot](resources/screenshot.png)
 
@@ -53,7 +53,7 @@ For Sandcastle agents (Codex/Cursor in Docker), complete the [Sandcastle setup](
 ### Orchestration
 
 - **LangGraph pipelines** — orchestration engine: virtual agents from `.acp/pipelines/*.yaml` (approval gates, custom steps, parallel branches)
-- **Agent teams** — declarative shortcut on top of pipelines: `.acp/teams/*.yaml` compiles to pipeline v2 at runtime (`planner` → approval → `implementer` → `reviewer` → optional `tester`)
+- **Plan Execute Verify** — default pipeline v2 workflow with role prompts attached through `promptFile`
 
 ### Isolation runtimes
 
@@ -118,7 +118,7 @@ A **fresh** agent starts without baggage from earlier turns, tool noise, or half
 | Fully reset filesystem + provider context | **Reject** (or Apply if done), then **New Conversation** |
 | Compare two implementations | Two Sandcastle sessions, or Reject between attempts |
 | Multi-day investigation with full memory | Native agent with session resume |
-| Pipeline step must not touch `main` yet | Use a **Sandcastle** agent as implementer in the team |
+| Pipeline step must not touch `main` yet | Use a **Sandcastle** agent for a workspace-changing pipeline primitive |
 
 ### Sandcastle workflow (daily use)
 
@@ -219,32 +219,16 @@ French changelog: [docs/sandcastle-changelog-fr.md](docs/sandcastle-changelog-fr
 
 ---
 
-## Pipelines and agent teams
+## Pipelines
 
-Pipelines and agent teams are **not two competing systems**. Teams are a simplified DSL that compiles into the same pipeline v2 engine LangGraph runs.
+Pipelines v2 are the canonical orchestration format. Earlier `.acp/teams/*.yaml` agent-team definitions have been removed; express role-based workflows directly as `.acp/pipelines/*.yaml`.
 
 ```text
-Agent Teams (.acp/teams/*.yaml)
-        │  compile at runtime (AgentTeamCompiler)
-        ▼
 Pipeline v2 (.acp/pipelines/*.yaml)
         │  LangGraph graph
         ▼
 ACP agents (Codex CLI, Vibe, Cursor CLI, …)
 ```
-
-| | **Pipelines** | **Agent teams** |
-|---|---------------|-----------------|
-| **Role** | Orchestration engine | Declarative layer on top |
-| **When to use** | Custom workflows: parallel branches, non-standard step order, domain-specific primitives | Standard plan → approve → implement → review (and optional test) |
-| **Prompts** | Inline in YAML (`primitives.*.prompt`) | External Markdown files (`.acp/agents/*.md`) |
-| **Flexibility** | Full DSL v2 | Fixed role order in v1 |
-
-**Keep both features** in the product: pipelines are the engine; teams are ergonomic sugar for the common case.
-
-**Avoid duplicate workspace configs**: if you already have `.acp/teams/feature-team.yaml`, you usually do not need a hand-written `plan-execute-verify` pipeline with the same flow. Use raw pipelines for advanced workflows (see `.acp/pipelines/save/` for examples such as parallel review).
-
-### Pipelines (`.acp/pipelines/*.yaml`)
 
 When `acp.pipeline.enabled` is `true`, each valid pipeline appears as a virtual agent in the tree.
 
@@ -256,29 +240,25 @@ When `acp.pipeline.enabled` is `true`, each valid pipeline appears as a virtual 
 
 See [docs/pipeline-a2a.md](docs/pipeline-a2a.md) · French: [doc_fr/pipelines-langgraph.md](doc_fr/pipelines-langgraph.md)
 
-### Agent teams (`.acp/teams/*.yaml`)
-
-Declarative plan → implement → review workflows without hand-writing pipeline YAML.
-
 ```yaml
-version: 1
-id: feature-team
-title: Feature Team
-roles:
+version: 2
+id: plan-execute-verify
+title: Plan Execute Verify
+
+primitives:
   planner:
-    agent: Codex CLI
-    instructions: .acp/agents/planner.md
-  implementer:
-    agent: Vibe
-    instructions: .acp/agents/implementer.md
-  reviewer:
-    agent: Claude Code
-    instructions: .acp/agents/reviewer.md
+    agent: Cursor CLI
+    output: proposed_plan
+    sideEffects: none
+    promptFile: ../agents/planner.md
+    prompt: |
+      User request:
+      {{userPrompt}}
+
+steps:
+  - id: plan
+    use: planner
 ```
-
-At runtime, a team like `feature-team` becomes a pipeline with steps `planner → approval → implementer → reviewer` (and `tester` if defined). Inspect the result with **ACP: Show Compiled Team Pipeline**.
-
-See [docs/agent-teams.md](docs/agent-teams.md) · French: [doc_fr/agent-teams.md](doc_fr/agent-teams.md)
 
 ---
 
@@ -286,7 +266,7 @@ See [docs/agent-teams.md](docs/agent-teams.md) · French: [doc_fr/agent-teams.md
 
 On first activation, the extension can provision missing workspace files from a bundled starter kit:
 
-- `.acp/` — default pipelines, teams, and agent instruction templates
+- `.acp/` — default pipelines and agent instruction templates
 - `.agents/` — the full skills tree under `.agents/skills/`
 - `.sandcastle/` — Docker scaffold only (`Dockerfile`, `.env.example`, `.gitignore`)
 
@@ -328,8 +308,8 @@ Per-agent opt-out: set `"skills": false` on the `.acp/acp-agents.json` entry.
 | `acp.defaultWorkingDirectory` | `""` | Session cwd; empty = workspace root |
 | `acp.logTraffic` | `true` | Log ACP JSON-RPC to ACP Traffic channel |
 | `acp.terminal.visible` | `false` | Show ACP command terminals for debugging only |
-| `acp.pipeline.enabled` | `true` | Load `.acp/pipelines/` and `.acp/teams/` |
-| `acp.instructions.maxBytes` | `262144` | Max size for team instruction Markdown files |
+| `acp.pipeline.enabled` | `true` | Load `.acp/pipelines/` |
+| `acp.instructions.maxBytes` | `262144` | Max size for pipeline `promptFile` Markdown files |
 | `acp.skills.enabled` | `true` | Enable workspace skills wiring |
 | `acp.skills.directory` | `.agents/skills` | Skills directory to scan |
 | `acp.skills.maxCatalogBytes` | `65536` | Max injected catalog size on first prompt |
@@ -376,13 +356,11 @@ Per-agent opt-out: set `"skills": false` on the `.acp/acp-agents.json` entry.
 | `ACP: Sandcastle Apply Changes` | Apply patch to main workspace |
 | `ACP: Sandcastle Reject Changes` | Discard worktree changes |
 
-### Pipelines and teams
+### Pipelines
 
 | Command | Description |
 |---------|-------------|
 | `ACP: Enable / Disable Pipeline Agents` | Toggle `acp.pipeline.enabled` |
-| `ACP: Show Compiled Team Pipeline` | Inspect generated pipeline v2 JSON |
-| `ACP: Re-run Team Reviewer` | Re-run reviewer on latest team output |
 
 ### Configuration and debug
 
@@ -446,7 +424,7 @@ npx @vscode/vsce package
 Extension (VS Code)
   ├── SessionManager / ConnectionManager / AgentManager
   ├── Chat webview (React)
-  ├── PipelineService + AgentTeamCompiler (LangGraph)
+  ├── PipelineService (LangGraph)
   └── Sandcastle bridge process (stdio ACP → Docker)
         └── @ai-hero/sandcastle → Codex / Cursor CLI
 ```
@@ -463,7 +441,6 @@ Communication with agents uses ACP (JSON-RPC 2.0 over stdio).
 |-------|---------|--------|
 | README | [README.md](README.md) | [README.fr.md](README.fr.md) |
 | Pipelines | [docs/pipeline-a2a.md](docs/pipeline-a2a.md) | [doc_fr/pipelines-langgraph.md](doc_fr/pipelines-langgraph.md) |
-| Agent teams | [docs/agent-teams.md](docs/agent-teams.md) | [doc_fr/agent-teams.md](doc_fr/agent-teams.md) |
 | Sandcastle | [docs/sandcastle-architecture.md](docs/sandcastle-architecture.md) | [docs/sandcastle-changelog-fr.md](docs/sandcastle-changelog-fr.md) |
 | ADRs | [docs/adr/](docs/adr/) | [doc_fr/adr/](doc_fr/adr/) |
 

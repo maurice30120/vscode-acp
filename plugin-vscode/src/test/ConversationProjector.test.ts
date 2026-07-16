@@ -117,7 +117,6 @@ suite('ConversationProjector', () => {
           update,
           role: 'planner',
           agentName: 'planner-agent',
-          teamId: 'feature-team',
         },
       },
       ctx('session-1'),
@@ -134,7 +133,6 @@ suite('ConversationProjector', () => {
       phase: 'planner',
       role: 'planner',
       agentName: 'planner-agent',
-      teamId: 'feature-team',
     }]);
   });
 
@@ -148,7 +146,6 @@ suite('ConversationProjector', () => {
           stepId: 'plan',
           role: 'planner',
           agentName: 'planner-agent',
-          teamId: 'feature-team',
           implementerUsesSandcastle: true,
         },
       },
@@ -164,7 +161,6 @@ suite('ConversationProjector', () => {
       plan: '<proposed_plan>do work</proposed_plan>',
       role: 'planner',
       agentName: 'planner-agent',
-      teamId: 'feature-team',
       implementerUsesSandcastle: true,
       revised: false,
     }]);
@@ -223,7 +219,7 @@ suite('ConversationProjector', () => {
     assert.deepStrictEqual(projection.sessionEffects, { sessionId: 'session-1' });
   });
 
-  test('pipeline-status active → pipelineStatus message with team metadata', () => {
+  test('pipeline-status active → pipelineStatus message with pipeline metadata', () => {
     const projection = projector.project(
       {
         kind: 'pipeline-status',
@@ -234,7 +230,6 @@ suite('ConversationProjector', () => {
           stepId: 'implement',
           role: 'implementer',
           agentName: 'coder',
-          teamId: 'feature-team',
           implementerUsesSandcastle: true,
         },
       },
@@ -248,7 +243,6 @@ suite('ConversationProjector', () => {
       stepId: 'implement',
       role: 'implementer',
       agentName: 'coder',
-      teamId: 'feature-team',
       implementerUsesSandcastle: true,
     }]);
   });

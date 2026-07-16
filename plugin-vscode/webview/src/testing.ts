@@ -3,6 +3,9 @@ export {
   createInitialState,
   emptyPersistedState,
   emptyOrchestrationSlice,
+  getViewportBoundedInputHeight,
+  MAX_INPUT_HEIGHT,
+  MIN_INPUT_HEIGHT,
   selectOrchestrationView,
 } from './app/state';
 export {

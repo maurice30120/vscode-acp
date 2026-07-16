@@ -21,7 +21,7 @@ suite('SkillsPromptBuilder', () => {
               enabled: true,
               directory: '.agents/skills',
               maxCatalogBytes: 65536,
-              agents: ['Cursor CLI', 'Codex Sandcastle', 'Cursor Sandcastle'],
+              agents: ['Cursor CLI', 'Codex Sandcastle', 'Cursor Sandcastle', 'Pi Sandcastle'],
             };
             return (values[key] ?? defaultValue) as T;
           },

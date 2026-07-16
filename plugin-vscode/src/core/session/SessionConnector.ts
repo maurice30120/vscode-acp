@@ -11,6 +11,7 @@ import {
 import type { SessionConnectorDeps } from './sessionConnectTypes';
 import type { OpenSessionOptions, SessionInfo } from './sessionTypes';
 import { connectVirtualSession } from './virtualSessionConnect';
+import { isVirtualAgentName } from '../../config/VirtualAgentCatalog';
 
 export type { SessionConnectorDeps, SessionConnectorEmitter } from './sessionConnectTypes';
 
@@ -22,7 +23,11 @@ export class SessionConnector {
   constructor(private readonly deps: SessionConnectorDeps) {}
 
   async connectToAgent(agentName: string, options: OpenSessionOptions = {}): Promise<SessionInfo> {
-    if (this.deps.getVirtualSessionRuntime()?.canHandle(agentName)) {
+    const virtualRuntime = this.deps.getVirtualSessionRuntime();
+    if (
+      virtualRuntime?.canHandle(agentName)
+      || isVirtualAgentName(agentName, this.deps.getWorkspaceCwd(), this.deps.getConfigs())
+    ) {
       return connectVirtualSession(this.deps, agentName, options);
     }
     return connectNativeAgentSession(this.deps, agentName, options);

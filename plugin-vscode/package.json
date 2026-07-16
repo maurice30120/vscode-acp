@@ -193,14 +193,6 @@
         "title": "ACP: Sandcastle Reject Changes"
       },
       {
-        "command": "acp.showCompiledTeamPipeline",
-        "title": "ACP: Show Compiled Team Pipeline"
-      },
-      {
-        "command": "acp.rerunTeamReviewer",
-        "title": "ACP: Re-run Team Reviewer"
-      },
-      {
         "command": "acp.refreshSessions",
         "title": "ACP: Refresh Sessions"
       },
@@ -451,12 +443,12 @@
         "acp.pipeline.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable workspace-defined LangGraph pipeline agents from .acp/pipelines/*.yaml and agent teams from .acp/teams/*.yaml."
+          "description": "Enable workspace-defined LangGraph pipeline agents from .acp/pipelines/*.yaml."
         },
         "acp.instructions.maxBytes": {
           "type": "number",
           "default": 262144,
-          "description": "Maximum size in bytes for Markdown instruction files referenced by agent teams."
+          "description": "Maximum size in bytes for Markdown promptFile files referenced by pipeline primitives."
         },
         "acp.skills.enabled": {
           "type": "boolean",
@@ -478,7 +470,8 @@
           "default": [
             "Cursor CLI",
             "Codex Sandcastle",
-            "Cursor Sandcastle"
+            "Cursor Sandcastle",
+            "Pi Sandcastle"
           ],
           "description": "ACP agent names that receive skills catalog injection and Sandcastle skill mounts."
         },
@@ -510,7 +503,7 @@
     "vsx": "vsce package --no-dependencies",
     "clean-tests": "node scripts/clean.mjs out",
     "compile-tests": "npm run clean-tests && npm run build -w @acp-client/pipeline && tsc -p tsconfig.compile-tests.json --incremental false",
-    "lint": "eslint src ../acp-pipeline/src ../plugin-pi/src --max-warnings 0",
+    "lint": "cd .. && eslint -c plugin-vscode/eslint.config.mjs \"plugin-vscode/src/**/*.ts\" \"acp-pipeline/src/**/*.ts\" \"plugin-pi/src/**/*.ts\" --max-warnings 0",
     "sandcastle:smoke:codex": "npm run compile && node scripts/sandcastle-smoke.mjs codex apply",
     "sandcastle:smoke:cursor": "npm run compile && node scripts/sandcastle-smoke.mjs cursor reject",
     "pretest": "npm run sync:workspace-starter && npm run compile-tests && npm run compile && npm run lint",

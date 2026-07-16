@@ -7,8 +7,6 @@ import {
   type PipelineDefinition,
   type PipelinePrimitiveDefinition,
 } from './PipelineTypes';
-import type { TeamRoleId } from './AgentTeamConfig';
-import type { CompiledTeamMetadata } from './AgentTeamCompiler';
 import {
   isPipelineStepCancelled,
   isPipelineStepRejected,
@@ -21,11 +19,8 @@ import {
 import type { PipelinePlanReadyEvent, PipelineSessionUpdateEvent, PipelineStatus } from './PipelineEvents';
 import { PipelineRunRegistry, type PipelineRunState } from './PipelineRunRegistry';
 import { assertSingleProposedPlan } from './ProposedPlan';
-import { TeamRunSnapshotStore } from './TeamRunSnapshotStore';
 import { revisePendingPlan } from './engine/PipelinePlanRevision';
-import {
-  findPlannerStepId,
-} from './engine/PipelineRoleLabels';
+import { findPlannerStepId } from './engine/PipelineRoleLabels';
 import { createPipelineTimelineEmitter } from './engine/PipelineTimelineEmitter';
 import { PipelineGraphCoordinator } from './engine/PipelineGraphCoordinator';
 
@@ -36,8 +31,6 @@ export interface PipelineRunEngineDependencies {
   runAcpAgent?: (...args: Parameters<AcpRunCallback>) => Promise<PipelineStepRunResult>;
   runAgent?: PipelineAgentRunner;
   isAgentSandcastle?: (agentName: string, agentConfigs: Record<string, unknown>) => boolean;
-  getTeamPipelineForAgent?: (teamAgentName: string) => PipelineDefinition | null;
-  readWorkspaceDiff?: () => Promise<string>;
   isRunAbortedError?: (error: unknown) => boolean;
 }
 
@@ -45,7 +38,6 @@ export class PipelineRunEngine extends EventEmitter {
   private readonly registry = new PipelineRunRegistry();
   private readonly checkpointer = new MemorySaver();
   private readonly executor: PipelineExecutor;
-  private readonly snapshotStore: TeamRunSnapshotStore;
   private readonly timeline = createPipelineTimelineEmitter(this);
   private readonly graphCoordinator: PipelineGraphCoordinator;
 
@@ -58,14 +50,6 @@ export class PipelineRunEngine extends EventEmitter {
       workspaceCwd: this.workspaceCwd,
       runAgent: this.dependencies.runAgent,
       runAcpAgent: this.dependencies.runAcpAgent,
-    });
-    this.snapshotStore = new TeamRunSnapshotStore({
-      getTeamPipelineForAgent: teamAgentName => this.getTeamPipelineForAgent(teamAgentName),
-      readWorkspaceDiff: this.dependencies.readWorkspaceDiff,
-      executor: this.executor,
-      emitSessionUpdate: event => {
-        this.emit('session-update', event);
-      },
     });
     this.graphCoordinator = new PipelineGraphCoordinator(this.executor, this.checkpointer, {
       getRunState: sessionId => this.registry.get(sessionId),
@@ -87,14 +71,10 @@ export class PipelineRunEngine extends EventEmitter {
       emitSessionUpdate: event => {
         this.emit('session-update', event);
       },
-      persistTeamSnapshot: (sessionId, state, result) => {
-        this.snapshotStore.persistTeamSnapshot(sessionId, state, result);
-      },
       deleteRun: sessionId => {
         this.registry.delete(sessionId);
       },
       findPrimitiveForExecutorKind: (pipeline, kind) => this.findPrimitiveForExecutorKind(pipeline, kind),
-      readTeamContext: pipeline => this.readTeamContext(pipeline),
       runConfiguredAcpAgent: (sessionId, kind, promptText, onSessionUpdate) =>
         this.runConfiguredAcpAgent(sessionId, kind, promptText, onSessionUpdate),
     });
@@ -182,7 +162,6 @@ export class PipelineRunEngine extends EventEmitter {
   }
 
   async dispose(): Promise<void> {
-    this.snapshotStore.abortReviewerRerunOnDispose();
     for (const [sessionId, state] of this.registry.entries()) {
       state.cancelled = true;
       state.abortController.abort();
@@ -192,31 +171,10 @@ export class PipelineRunEngine extends EventEmitter {
     this.removeAllListeners();
   }
 
-  getLastTeamRunSnapshot() {
-    return this.snapshotStore.getLastTeamRunSnapshot();
-  }
-
-  getCompiledPipelineForTeam(agentName: string): PipelineDefinition | null {
-    const definition = this.getTeamPipelineForAgent(agentName);
-    if (!definition?.metadata || definition.metadata.sourceKind !== 'team') {
-      return null;
-    }
-    return definition;
-  }
-
-  cancelReviewerRerun(): void {
-    this.snapshotStore.cancelReviewerRerun();
-  }
-
-  async rerunTeamReviewer(teamAgentName: string): Promise<string> {
-    return this.snapshotStore.rerunTeamReviewer(teamAgentName);
-  }
-
   private planRevisionDeps() {
     return {
       findPrimitiveForExecutorKind: this.findPrimitiveForExecutorKind.bind(this),
       runConfiguredAcpAgent: this.runConfiguredAcpAgent.bind(this),
-      readTeamContext: this.readTeamContext.bind(this),
       emitPlanReady: this.emitPlanReady.bind(this),
       emitSessionUpdate: (event: PipelineSessionUpdateEvent) => {
         this.emit('session-update', event);
@@ -235,9 +193,8 @@ export class PipelineRunEngine extends EventEmitter {
     approvalStepId: string,
     revised: boolean,
   ): void {
-    const teamContext = this.readTeamContext(state.pipeline);
     const plannerStepId = findPlannerStepId(state.pipeline);
-    const plannerRole = teamContext?.roleByStepId[plannerStepId];
+    const plannerPrimitive = this.findPrimitiveForExecutorKind(state.pipeline, plannerStepId);
     const implementerUsesSandcastle = this.implementerUsesSandcastle(state.pipeline);
     const approvalMessage = revised
       ? 'Plan revised — review and approve.'
@@ -250,21 +207,15 @@ export class PipelineRunEngine extends EventEmitter {
         sessionId,
         plan,
         stepId: approvalStepId,
-        role: plannerRole,
-        agentName: plannerRole ? teamContext?.agentByRole[plannerRole] : undefined,
-        teamId: teamContext?.teamId,
+        role: plannerStepId,
+        agentName: plannerPrimitive?.agent,
         implementerUsesSandcastle,
         revised,
       } satisfies PipelinePlanReadyEvent,
       approvalMessage,
       approvalStepId,
-      teamContext,
       implementerUsesSandcastle,
     );
-  }
-
-  private readTeamContext(pipeline: PipelineDefinition): CompiledTeamMetadata | undefined {
-    return pipeline.metadata?.sourceKind === 'team' ? pipeline.metadata : undefined;
   }
 
   private async runConfiguredAcpAgent(
@@ -358,8 +309,7 @@ export class PipelineRunEngine extends EventEmitter {
     message: string,
     stepId?: string,
     branchId?: string,
-    teamContext?: CompiledTeamMetadata,
-    role?: TeamRoleId,
+    role?: string,
     agentName?: string,
     implementerUsesSandcastle?: boolean,
   ): void {
@@ -369,7 +319,6 @@ export class PipelineRunEngine extends EventEmitter {
       message,
       stepId,
       branchId,
-      teamContext,
       role,
       agentName,
       implementerUsesSandcastle,
@@ -398,11 +347,5 @@ export class PipelineRunEngine extends EventEmitter {
 
   private readAgentConfigs(): Record<string, unknown> {
     return this.dependencies.getAgentConfigs?.() ?? {};
-  }
-
-  private getTeamPipelineForAgent(teamAgentName: string): PipelineDefinition | null {
-    return this.dependencies.getTeamPipelineForAgent?.(teamAgentName)
-      ?? this.dependencies.getPipelineDefinitionForAgent?.(teamAgentName)
-      ?? null;
   }
 }

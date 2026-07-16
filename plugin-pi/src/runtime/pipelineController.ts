@@ -389,7 +389,6 @@ export class PipelineController {
       branchId: event.branchId,
       role: event.role,
       agentName: event.agentName,
-      teamId: event.teamId,
       update: event.update,
     });
   }
@@ -466,7 +465,6 @@ export class PipelineController {
           branchId: event.branchId,
           role: event.role,
           agentName: this.resolveAgentName(event),
-          teamId: event.teamId,
           updateKind: textUpdate.kind,
         },
         text: '',

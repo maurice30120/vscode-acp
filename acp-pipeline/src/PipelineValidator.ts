@@ -98,7 +98,7 @@ export function validatePipelineDefinition(
 			) {
 				primitives[primitiveId] = {
 					agent,
-					prompt,
+					prompt: prompt || undefined,
 					promptFile: promptFile || undefined,
 					skills: skills ?? undefined,
 					output,
@@ -295,13 +295,15 @@ function validateStepSafetyAndTemplates(
 						`step "${step.id}" uses workspace side effects before an approval step.`,
 					);
 				}
-				validateTemplateReferences(
-					primitive.prompt,
-					previousStepOutputs,
-					previousBranchOutputs,
-					errors,
-					`step "${step.id}"`,
-				);
+				if (primitive.prompt) {
+					validateTemplateReferences(
+						primitive.prompt,
+						previousStepOutputs,
+						previousBranchOutputs,
+						errors,
+						`step "${step.id}"`,
+					);
+				}
 			}
 			previousStepOutputs.add(step.id);
 			continue;
@@ -323,13 +325,15 @@ function validateStepSafetyAndTemplates(
 		for (const branch of step.branches) {
 			const primitive = primitives[branch.use];
 			if (primitive) {
-				validateTemplateReferences(
-					primitive.prompt,
-					previousStepOutputs,
-					previousBranchOutputs,
-					errors,
-					`parallel step "${step.id}" branch "${branch.id}"`,
-				);
+				if (primitive.prompt) {
+					validateTemplateReferences(
+						primitive.prompt,
+						previousStepOutputs,
+						previousBranchOutputs,
+						errors,
+						`parallel step "${step.id}" branch "${branch.id}"`,
+					);
+				}
 			}
 		}
 		for (const branch of step.branches) {
@@ -378,6 +382,9 @@ function validatePrimitiveTemplateSyntax(
 	errors: string[],
 ): void {
 	for (const [primitiveId, primitive] of Object.entries(primitives)) {
+		if (!primitive.prompt) {
+			continue;
+		}
 		for (const variable of extractTemplateVariables(primitive.prompt)) {
 			if (
 				variable === "userPrompt" ||

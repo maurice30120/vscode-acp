@@ -3,7 +3,5 @@
 !acp-agents.json
 !agents/
 !pipelines/
-!teams/
 !agents/.gitignore
 !pipelines/.gitignore
-!teams/.gitignore

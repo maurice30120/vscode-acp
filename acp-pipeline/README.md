@@ -1,6 +1,6 @@
 # @acp-client/pipeline
 
-Module npm local qui contient l'orchestration pipeline/team d'ACP Client.
+Module npm local qui contient l'orchestration pipeline d'ACP Client.
 
 Ce package est volontairement indépendant de VS Code. Il ne lit pas les settings,
 ne parcourt pas le workspace, ne lance pas d'agent concret, ne fait pas de `git diff`
@@ -9,25 +9,23 @@ injecte via des callbacks.
 
 ## Ce que le package fournit
 
-- Les types publics de pipeline et d'equipe: `PipelineDefinition`,
-  `PipelinePrimitiveDefinition`, `AgentTeamDefinition`, `CompiledTeamMetadata`, etc.
-- La validation des definitions pipeline/team.
-- La compilation d'une team en pipeline executable.
+- Les types publics de pipeline: `PipelineDefinition`,
+  `PipelinePrimitiveDefinition`, evenements pipeline, etc.
+- La validation des definitions pipeline.
 - L'execution de pipeline avec plan, approbation, reprise, annulation, branches
   paralleles, evenements de statut et session updates.
 - Les helpers autour de `<proposed_plan>`.
-- Le support du re-run reviewer a partir du dernier snapshot de team.
+- La resolution des `promptFile` attaches aux primitives.
 
 ## Ce qui reste cote extension
 
 L'extension VS Code joue le role d'adapter. Elle fournit notamment:
 
-- la lecture de `.acp/pipelines/*.yaml` et `.acp/teams/*.yaml`;
+- la lecture de `.acp/pipelines/*.yaml`;
 - la lecture des settings `acp.agents`;
 - la resolution du workspace courant;
 - le runner ACP/Sandcastle concret;
 - la detection d'un agent Sandcastle;
-- la lecture du diff courant pour le re-run reviewer;
 - la projection des evenements vers l'UI VS Code.
 
 ## Utilisation
@@ -57,7 +55,6 @@ const service = new PipelineService(
     runAgent: input => runConcreteAgent(input),
     isAgentSandcastle: (agentName, configs) =>
       configs[agentName]?.transport === 'sandcastle',
-    getTeamPipelineForAgent: teamName => resolveTeamPipeline(teamName),
     readWorkspaceDiff: () => readGitDiff(),
     isRunAbortedError: error => isAbortError(error),
   },
