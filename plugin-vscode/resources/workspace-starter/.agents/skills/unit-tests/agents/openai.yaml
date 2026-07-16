@@ -1,4 +1,0 @@
-interface:
-  display_name: "Unit Tests"
-  short_description: "Run focused tests without sandbox failures"
-  default_prompt: "Use $unit-tests to add or run focused unit tests safely."
