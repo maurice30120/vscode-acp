@@ -1,7 +1,7 @@
 import type { SessionNotification } from '@agentclientprotocol/sdk';
 import { Command, MemorySaver } from '@langchain/langgraph';
 
-import type { PipelineDefinition, PipelinePrimitiveDefinition } from '../PipelineTypes';
+import type { PipelineDefinition, PipelinePrimitiveDefinition, PipelineStepStatusUpdate } from '../PipelineTypes';
 import { PipelineExecutor } from '../PipelineExecutor';
 import {
   type AcpRunCallback,
@@ -13,7 +13,7 @@ import type { PipelineSessionUpdateEvent, PipelineStatus } from '../PipelineEven
 import type { PipelineRunState } from '../PipelineRunRegistry';
 import { assertSingleProposedPlan } from '../ProposedPlan';
 import { readApprovalInterrupt } from './PipelinePlanRevision';
-import { getPipelineStepPhase } from './PipelineRoleLabels';
+import { getPipelineStepPhase, getPipelineStepRole } from './PipelineRoleLabels';
 
 export type PipelineGraphCoordinatorDeps = {
   getRunState: (sessionId: string) => PipelineRunState | undefined;
@@ -44,6 +44,7 @@ export type PipelineGraphCoordinatorDeps = {
     kind: string,
     promptText: string,
     onSessionUpdate?: (update: SessionNotification) => void,
+    onStatus?: (update: PipelineStepStatusUpdate) => void,
   ) => Promise<string>;
 };
 
@@ -60,15 +61,15 @@ export class PipelineGraphCoordinator {
 
   compileGraph(sessionId: string, pipeline: PipelineDefinition): CompiledPipelineGraph {
     const compiler = new PipelineGraphCompiler(
-      async (kind, promptText, onSessionUpdate) => {
-        const output = await this.deps.runConfiguredAcpAgent(sessionId, kind, promptText, onSessionUpdate);
+      async (kind, promptText, onSessionUpdate, onStatus) => {
+        const output = await this.deps.runConfiguredAcpAgent(sessionId, kind, promptText, onSessionUpdate, onStatus);
         this.deps.setStepOutput(sessionId, kind, output, kind === 'implementer');
         return output;
       },
       {
         onStepStart: (stepId, primitive, branchId) => {
           const phase = getPipelineStepPhase(pipeline, stepId);
-          const role = branchId ? `${stepId}/${branchId}` : stepId;
+          const role = branchId ? `${stepId}/${branchId}` : getPipelineStepRole(pipeline, stepId);
           const statusMessage = `Running ${role} with ${primitive.agent}...`;
           this.deps.emitStatus(
             sessionId,
@@ -85,15 +86,32 @@ export class PipelineGraphCoordinator {
             pipeline,
             branchId ? `${stepId}__${branchId}` : stepId,
           );
+          const role = branchId ? `${stepId}/${branchId}` : getPipelineStepRole(pipeline, stepId);
           this.deps.emitSessionUpdate({
             sessionId,
             phase: branchId ? `${stepId}/${branchId}` : stepId,
             update,
             stepId,
             branchId,
-            role: branchId ? `${stepId}/${branchId}` : stepId,
+            role,
             agentName: primitive.agent,
           });
+        },
+        onStepStatus: (stepId, update, branchId) => {
+          const primitive = this.deps.findPrimitiveForExecutorKind(
+            pipeline,
+            branchId ? `${stepId}__${branchId}` : stepId,
+          );
+          const role = branchId ? `${stepId}/${branchId}` : getPipelineStepRole(pipeline, stepId);
+          this.deps.emitStatus(
+            sessionId,
+            update.status,
+            update.message,
+            stepId,
+            branchId,
+            role,
+            primitive.agent,
+          );
         },
       },
       this.checkpointer,

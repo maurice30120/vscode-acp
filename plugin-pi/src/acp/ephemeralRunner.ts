@@ -336,6 +336,10 @@ export class EphemeralAcpRunner {
 		const decision = decidePromotionPolicy(preview, promotion);
 
 		if (decision === "discard_no_changes") {
+			input.onStatus?.({
+				status: "implementing",
+				message: "Sandcastle run completed with no file changes.",
+			});
 			await connected.connInfo.connection.extMethod("sandcastle/reject", { sessionId });
 			return "no_changes";
 		}
@@ -344,11 +348,23 @@ export class EphemeralAcpRunner {
 			return "rejected";
 		}
 		if (decision === "auto_apply") {
+			input.onStatus?.({
+				status: "implementing",
+				message: "Applying Sandcastle changes to the workspace...",
+			});
 			return this.applySandcastleChanges(connected, sessionId);
 		}
 
+		input.onStatus?.({
+			status: "implementing",
+			message: `Sandcastle changes ready — waiting for promotion (${preview.filesChanged} file(s) changed).`,
+		});
 		const userDecision = await this.requestSandcastlePromotion(input.agentName, sessionId, preview);
 		if (userDecision === "approve") {
+			input.onStatus?.({
+				status: "implementing",
+				message: "Applying Sandcastle changes to the workspace...",
+			});
 			return this.applySandcastleChanges(connected, sessionId);
 		}
 		await connected.connInfo.connection.extMethod("sandcastle/reject", { sessionId });

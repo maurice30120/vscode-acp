@@ -11,6 +11,7 @@ export type EphemeralAgentRunResult = EphemeralSandcastleRunResult;
 
 export interface EphemeralAgentRunnerInput extends EphemeralRunInput {
   sideEffects?: FinishEphemeralRunOptions['sideEffects'];
+  onStatus?: FinishEphemeralRunOptions['onStatus'];
 }
 
 export interface EphemeralAgentRunner {

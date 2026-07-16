@@ -10,6 +10,7 @@ export interface EphemeralSandcastleRunResult {
 
 export interface EphemeralSandcastleRunInput extends EphemeralRunInput {
   sideEffects?: FinishEphemeralRunOptions['sideEffects'];
+  onStatus?: FinishEphemeralRunOptions['onStatus'];
 }
 
 /**
@@ -40,10 +41,10 @@ export async function runEphemeralSandcastleAgent(
   promotion: SandcastlePromotion,
   input: EphemeralSandcastleRunInput,
 ): Promise<EphemeralSandcastleRunResult> {
-  const { sideEffects, ...runInput } = input;
+  const { sideEffects, onStatus, ...runInput } = input;
   const run = await runEphemeralRun(runInput);
   try {
-    return await finishEphemeralSandcastleRun(promotion, run, { sideEffects });
+    return await finishEphemeralSandcastleRun(promotion, run, { sideEffects, onStatus });
   } finally {
     run.sandbox?.dispose();
   }

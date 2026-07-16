@@ -4,6 +4,7 @@ import type {
 	PipelinePrimitiveDefinition,
 	PipelinePermissions,
 	PipelineSideEffects,
+	PipelineStepStatusHandler,
 } from "./PipelineTypes";
 import {
 	resolvePipelineStepText,
@@ -15,12 +16,14 @@ export type PipelineStepRunCallback = (
 	promptText: string,
 	onSessionUpdate?: (update: SessionNotification) => void,
 	signal?: AbortSignal,
+	onStatus?: PipelineStepStatusHandler,
 ) => Promise<PipelineStepRunResult>;
 
 export interface PipelineStepContext {
 	signal: AbortSignal;
 	approvedPlan?: string;
 	onSessionUpdate?: (update: SessionNotification) => void;
+	onStatus?: PipelineStepStatusHandler;
 }
 
 export interface PipelineAgentRunInput {
@@ -28,6 +31,7 @@ export interface PipelineAgentRunInput {
 	agentName: string;
 	promptText: string;
 	onSessionUpdate?: (update: SessionNotification) => void;
+	onStatus?: PipelineStepStatusHandler;
 	signal?: AbortSignal;
 	sideEffects?: PipelineSideEffects;
 	permissions?: PipelinePermissions;
@@ -66,6 +70,7 @@ export class PipelineExecutor {
 				promptText,
 				context.onSessionUpdate,
 				context.signal,
+				context.onStatus,
 			);
 			return resolvePipelineStepText(result);
 		}
@@ -81,6 +86,7 @@ export class PipelineExecutor {
 			agentName: primitive.agent,
 			promptText,
 			onSessionUpdate: context.onSessionUpdate,
+			onStatus: context.onStatus,
 			signal: context.signal,
 			sideEffects: primitive.sideEffects,
 			permissions: primitive.permissions ?? "ask",
@@ -94,6 +100,7 @@ export class PipelineExecutor {
 		promptText: string,
 		options: {
 			onSessionUpdate?: (update: SessionNotification) => void;
+			onStatus?: PipelineStepStatusHandler;
 			signal?: AbortSignal;
 			sideEffects?: "none" | "workspace";
 		} = {},
@@ -107,6 +114,7 @@ export class PipelineExecutor {
 			agentName,
 			promptText,
 			onSessionUpdate: options.onSessionUpdate,
+			onStatus: options.onStatus,
 			signal: options.signal,
 			sideEffects: options.sideEffects,
 		});

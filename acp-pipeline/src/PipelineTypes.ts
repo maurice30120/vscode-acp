@@ -1,6 +1,15 @@
+import type { PipelineStatus } from "./PipelineEvents";
+
 export type PipelineOutputType = "markdown" | "proposed_plan";
 export type PipelineSideEffects = "none" | "workspace";
 export type PipelinePermissions = "ask" | "allowAll";
+
+export interface PipelineStepStatusUpdate {
+	status: PipelineStatus;
+	message: string;
+}
+
+export type PipelineStepStatusHandler = (update: PipelineStepStatusUpdate) => void;
 
 export interface PipelinePrimitiveDefinition {
 	agent: string;

@@ -1,9 +1,7 @@
 import { EventEmitter } from 'node:events';
 
 import type { PipelineDefinition } from './PipelineTypes';
-import type { AcpRunCallback } from './PipelineGraphCompiler';
 import { PipelineRunEngine, type PipelineRunEngineDependencies } from './PipelineRunEngine';
-import type { PipelineStepRunResult } from './PipelineStepCompletion';
 
 export type {
   PipelineStatus,
@@ -17,7 +15,7 @@ export interface PipelineServiceDependencies {
   getPipelineDefinitions?: () => PipelineDefinition[];
   getPipelineDefinitionForAgent?: (agentName: string) => PipelineDefinition | null;
   getAgentConfigs?: () => Record<string, unknown>;
-  runAcpAgent?: (...args: Parameters<AcpRunCallback>) => Promise<PipelineStepRunResult>;
+  runAcpAgent?: PipelineRunEngineDependencies['runAcpAgent'];
   runAgent?: PipelineRunEngineDependencies['runAgent'];
   isAgentSandcastle?: PipelineRunEngineDependencies['isAgentSandcastle'];
   isRunAbortedError?: PipelineRunEngineDependencies['isRunAbortedError'];

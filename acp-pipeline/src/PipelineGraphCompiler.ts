@@ -13,6 +13,7 @@ import type {
   PipelineDefinition,
   PipelineParallelStepDefinition,
   PipelinePrimitiveDefinition,
+  PipelineStepStatusUpdate,
   PipelineStepDefinition,
 } from './PipelineTypes';
 import { extractSingleProposedPlan } from './ProposedPlan';
@@ -44,12 +45,13 @@ export type AcpRunCallback = (
   kind: PipelineExecutorKind,
   promptText: string,
   onSessionUpdate?: (update: SessionNotification) => void,
-  signal?: AbortSignal,
+  onStatus?: (update: PipelineStepStatusUpdate) => void,
 ) => Promise<string>;
 
 export interface PipelineGraphCompilerHooks {
   onStepStart: (stepId: string, primitive: PipelinePrimitiveDefinition, branchId?: string) => void;
   onStepSessionUpdate: (stepId: string, update: SessionNotification, branchId?: string) => void;
+  onStepStatus: (stepId: string, update: PipelineStepStatusUpdate, branchId?: string) => void;
 }
 
 export interface CompiledPipelineGraph {
@@ -199,6 +201,8 @@ export class PipelineGraphCompiler {
     const prompt = renderTemplate(primitive.prompt ?? '', state);
     const output = await this.runPrimitive(stepId, primitive, prompt, update => {
       this.hooks.onStepSessionUpdate(stepId, update);
+    }, status => {
+      this.hooks.onStepStatus(stepId, status);
     });
     return {
       lastOutput: output,
@@ -224,6 +228,8 @@ export class PipelineGraphCompiler {
     const prompt = renderTemplate(primitive.prompt ?? '', state);
     const output = await this.runPrimitive(getParallelBranchNodeName(step.id, branchId), primitive, prompt, update => {
       this.hooks.onStepSessionUpdate(step.id, update, branchId);
+    }, status => {
+      this.hooks.onStepStatus(step.id, status, branchId);
     });
     return {
       stepOutputs: {
@@ -245,8 +251,9 @@ export class PipelineGraphCompiler {
     primitive: PipelinePrimitiveDefinition,
     prompt: string,
     onSessionUpdate: (update: SessionNotification) => void,
+    onStatus: (update: PipelineStepStatusUpdate) => void,
   ): Promise<string> {
-    const responseText = await this.runAcpAgent(kind, prompt, onSessionUpdate);
+    const responseText = await this.runAcpAgent(kind, prompt, onSessionUpdate, onStatus);
     return primitive.output === 'proposed_plan'
       ? extractSingleProposedPlan(responseText)
       : responseText.trim();

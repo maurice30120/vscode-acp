@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import type { PipelineStepStatusHandler } from '@acp-client/pipeline';
 
 import { getAgentConfig, isSandcastleAgentConfig } from '../config/AgentConfig';
 import type { SessionManager } from '../core/SessionManager';
@@ -21,6 +22,7 @@ export class SandcastleApplyError extends Error {
 
 export interface FinishEphemeralRunOptions {
   sideEffects?: 'none' | 'workspace';
+  onStatus?: PipelineStepStatusHandler;
 }
 
 type PromotionChoice = 'diff' | 'apply' | 'reject';
@@ -76,7 +78,7 @@ export class SandcastlePromotion {
       return undefined;
     }
 
-    const outcome = await this.promote(connection, sessionId);
+    const outcome = await this.promote(connection, sessionId, options.onStatus);
     if (outcome === 'cancelled') {
       await this.ui.discard(connection, sessionId);
     }
@@ -86,19 +88,35 @@ export class SandcastlePromotion {
   /**
    * Exécute le flux Promotion post-run selon le mode configuré (ask, autoApply, autoReject).
    */
-  async promote(connection: SandcastleBridgeConnection, sessionId: string): Promise<SandcastlePromotionOutcome> {
+  async promote(
+    connection: SandcastleBridgeConnection,
+    sessionId: string,
+    onStatus?: PipelineStepStatusHandler,
+  ): Promise<SandcastlePromotionOutcome> {
     const preview = await this.ui.preview(connection, sessionId);
     const decision = decidePromotionPolicy(preview, this.getPromotionMode());
 
     if (decision === 'discard_no_changes') {
+      onStatus?.({
+        status: 'implementing',
+        message: 'Sandcastle run completed with no file changes.',
+      });
       await this.ui.discard(connection, sessionId);
       void vscode.window.showInformationMessage('Sandcastle run completed with no file changes.');
       return 'no_changes';
     }
     if (decision === 'auto_apply') {
+      onStatus?.({
+        status: 'implementing',
+        message: 'Applying Sandcastle changes to the workspace...',
+      });
       if (!(await this.ui.apply(connection, sessionId))) {
         throw new SandcastleApplyError();
       }
+      onStatus?.({
+        status: 'implementing',
+        message: 'Sandcastle changes applied. Continuing pipeline...',
+      });
       return 'applied';
     }
     if (decision === 'auto_reject') {
@@ -106,7 +124,11 @@ export class SandcastlePromotion {
       return 'rejected';
     }
 
-    return this.promptPromotionChoice(connection, sessionId, preview, true);
+    onStatus?.({
+      status: 'implementing',
+      message: `Sandcastle changes ready — waiting for promotion (${preview.filesChanged} file(s) changed).`,
+    });
+    return this.promptPromotionChoice(connection, sessionId, preview, true, onStatus);
   }
 
   private getPromotionMode(): SandcastlePromotionMode {
@@ -122,6 +144,7 @@ export class SandcastlePromotion {
     sessionId: string,
     preview: SandcastlePreview,
     allowViewDiff: boolean,
+    onStatus?: PipelineStepStatusHandler,
   ): Promise<SandcastlePromotionOutcome> {
     const items: Array<vscode.QuickPickItem & { choice: PromotionChoice }> = [];
     if (allowViewDiff) {
@@ -147,15 +170,23 @@ export class SandcastlePromotion {
 
     if (selection.choice === 'diff') {
       await this.ui.showDiff(preview);
-      return this.promptPromotionChoice(connection, sessionId, preview, false);
+      return this.promptPromotionChoice(connection, sessionId, preview, false, onStatus);
     }
     if (selection.choice === 'reject') {
       await this.ui.reject(connection, sessionId);
       return 'rejected';
     }
+    onStatus?.({
+      status: 'implementing',
+      message: 'Applying Sandcastle changes to the workspace...',
+    });
     if (!(await this.ui.apply(connection, sessionId))) {
       throw new SandcastleApplyError();
     }
+    onStatus?.({
+      status: 'implementing',
+      message: 'Sandcastle changes applied. Continuing pipeline...',
+    });
     return 'applied';
   }
 

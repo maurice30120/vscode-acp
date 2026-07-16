@@ -6,16 +6,13 @@ import { MemorySaver } from '@langchain/langgraph';
 import {
   type PipelineDefinition,
   type PipelinePrimitiveDefinition,
+  type PipelineStepStatusUpdate,
 } from './PipelineTypes';
 import {
   isPipelineStepCancelled,
   isPipelineStepRejected,
-  type PipelineStepRunResult,
 } from './PipelineStepCompletion';
-import { PipelineExecutor, type PipelineAgentRunner } from './PipelineExecutor';
-import {
-  type AcpRunCallback,
-} from './PipelineGraphCompiler';
+import { PipelineExecutor, type PipelineAgentRunner, type PipelineStepRunCallback } from './PipelineExecutor';
 import type { PipelinePlanReadyEvent, PipelineSessionUpdateEvent, PipelineStatus } from './PipelineEvents';
 import { PipelineRunRegistry, type PipelineRunState } from './PipelineRunRegistry';
 import { assertSingleProposedPlan } from './ProposedPlan';
@@ -28,7 +25,7 @@ export interface PipelineRunEngineDependencies {
   getPipelineDefinitions?: () => PipelineDefinition[];
   getPipelineDefinitionForAgent?: (agentName: string) => PipelineDefinition | null;
   getAgentConfigs?: () => Record<string, unknown>;
-  runAcpAgent?: (...args: Parameters<AcpRunCallback>) => Promise<PipelineStepRunResult>;
+  runAcpAgent?: PipelineStepRunCallback;
   runAgent?: PipelineAgentRunner;
   isAgentSandcastle?: (agentName: string, agentConfigs: Record<string, unknown>) => boolean;
   isRunAbortedError?: (error: unknown) => boolean;
@@ -75,8 +72,8 @@ export class PipelineRunEngine extends EventEmitter {
         this.registry.delete(sessionId);
       },
       findPrimitiveForExecutorKind: (pipeline, kind) => this.findPrimitiveForExecutorKind(pipeline, kind),
-      runConfiguredAcpAgent: (sessionId, kind, promptText, onSessionUpdate) =>
-        this.runConfiguredAcpAgent(sessionId, kind, promptText, onSessionUpdate),
+      runConfiguredAcpAgent: (sessionId, kind, promptText, onSessionUpdate, onStatus) =>
+        this.runConfiguredAcpAgent(sessionId, kind, promptText, onSessionUpdate, onStatus),
     });
   }
 
@@ -223,6 +220,7 @@ export class PipelineRunEngine extends EventEmitter {
     kind: string,
     promptText: string,
     onSessionUpdate?: (update: SessionNotification) => void,
+    onStatus?: (update: PipelineStepStatusUpdate) => void,
   ): Promise<string> {
     const state = this.registry.get(sessionId);
     if (!state || state.cancelled) {
@@ -235,6 +233,7 @@ export class PipelineRunEngine extends EventEmitter {
       signal: state.abortController.signal,
       approvedPlan: state.approvedPlan,
       onSessionUpdate,
+      onStatus,
     });
   }
 

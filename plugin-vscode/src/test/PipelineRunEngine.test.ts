@@ -128,6 +128,7 @@ suite('PipelineRunEngine', () => {
 
   test('approvePlan resumes graph, sends edited plan to implementer, then verifies', async () => {
     const calls: Array<{ kind: string; prompt: string }> = [];
+    const roleEvents: Array<{ status: string; role?: string }> = [];
     const engine = createEngine({
       runAcpAgent: async (kind, prompt) => {
         calls.push({ kind, prompt });
@@ -140,6 +141,9 @@ suite('PipelineRunEngine', () => {
         return 'verified successfully';
       },
     });
+    engine.on('status', (event: any) => {
+      roleEvents.push({ status: event.status, role: event.role });
+    });
 
     try {
       await engine.createPlan('session-1', 'build feature', PLAN_EXECUTE_VERIFY_PIPELINE.title);
@@ -149,6 +153,44 @@ suite('PipelineRunEngine', () => {
       assert.deepStrictEqual(calls.map(call => call.kind), ['plan', 'implement', 'verify']);
       assert.ok(calls[1].prompt.includes('<proposed_plan>\nEdited\n</proposed_plan>'));
       assert.ok(calls[2].prompt.includes('implemented successfully'));
+      assert.ok(roleEvents.some(event => event.status === 'implementing' && event.role === 'implementer'));
+      assert.ok(roleEvents.some(event => event.status === 'reviewing' && event.role === 'reviewer'));
+    } finally {
+      await engine.dispose();
+    }
+  });
+
+  test('approvePlan forwards Sandcastle promotion status to implementer chat state', async () => {
+    const roleEvents: Array<{ status: string; role?: string; message?: string }> = [];
+    const engine = createEngine({
+      runAgent: async input => {
+        if (input.agentName === 'Vibe') {
+          input.onStatus?.({
+            status: 'implementing',
+            message: 'Sandcastle changes ready — waiting for promotion (2 file(s) changed).',
+          });
+          return { text: 'implemented successfully', promotion: 'applied' };
+        }
+        if (input.promptText.startsWith('Plan:')) {
+          return '<proposed_plan>\nInitial\n</proposed_plan>';
+        }
+        return 'verified successfully';
+      },
+    });
+    engine.on('status', (event: any) => {
+      roleEvents.push({ status: event.status, role: event.role, message: event.message });
+    });
+
+    try {
+      await engine.createPlan('session-1', 'build feature', PLAN_EXECUTE_VERIFY_PIPELINE.title);
+      const finalOutput = await engine.approvePlan('session-1', '<proposed_plan>\nEdited\n</proposed_plan>');
+
+      assert.strictEqual(finalOutput, 'verified successfully');
+      assert.ok(roleEvents.some(event =>
+        event.status === 'implementing'
+        && event.role === 'implementer'
+        && event.message?.includes('waiting for promotion')
+      ));
     } finally {
       await engine.dispose();
     }
@@ -484,7 +526,8 @@ suite('PipelineRunEngine', () => {
 
 function createEngine(options: {
   pipelines?: PipelineDefinition[];
-  runAcpAgent: NonNullable<ConstructorParameters<typeof PipelineRunEngine>[1]>['runAcpAgent'];
+  runAcpAgent?: NonNullable<ConstructorParameters<typeof PipelineRunEngine>[1]>['runAcpAgent'];
+  runAgent?: NonNullable<ConstructorParameters<typeof PipelineRunEngine>[1]>['runAgent'];
 }): PipelineRunEngine {
   const pipelines = options.pipelines ?? [PLAN_EXECUTE_VERIFY_PIPELINE];
   return new PipelineRunEngine(
@@ -495,6 +538,7 @@ function createEngine(options: {
         pipelines.find(pipeline => pipeline.title === agentName) ?? null,
       getAgentConfigs: () => ({ Codex: {}, Vibe: {} }),
       runAcpAgent: options.runAcpAgent,
+      runAgent: options.runAgent,
       isRunAbortedError,
     },
   );
