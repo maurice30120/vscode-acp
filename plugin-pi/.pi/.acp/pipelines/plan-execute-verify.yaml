@@ -7,6 +7,7 @@ primitives:
     agent: Pi Agent
     output: proposed_plan
     sideEffects: none
+    permissions: allowAll
     prompt: |
       Create a decision-complete implementation plan only.
       Return exactly one <proposed_plan>...</proposed_plan> block.
@@ -18,6 +19,7 @@ primitives:
     agent: Pi Agent
     output: markdown
     sideEffects: workspace
+    permissions: ask
     prompt: |
       Implement the approved plan in the current workspace.
 
@@ -31,6 +33,7 @@ primitives:
     agent: Vibe
     output: markdown
     sideEffects: none
+    permissions: ask
     prompt: |
       Verify whether the approved plan was completed.
       Include changed files, tests, risks, and remaining gaps.

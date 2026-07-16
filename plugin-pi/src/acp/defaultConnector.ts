@@ -1,3 +1,5 @@
+import type { PipelinePermissions } from '@acp-client/pipeline';
+
 import { AgentProcessManager, observeAgentProcessExit, type AgentProcessExit } from './agentProcess.js';
 import { ConnectionManager, type ConnectionInfo } from './connectionManager.js';
 import type { PartialAcpOperationTimeouts } from './operationGuards.js';
@@ -10,6 +12,7 @@ export interface AcpConnectorInput {
   workspaceCwd: string;
   sessionUpdateHandler: SessionUpdateHandler;
   getPermissionContext: () => PiPermissionContext | undefined;
+  permissions?: PipelinePermissions;
   timeouts?: PartialAcpOperationTimeouts;
   logger?: Logger;
 }
@@ -28,6 +31,7 @@ export const defaultAcpConnector: AcpConnector = async (input) => {
   const connectionManager = new ConnectionManager(input.sessionUpdateHandler, {
     logger: input.logger,
     getPermissionContext: input.getPermissionContext,
+    autoApprovePermissions: input.permissions === 'allowAll',
     timeouts: input.timeouts,
   });
 

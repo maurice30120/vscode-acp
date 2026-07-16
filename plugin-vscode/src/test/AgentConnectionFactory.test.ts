@@ -46,6 +46,40 @@ suite('AgentConnectionFactory', () => {
     }
   });
 
+  test('connectEphemeralAcpAgent passes allowAll permissions to connection manager', async () => {
+    const originalSpawn = AgentManager.prototype.spawnAgent;
+    const originalKillAll = AgentManager.prototype.killAll;
+    const originalDispose = ConnectionManager.prototype.dispose;
+    const originalConnect = ConnectionManager.prototype.connect;
+
+    let capturedAutoApproveAll: boolean | undefined;
+    AgentManager.prototype.spawnAgent = function() {
+      return { id: 'agent-1', name: 'Codex', config, process: {} as any };
+    };
+    AgentManager.prototype.killAll = function() {};
+    ConnectionManager.prototype.dispose = function() {};
+    ConnectionManager.prototype.connect = async function(_agentId, _process, _workspaceCwd, options) {
+      capturedAutoApproveAll = options?.autoApproveAll;
+      return { connection: {}, client: {}, initResponse: {} } as any;
+    };
+
+    try {
+      const connected = await connectEphemeralAcpAgent({
+        agentName: 'Codex',
+        config,
+        workspaceCwd: '/repo',
+        permissions: 'allowAll',
+      });
+      connected.dispose();
+      assert.strictEqual(capturedAutoApproveAll, true);
+    } finally {
+      AgentManager.prototype.spawnAgent = originalSpawn;
+      AgentManager.prototype.killAll = originalKillAll;
+      ConnectionManager.prototype.dispose = originalDispose;
+      ConnectionManager.prototype.connect = originalConnect;
+    }
+  });
+
   test('createEphemeralAcpSession retries newSession after auth flow', async () => {
     let authFlowRuns = 0;
     const authHandler = {

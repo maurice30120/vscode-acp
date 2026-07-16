@@ -1,3 +1,4 @@
+import type { PipelinePermissions } from '@acp-client/pipeline';
 import { fileURLToPath } from 'node:url';
 
 import { AgentProcessManager, observeAgentProcessExit, type ProcessAgentConfig } from './agentProcess.js';
@@ -14,6 +15,7 @@ export interface SandcastleConnectorInput {
   workspaceCwd: string;
   sessionUpdateHandler: SessionUpdateHandler;
   getPermissionContext: () => PiPermissionContext | undefined;
+  permissions?: PipelinePermissions;
   timeouts?: PartialAcpOperationTimeouts;
   logger?: Logger;
 }

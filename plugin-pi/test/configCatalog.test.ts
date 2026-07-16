@@ -576,6 +576,69 @@ test("promptFile loads and composes the prompt (promptFile + blank line + prompt
 	assert.equal(definitions[0].primitives.planner.promptFile, undefined);
 });
 
+test("pipeline primitive permissions accepts allowAll and defaults to ask", () => {
+	const workspace = createTempWorkspace();
+	writeDefaultConfig(workspace);
+	writePipelineFile(workspace, "permissions.yaml", [
+		"version: 2",
+		"id: permissions",
+		"title: Permissions",
+		"primitives:",
+		"  planner:",
+		"    agent: Codex CLI",
+		"    prompt: '{{userPrompt}}'",
+		"    output: proposed_plan",
+		"    sideEffects: none",
+		"    permissions: allowAll",
+		"  reviewer:",
+		"    agent: Codex CLI",
+		"    prompt: '{{steps.planner.output}}'",
+		"    output: markdown",
+		"    sideEffects: none",
+		"steps:",
+		"  - id: planner",
+		"    use: planner",
+		"  - id: reviewer",
+		"    use: reviewer",
+		"",
+	]);
+
+	const definitions = loadWorkspacePipelineDefinitions(workspace, {
+		"Codex CLI": { command: "codex" },
+	});
+
+	assert.equal(definitions.length, 1);
+	assert.equal(definitions[0].primitives.planner.permissions, "allowAll");
+	assert.equal(definitions[0].primitives.reviewer.permissions, "ask");
+});
+
+test("pipeline primitive permissions rejects invalid values", () => {
+	const workspace = createTempWorkspace();
+	writeDefaultConfig(workspace);
+	writePipelineFile(workspace, "permissions.yaml", [
+		"version: 2",
+		"id: permissions",
+		"title: Permissions",
+		"primitives:",
+		"  planner:",
+		"    agent: Codex CLI",
+		"    prompt: '{{userPrompt}}'",
+		"    output: proposed_plan",
+		"    sideEffects: none",
+		"    permissions: yolo",
+		"steps:",
+		"  - id: planner",
+		"    use: planner",
+		"",
+	]);
+
+	const definitions = loadWorkspacePipelineDefinitions(workspace, {
+		"Codex CLI": { command: "codex" },
+	});
+
+	assert.equal(definitions.length, 0);
+});
+
 test("embedded promptFile paths resolve from config root, not workspace root", () => {
 	const workspace = createTempWorkspace();
 	const pluginRoot = createTempWorkspace();

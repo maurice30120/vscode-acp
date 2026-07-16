@@ -1,5 +1,6 @@
 export type PipelineOutputType = "markdown" | "proposed_plan";
 export type PipelineSideEffects = "none" | "workspace";
+export type PipelinePermissions = "ask" | "allowAll";
 
 export interface PipelinePrimitiveDefinition {
 	agent: string;
@@ -8,6 +9,7 @@ export interface PipelinePrimitiveDefinition {
 	skills?: string[];
 	output: PipelineOutputType;
 	sideEffects: PipelineSideEffects;
+	permissions?: PipelinePermissions;
 }
 
 export interface PipelineAgentStepDefinition {

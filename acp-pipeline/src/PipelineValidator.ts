@@ -62,6 +62,7 @@ export function validatePipelineDefinition(
 			);
 			const output = primitiveValue.output;
 			const sideEffects = primitiveValue.sideEffects ?? "none";
+			const permissions = primitiveValue.permissions ?? "ask";
 			const skills = readOptionalStringArray(
 				primitiveValue,
 				"skills",
@@ -79,6 +80,11 @@ export function validatePipelineDefinition(
 					`primitive "${primitiveId}" sideEffects must be "none" or "workspace".`,
 				);
 			}
+			if (permissions !== "ask" && permissions !== "allowAll") {
+				errors.push(
+					`primitive "${primitiveId}" permissions must be "ask" or "allowAll".`,
+				);
+			}
 			if (!prompt && !promptFile) {
 				errors.push(
 					`primitive "${primitiveId}" must define either prompt or promptFile.`,
@@ -93,6 +99,7 @@ export function validatePipelineDefinition(
 				agent &&
 				(output === "markdown" || output === "proposed_plan") &&
 				(sideEffects === "none" || sideEffects === "workspace") &&
+				(permissions === "ask" || permissions === "allowAll") &&
 				(prompt || promptFile) &&
 				skills !== null
 			) {
@@ -103,6 +110,7 @@ export function validatePipelineDefinition(
 					skills: skills ?? undefined,
 					output,
 					sideEffects,
+					permissions,
 				};
 			}
 		}

@@ -29,8 +29,10 @@ suite('PipelineExecutor', () => {
 
   test('runStep uses ephemeral runner when no override', async () => {
     let capturedAgent = '';
+    let capturedPermissions = '';
     const runAgent: PipelineAgentRunner = async input => {
       capturedAgent = input.agentName;
+      capturedPermissions = input.permissions ?? '';
       return { text: 'runner-output' };
     };
 
@@ -44,6 +46,24 @@ suite('PipelineExecutor', () => {
     });
     assert.strictEqual(text, 'runner-output');
     assert.strictEqual(capturedAgent, 'Vibe');
+    assert.strictEqual(capturedPermissions, 'ask');
+  });
+
+  test('runStep propagates primitive permissions to runner', async () => {
+    let capturedPermissions = '';
+    const executor = new PipelineExecutor({
+      workspaceCwd: () => '/repo',
+      runAgent: async input => {
+        capturedPermissions = input.permissions ?? '';
+        return { text: 'runner-output' };
+      },
+    });
+
+    await executor.runStep('planner', { ...primitive, permissions: 'allowAll' }, 'hello', {
+      signal: new AbortController().signal,
+    });
+
+    assert.strictEqual(capturedPermissions, 'allowAll');
   });
 
   test('runStep propagates Sandcastle rejection from runner result', async () => {

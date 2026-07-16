@@ -219,6 +219,7 @@ export class EphemeralAcpRunner {
 			sessionUpdateHandler,
 			getPermissionContext:
 				this.options.getPermissionContext ?? (() => undefined),
+			permissions: input.permissions,
 			timeouts: this.options.timeouts,
 			logger: this.options.logger,
 		};

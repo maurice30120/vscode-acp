@@ -1,4 +1,5 @@
 import type { SessionNotification } from '@agentclientprotocol/sdk';
+import type { PipelinePermissions } from '@acp-client/pipeline';
 
 import { getAgentConfig, isSandcastleAgentConfig } from '../config/AgentConfig';
 import { SessionUpdateHandler } from '../handlers/SessionUpdateHandler';
@@ -36,6 +37,7 @@ export interface EphemeralRunInput extends EphemeralRunOptions {
   workspaceCwd: string;
   agentName: string;
   promptText: string;
+  permissions?: PipelinePermissions;
 }
 
 /**
@@ -43,7 +45,7 @@ export interface EphemeralRunInput extends EphemeralRunOptions {
  * Does not register a ConnectedAgent or SessionRecord.
  */
 export async function runEphemeralRun(input: EphemeralRunInput): Promise<EphemeralRunResult> {
-  const { workspaceCwd: cwd, agentName, promptText, onSessionUpdate, signal } = input;
+  const { workspaceCwd: cwd, agentName, promptText, permissions, onSessionUpdate, signal } = input;
   const config = getAgentConfig(agentName);
   if (!config) {
     throw new Error(`EphemeralRun agent "${agentName}" is not configured in .acp/acp-agents.json.`);
@@ -105,6 +107,7 @@ export async function runEphemeralRun(input: EphemeralRunInput): Promise<Ephemer
       agentName,
       config,
       workspaceCwd: cwd,
+      permissions,
       sessionUpdateHandler,
     });
     connInfo = connection.connInfo;

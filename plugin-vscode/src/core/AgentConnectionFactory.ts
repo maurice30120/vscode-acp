@@ -1,3 +1,5 @@
+import type { PipelinePermissions } from '@acp-client/pipeline';
+
 import type { AgentConfigEntry } from '../config/AgentConfig';
 import { isSandcastleAgentConfig } from '../config/AgentConfig';
 import { SessionUpdateHandler } from '../handlers/SessionUpdateHandler';
@@ -9,6 +11,7 @@ export interface ConnectEphemeralAcpAgentInput {
   agentName: string;
   config: AgentConfigEntry;
   workspaceCwd: string;
+  permissions?: PipelinePermissions;
   sessionUpdateHandler?: SessionUpdateHandler;
 }
 
@@ -25,7 +28,7 @@ export interface EphemeralAcpConnection {
 export async function connectEphemeralAcpAgent(
   input: ConnectEphemeralAcpAgentInput,
 ): Promise<EphemeralAcpConnection> {
-  const { agentName, config, workspaceCwd, sessionUpdateHandler } = input;
+  const { agentName, config, workspaceCwd, permissions, sessionUpdateHandler } = input;
   const agentManager = new AgentManager();
   const connectionManager = new ConnectionManager(sessionUpdateHandler ?? new SessionUpdateHandler());
 
@@ -38,7 +41,7 @@ export async function connectEphemeralAcpAgent(
       agentId,
       agentInstance.process,
       workspaceCwd,
-      { autoApproveAll: isSandcastleAgentConfig(config) },
+      { autoApproveAll: permissions === 'allowAll' || isSandcastleAgentConfig(config) },
     );
   } catch (e) {
     agentManager.killAgent(agentId);

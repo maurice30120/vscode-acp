@@ -85,7 +85,41 @@ suite('PipelineCatalog', () => {
     assert.strictEqual(result.definition.version, 2);
     assert.strictEqual(result.definition.title, 'Feature Development');
     assert.strictEqual(result.definition.primitives.edit.sideEffects, 'workspace');
+    assert.strictEqual(result.definition.primitives.edit.permissions, 'ask');
     assert.strictEqual(result.definition.steps.length, 5);
+  });
+
+  test('accepts primitive permissions allowAll', () => {
+    const result = parsePipelineYaml(
+      VALID_PIPELINE.replace('sideEffects: none', 'sideEffects: none\n    permissions: allowAll'),
+      '/repo/.acp/pipelines/feature-dev.yaml',
+      { Codex: {}, Vibe: {} },
+    );
+
+    assert.deepStrictEqual(result.errors, []);
+    assert.strictEqual(result.definition?.primitives.plan.permissions, 'allowAll');
+  });
+
+  test('defaults primitive permissions to ask when absent', () => {
+    const result = parsePipelineYaml(
+      VALID_PIPELINE,
+      '/repo/.acp/pipelines/feature-dev.yaml',
+      { Codex: {}, Vibe: {} },
+    );
+
+    assert.deepStrictEqual(result.errors, []);
+    assert.strictEqual(result.definition?.primitives.plan.permissions, 'ask');
+  });
+
+  test('rejects invalid primitive permissions', () => {
+    const result = parsePipelineYaml(
+      VALID_PIPELINE.replace('sideEffects: none', 'sideEffects: none\n    permissions: yolo'),
+      '/repo/.acp/pipelines/feature-dev.yaml',
+      { Codex: {}, Vibe: {} },
+    );
+
+    assert.ok(result.errors.some(error => error.includes('permissions must be "ask" or "allowAll"')));
+    assert.strictEqual(result.definition, undefined);
   });
 
   test('parses the repository example pipeline', () => {

@@ -2,6 +2,7 @@ import type { SessionNotification } from "@agentclientprotocol/sdk";
 
 import type {
 	PipelinePrimitiveDefinition,
+	PipelinePermissions,
 	PipelineSideEffects,
 } from "./PipelineTypes";
 import {
@@ -29,6 +30,7 @@ export interface PipelineAgentRunInput {
 	onSessionUpdate?: (update: SessionNotification) => void;
 	signal?: AbortSignal;
 	sideEffects?: PipelineSideEffects;
+	permissions?: PipelinePermissions;
 	skills?: string[];
 }
 
@@ -81,6 +83,7 @@ export class PipelineExecutor {
 			onSessionUpdate: context.onSessionUpdate,
 			signal: context.signal,
 			sideEffects: primitive.sideEffects,
+			permissions: primitive.permissions ?? "ask",
 			skills: primitive.skills,
 		});
 		return resolvePipelineStepText(result);
