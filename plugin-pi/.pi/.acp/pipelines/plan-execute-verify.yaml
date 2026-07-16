@@ -15,7 +15,7 @@ primitives:
       {{userPrompt}}
 
   implementer:
-    agent: Vibe Sandcastle
+    agent: Pi Agent
     output: markdown
     sideEffects: workspace
     prompt: |
@@ -28,7 +28,7 @@ primitives:
       {{steps.approval.output}}
 
   verifier:
-    agent: OpenCode
+    agent: Vibe
     output: markdown
     sideEffects: none
     prompt: |

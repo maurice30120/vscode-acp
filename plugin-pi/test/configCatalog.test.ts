@@ -377,7 +377,7 @@ test("getPipelineDefinitions loads embedded pipelines for an empty workspace", (
 
 	assert.deepEqual(
 		definitions.map((definition) => definition.id),
-		["async-use-case-review", "plan-execute-verify"],
+		["async-use-case-review", "plan-execute-verify", "vibe"],
 	);
 });
 

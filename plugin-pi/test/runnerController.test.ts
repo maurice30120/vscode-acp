@@ -714,9 +714,6 @@ test("/pipeline run then approve executes planner and implementer", async () => 
 		if (input.agentName === "Pi Agent") {
 			return "<proposed_plan>Implement the feature.</proposed_plan>";
 		}
-		if (input.agentName === "Vibe Sandcastle") {
-			return "implementation done";
-		}
 		return "implementation done";
 	};
 	const controller = new PipelineController(
@@ -735,11 +732,10 @@ test("/pipeline run then approve executes planner and implementer", async () => 
 	await handlePipelineCommand("run plan-execute-verify add tests", ctx, controller);
 	await handlePipelineCommand("approve", ctx, controller);
 
-	assert.deepEqual(calls, ["Pi Agent", "Vibe Sandcastle", "OpenCode"]);
+	assert.deepEqual(calls, ["Pi Agent", "Pi Agent", "Vibe"]);
 	assert.match(notifications.join("\n"), /plan ready/i);
 	assert.ok(messages.length >= 2);
 	assert.ok(messages.some((message) => String(message.content).includes("ACP Pipeline Plan")));
-	assert.ok(messages.some((message) => String(message.content).includes("Sandcastle implementation")));
 	assert.ok(messages.some((message) => String(message.content).includes("implementation done")));
 });
 

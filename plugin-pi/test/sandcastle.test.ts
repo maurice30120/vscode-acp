@@ -15,6 +15,7 @@ import type {
 import { parseBridgeConfig } from "../src/sandcastle/BridgeConfig.js";
 import { defaultSandcastleRuntime } from "../src/sandcastle/DefaultSandcastleRuntime.js";
 import { decidePromotionPolicy } from "../src/sandcastle/PromotionPolicy.js";
+import { buildSandboxMounts } from "../src/sandcastle/SandboxMounts.js";
 import {
 	SandcastleBridgeAgent,
 	type SandcastleRuntime,
@@ -28,8 +29,8 @@ test("parseBridgeConfig parses provider model effort and image", () => {
 
 	assert.deepEqual(config, {
 		provider: "pi",
-		model: "claude-sonnet-4-6",
-		effort: "xhigh",
+		model: "glm-5.2",
+		effort: "high",
 		imageName: "custom:image",
 		env: {
 			ACP_SANDCASTLE_IMAGE: "custom:image",
@@ -66,6 +67,7 @@ test("defaultSandcastleRuntime creates Pi and Vibe providers", () => {
 	assert.equal(vibeProvider.name, "vibe");
 	assert.equal(vibeProvider.env.VIBE_ACTIVE_MODEL, "mistral-large-latest");
 	assert.equal(vibeProvider.env.FOO, "bar");
+	assert.equal(vibeProvider.env.VIBE_HOME, "/home/agent/.vibe");
 	assert.deepEqual(vibeProvider.buildPrintCommand({
 		prompt: "hello",
 		dangerouslySkipPermissions: true,
@@ -96,6 +98,56 @@ test("decidePromotionPolicy maps no changes and promotion modes", () => {
 	assert.equal(decidePromotionPolicy(changed, "autoApply"), "auto_apply");
 	assert.equal(decidePromotionPolicy(changed, "autoReject"), "auto_reject");
 	assert.equal(decidePromotionPolicy(changed, "ask"), "prompt");
+});
+
+test("buildSandboxMounts adds Linux git overrides for docker worktrees", () => {
+	const repo = fs.mkdtempSync(path.join(os.tmpdir(), "pi-sandcastle-mounts-"));
+	try {
+		git(repo, ["init"]);
+		const cwd = path.join(repo, "plugin-pi");
+		fs.mkdirSync(cwd);
+		const branch = "sandcastle/acp/vibe/123";
+		const mounts = buildSandboxMounts({
+			provider: "vibe",
+			model: "test",
+			imageName: "fake",
+		}, cwd, branch);
+
+		assert.ok(mounts.some(mount =>
+			fs.realpathSync(mount.hostPath) === fs.realpathSync(path.join(repo, ".git"))
+			&& mount.sandboxPath === "/.sandcastle-parent-git",
+		));
+
+		const gitOverride = mounts.find(mount =>
+			mount.sandboxPath === "/home/agent/workspace/.git"
+		);
+		assert.ok(gitOverride);
+		assert.equal(gitOverride.readonly, true);
+		assert.equal(
+			fs.readFileSync(gitOverride.hostPath, "utf8"),
+			"gitdir: /.sandcastle-parent-git/worktrees/sandcastle-acp-vibe-123\n",
+		);
+	} finally {
+		fs.rmSync(repo, { recursive: true, force: true });
+	}
+});
+
+test("buildSandboxMounts mounts Vibe home for vibe provider", () => {
+	const repo = fs.mkdtempSync(path.join(os.tmpdir(), "pi-sandcastle-vibe-home-"));
+	try {
+		const mounts = buildSandboxMounts({
+			provider: "vibe",
+			model: "test",
+			imageName: "fake",
+		}, repo);
+
+		const vibeHome = mounts.find(mount => mount.sandboxPath === "/home/agent/.vibe");
+		assert.ok(vibeHome);
+		assert.equal(vibeHome.readonly, false);
+		assert.equal(vibeHome.hostPath, path.join(repo, ".sandcastle", "vibe-home"));
+	} finally {
+		fs.rmSync(repo, { recursive: true, force: true });
+	}
 });
 
 test("SandcastleBridgeAgent previews applies and rejects through an isolated worktree", async () => {

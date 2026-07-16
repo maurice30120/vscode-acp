@@ -39,7 +39,7 @@ interface BridgeSession {
 export interface SandcastleRuntime {
   createSandbox(options: CreateSandboxOptions): Promise<Sandbox>;
   createProvider(config: BridgeConfig): AgentProvider;
-  createSandboxProvider(config: BridgeConfig, cwd: string): CreateSandboxOptions['sandbox'];
+  createSandboxProvider(config: BridgeConfig, cwd: string, branch?: string): CreateSandboxOptions['sandbox'];
 }
 
 export class SandcastleBridgeAgent implements Agent {
@@ -232,7 +232,7 @@ export class SandcastleBridgeAgent implements Agent {
       cwd: session.cwd,
       branch: session.branch,
       baseBranch: session.baseRef,
-      sandbox: this.runtime.createSandboxProvider(this.config, session.cwd),
+      sandbox: this.runtime.createSandboxProvider(this.config, session.cwd, session.branch),
     });
     return session.sandbox;
   }

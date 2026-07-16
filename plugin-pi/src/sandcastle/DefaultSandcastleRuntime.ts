@@ -37,11 +37,11 @@ export const defaultSandcastleRuntime: SandcastleRuntime = {
     }
     return cursor(config.model);
   },
-  createSandboxProvider(config: BridgeConfig, cwd: string) {
+  createSandboxProvider(config: BridgeConfig, cwd: string, branch?: string) {
     return docker({
       imageName: config.imageName,
       cpus: 2,
-      mounts: buildSandboxMounts(config, cwd),
+      mounts: buildSandboxMounts(config, cwd, branch),
     });
   },
 };
@@ -54,8 +54,9 @@ function vibe(model: string, options: VibeOptions = {}): AgentProvider {
   return {
     name: 'vibe',
     env: {
-      VIBE_ACTIVE_MODEL: model,
       ...(options.env ?? {}),
+      VIBE_ACTIVE_MODEL: model,
+      VIBE_HOME: '/home/agent/.vibe',
     },
     captureSessions: false,
     buildPrintCommand({ prompt }) {
