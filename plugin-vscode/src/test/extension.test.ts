@@ -114,6 +114,8 @@ suite('Extension Test Suite', () => {
       'acp.showTraffic',
       'acp.openDebugSnapshot',
       'acp.browseRegistry',
+      'acp.pipeline.refresh',
+      'acp.pipeline.run',
     ];
 
     for (const cmd of expectedCommands) {

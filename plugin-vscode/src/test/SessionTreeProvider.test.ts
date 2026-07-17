@@ -1,4 +1,7 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { EventEmitter } from 'node:events';
 
 import {
@@ -45,6 +48,34 @@ function waitNextTick(): Promise<void> {
 }
 
 suite('SessionTreeProvider', () => {
+  test('shows configured agents but not virtual pipeline agents', async () => {
+    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'session-tree-pipelines-'));
+    try {
+      fs.mkdirSync(path.join(workspaceRoot, '.acp', 'pipelines'), { recursive: true });
+      fs.writeFileSync(
+        path.join(workspaceRoot, '.acp', 'acp-agents.json'),
+        JSON.stringify({ Vibe: { command: 'vibe-acp' } }),
+      );
+      fs.writeFileSync(
+        path.join(workspaceRoot, '.acp', 'pipelines', 'plan-execute-verify.yaml'),
+        'version: 2\nid: plan-execute-verify\ntitle: Plan Execute Verify\nprimitives: {}\nsteps: []\n',
+      );
+
+      const provider = new SessionTreeProvider(
+        new FakeSessionManager() as any,
+        null,
+        () => workspaceRoot,
+      );
+      const roots = await provider.getChildren();
+      const names = roots.map(root => (root as AgentTreeItem).agentName);
+
+      assert.deepStrictEqual(names, ['Vibe']);
+      assert.ok(!names.includes('Plan Execute Verify'));
+    } finally {
+      fs.rmSync(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
   test('returns unsupported info leaf when agent has no session capabilities', async () => {
     const sm = new FakeSessionManager();
     sm.cachedCaps.set('agent-a', { list: false, load: false, resume: false });

@@ -43,6 +43,23 @@ function getActiveSessionLabel(snapshot: DebugSnapshot): string {
   return [title || agent, sessionId].filter(Boolean).join(' · ');
 }
 
+function formatDateToFrench(dateString: string): string {
+  try {
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(date);
+  } catch {
+    return dateString;
+  }
+}
+
 function getEventText(event: DebugEvent): string {
   return [
     event.timestamp,
@@ -155,7 +172,7 @@ export function DebugApp(): JSX.Element {
           <section className="debug-summary">
             <div>
               <span className="debug-label">Generated</span>
-              <strong>{snapshot.generatedAt}</strong>
+              <strong>{formatDateToFrench(snapshot.generatedAt)}</strong>
             </div>
             <div>
               <span className="debug-label">Extension</span>
@@ -233,7 +250,7 @@ export function DebugApp(): JSX.Element {
                   type="button"
                   onClick={() => setSelectedEventId(event.id)}
                 >
-                  <span className="debug-event-time">{event.timestamp}</span>
+                  <span className="debug-event-time">{formatDateToFrench(event.timestamp)}</span>
                   <span className="debug-event-title">{getEventTitle(event)}</span>
                   <span className="debug-event-meta">
                     {[event.category, event.direction, event.status, event.durationMs !== undefined ? `${event.durationMs}ms` : null]

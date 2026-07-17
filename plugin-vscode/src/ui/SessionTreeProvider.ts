@@ -8,8 +8,8 @@ import {
   type WorkspaceIdentity,
   workspaceIdentityFromCwd,
 } from '../core/WorkspaceIdentity';
-import { getAgentNames } from '../config/AgentConfig';
-import { resolveAgent } from '../config/VirtualAgentCatalog';
+import { getAgentConfigs } from '../config/AgentConfig';
+import { listConfiguredAgentNames } from '../config/VirtualAgentCatalog';
 import { log, logError } from '../utils/Logger';
 import {
   AgentTreeItem,
@@ -98,20 +98,13 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<AgentNode | 
   private getAgentNodes(): AgentTreeItem[] {
     const activeContextFamilyId = this.sessionManager.getActiveContextFamilyId();
     const workspace = this.getWorkspaceIdentity();
-    return getAgentNames(workspace.cwd).map(name => {
+    // Pipelines are executable through the virtual-agent routing layer, but
+    // they have their own dedicated tree. Keep this view limited to agents
+    // explicitly configured in .acp/acp-agents.json.
+    return listConfiguredAgentNames(getAgentConfigs(workspace.cwd), workspace.cwd).map(name => {
       const linkedToActiveContext = activeContextFamilyId
         ? this.historyStore?.agentHasContextFamily(name, activeContextFamilyId, workspace) ?? false
         : false;
-      const resolution = resolveAgent(name, workspace.cwd);
-      if (resolution?.kind === 'pipeline') {
-        return new AgentTreeItem(
-          name,
-          this.sessionManager.isAgentConnected(name),
-          vscode.TreeItemCollapsibleState.None,
-          linkedToActiveContext,
-        );
-      }
-
       const caps = this.sessionManager.getCachedCapabilities(name);
       const localCount = this.historyStore?.list(name, workspace).length ?? 0;
       const collapsibleState = this.computeCollapsibleState(caps, localCount);

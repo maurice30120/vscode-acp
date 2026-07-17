@@ -55,6 +55,11 @@
           "id": "acp-chat",
           "name": "Chat",
           "type": "webview"
+        },
+        {
+          "id": "acp-pipelines",
+          "name": "Pipelines",
+          "type": "tree"
         }
       ]
     },
@@ -66,6 +71,10 @@
       {
         "view": "acp-chat",
         "contents": "Start chatting with an AI coding agent.\n[Connect to Agent](command:acp.connectAgent)\nSelect an agent from the list above to begin."
+      },
+      {
+        "view": "acp-pipelines",
+        "contents": "No ACP pipelines configured.\nAdd pipeline files to .acp/pipelines/ to get started."
       }
     ],
     "commands": [
@@ -221,6 +230,21 @@
         "command": "acp.restartAgent",
         "title": "ACP: Restart Agent",
         "icon": "$(debug-restart)"
+      },
+      {
+        "command": "acp.pipeline.refresh",
+        "title": "ACP: Refresh Pipelines",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "acp.pipeline.run",
+        "title": "ACP: Open Pipeline Chat",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "acp.pipeline.stop",
+        "title": "ACP: Stop Pipeline",
+        "icon": "$(debug-stop)"
       }
     ],
     "menus": {
@@ -290,6 +314,16 @@
         {
           "command": "acp.browseRegistry",
           "when": "view == acp-sessions"
+        },
+        {
+          "command": "acp.pipeline.refresh",
+          "when": "view == acp-pipelines",
+          "group": "navigation@1"
+        },
+        {
+          "command": "acp.pipeline.run",
+          "when": "view == acp-pipelines",
+          "group": "navigation@3"
         },
         {
           "command": "acp.newConversation",
@@ -382,6 +416,16 @@
           "command": "acp.forgetSession",
           "when": "view == acp-sessions && viewItem == session-local",
           "group": "session@2"
+        },
+        {
+          "command": "acp.pipeline.run",
+          "when": "view == acp-pipelines && viewItem == pipeline",
+          "group": "inline"
+        },
+        {
+          "command": "acp.pipeline.refresh",
+          "when": "view == acp-pipelines",
+          "group": "navigation"
         }
       ]
     },
@@ -546,8 +590,5 @@
     "typescript-eslint": "^8.0.0",
     "webpack": "^5.95.0",
     "webpack-cli": "^5.1.0"
-  },
-  "enabledApiProposals": [
-    "editorInsets"
-  ]
+  }
 }
