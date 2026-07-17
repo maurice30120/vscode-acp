@@ -11,12 +11,12 @@ import type {
 	Sandbox,
 	SandboxRunOptions,
 } from "@ai-hero/sandcastle";
+import { buildSandboxMounts } from "@acp-client/sandcastle";
 
 import { parseBridgeConfig } from "../src/sandcastle/BridgeConfig.js";
 import { defaultSandcastleRuntime } from "../src/sandcastle/DefaultSandcastleRuntime.js";
 import { enrichProviderRunError } from "../src/sandcastle/ProviderRunError.js";
 import { decidePromotionPolicy } from "../src/sandcastle/PromotionPolicy.js";
-import { buildSandboxMounts } from "../src/sandcastle/SandboxMounts.js";
 import {
 	SandcastleBridgeAgent,
 	type SandcastleRuntime,
@@ -98,6 +98,14 @@ test("defaultSandcastleRuntime creates Pi and Vibe providers", () => {
 		{ type: "text", text: "done" },
 		{ type: "result", result: "done" },
 	]);
+	assert.deepEqual(vibeProvider.parseStreamLine(JSON.stringify({
+		role: "assistant",
+		content: "",
+		reasoning_content: "I'll inspect the pipeline UI.",
+	})), [
+		{ type: "text", text: "I'll inspect the pipeline UI." },
+		{ type: "result", result: "I'll inspect the pipeline UI." },
+	]);
 });
 
 test("decidePromotionPolicy maps no changes and promotion modes", () => {
@@ -142,7 +150,6 @@ test("buildSandboxMounts adds Linux git overrides for docker worktrees", () => {
 			provider: "vibe",
 			model: "test",
 			imageName: "fake",
-			maxIterations: 1,
 		}, cwd, branch);
 
 		assert.ok(mounts.some(mount =>
@@ -171,7 +178,6 @@ test("buildSandboxMounts mounts Vibe home for vibe provider", () => {
 			provider: "vibe",
 			model: "test",
 			imageName: "fake",
-			maxIterations: 1,
 		}, repo);
 
 		const vibeHome = mounts.find(mount => mount.sandboxPath === "/home/agent/.vibe");

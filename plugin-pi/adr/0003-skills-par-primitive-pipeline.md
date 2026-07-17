@@ -16,5 +16,5 @@ Les pipelines Pi référencent les skills au niveau des primitives via `skills: 
 
 - Une primitive sans `skills` ne reçoit aucun catalogue de skills.
 - Une primitive avec `skills: [...]` ne reçoit que les entrées listées et disponibles dans `.agents/skills`.
-- Un agent peut désactiver toute injection avec `skills: false` dans `.pi/.acp/acp-agents.json`.
+- Un agent peut désactiver toute injection avec `skills: false` dans `.acp/acp-agents.json`.
 - La divulgation progressive est conservée : chaque étape reçoit seulement le contexte utile à son rôle.

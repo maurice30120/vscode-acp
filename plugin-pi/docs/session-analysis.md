@@ -1,7 +1,7 @@
 # Analyse de la session ACP précédente — Retour d'expérience
 
 > **Date d'analyse**: 16 juillet 2026  
-> **Pipeline exécuté**: `plan-execute-verify` (`.pi/.acp/pipelines/plan-execute-verify.yaml`)  
+> **Pipeline exécuté**: `plan-execute-verify` (`.acp/pipelines/plan-execute-verify.yaml`)  
 > **Demande initiale**: « Fait un document pour expliqué l'architecture du projet »  
 > **Livraison**: `docs/architecture.md` (1728 lignes / ~55 KB / 9 diagrammes Mermaid)
 
@@ -39,7 +39,7 @@ Le but n'est pas de refaire le travail, mais de fournir un retour d'expérience 
 
 ## Le pipeline exécuté
 
-Le pipeline `plan-execute-verify` est défini dans `.pi/.acp/pipelines/plan-execute-verify.yaml`
+Le pipeline `plan-execute-verify` est défini dans `.acp/pipelines/plan-execute-verify.yaml`
 (version 2). Il comporte 4 étapes :
 
 ```mermaid
@@ -218,7 +218,7 @@ return { text };
 ### Fail #4 — Pipeline d'exemple fictif (« demo.yaml »)
 
 - **Localisation** : `docs/architecture.md:257-289` (section `catalog/`).
-- **Le doc référence** : `.pi/.acp/pipelines/demo.yaml` avec des primitives `planificateur` /
+- **Le doc référence** : `.acp/pipelines/demo.yaml` avec des primitives `planificateur` /
   `implémenteur` et des agents « Codex CLI » / « Pi Agent ».
 - **Réalité** :
   - `demo.yaml` **n'existe pas**.

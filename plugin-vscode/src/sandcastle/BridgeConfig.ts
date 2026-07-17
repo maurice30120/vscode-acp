@@ -1,4 +1,4 @@
-export type SandcastleProviderName = 'codex' | 'cursor' | 'pi';
+export type SandcastleProviderName = 'codex' | 'cursor' | 'pi' | 'vibe';
 
 /** Configuration du bridge ACP Sandcastle (fournisseur, modèle, image Docker). */
 export interface BridgeConfig {
@@ -8,6 +8,7 @@ export interface BridgeConfig {
   maxIterations: number;
   imageName: string;
   env?: Record<string, string>;
+  agentId?: string;
 }
 
 /**
@@ -25,8 +26,8 @@ export function parseBridgeConfig(argv: string[], env: NodeJS.ProcessEnv): Bridg
   };
 
   const provider = readArg('--provider');
-  if (provider !== 'codex' && provider !== 'cursor' && provider !== 'pi') {
-    throw new Error('Expected --provider codex|cursor|pi.');
+  if (provider !== 'codex' && provider !== 'cursor' && provider !== 'pi' && provider !== 'vibe') {
+    throw new Error('Expected --provider codex|cursor|pi|vibe.');
   }
 
   const model = readArg('--model')?.trim();
@@ -40,6 +41,7 @@ export function parseBridgeConfig(argv: string[], env: NodeJS.ProcessEnv): Bridg
   }
 
   const maxIterations = readMaxIterations(readArg('--max-iterations'), provider);
+  const agentId = readArg('--agent-id') || env.ACP_AGENT_ID;
 
   return {
     provider,
@@ -50,6 +52,7 @@ export function parseBridgeConfig(argv: string[], env: NodeJS.ProcessEnv): Bridg
     env: Object.fromEntries(
       Object.entries(env).filter(([, value]) => typeof value === 'string'),
     ) as Record<string, string>,
+    ...(agentId ? { agentId } : {}),
   };
 }
 

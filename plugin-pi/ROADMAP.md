@@ -18,9 +18,9 @@ Vue d'ensemble monorepo : [`../../ROADMAP.md`](../../ROADMAP.md) — le détail 
 
 ## Réalisé
 
-- Découverte des agents depuis `.pi/.acp/acp-agents.json`.
-- Pipelines v2 (`.pi/.acp/pipelines/*.yaml`) : primitives + steps, étapes `approval`, validation.
-- Le catalogue canonique est `.pi/.acp/pipelines/*.yaml` ; les anciens fichiers `.acp/teams/*.yaml` ne sont pas chargés.
+- Découverte des agents depuis `.acp/acp-agents.json`.
+- Pipelines v2 (`.acp/pipelines/*.yaml`) : primitives + steps, étapes `approval`, validation.
+- Le catalogue canonique est `.acp/pipelines/*.yaml` ; les anciens fichiers `.acp/teams/*.yaml` ne sont pas chargés.
 - Spawn + connexion ACP (`agentProcess`, `connectionManager`, `defaultConnector`), proxy fichiers/terminal/permissions.
 - Runner éphémère (`ephemeralRunner`) : connect → authenticate → prompt → collecte texte, avec abort/cancel.
 - Commande slash `/pipeline` (`list`, `run`, `approve`, `reject`, `cancel`) et outil `run_pipeline` pour le modèle.
@@ -32,7 +32,7 @@ Vue d'ensemble monorepo : [`../../ROADMAP.md`](../../ROADMAP.md) — le détail 
 
 ### Consolidation Pipeline V2
 
-**Fait** : Pi et VS Code utilisent maintenant les pipelines v2 comme format canonique. Pi ne lit que `.pi/.acp/pipelines/*.yaml`.
+**Fait** : Pi et VS Code utilisent maintenant les pipelines v2 comme format canonique. Pi ne lit que `.acp/pipelines/*.yaml`.
 
 ### Simplifier l'appel
 
@@ -40,7 +40,7 @@ Réduire la friction pour lancer un pipeline depuis Pi :
 
 - Un seul point d'entrée clair : aujourd'hui `/pipeline run <id> "<prompt>"` + approbation manuelle — clarifier le parcours « choisir un workflow → lancer ».
 - Defaults sensibles : agent cible et options hérités du contexte courant plutôt qu'à re-spécifier.
-- Lancer un pipeline directement depuis un fichier `.pi/.acp/pipelines/*.yaml` (raccourci / action dans l'UI Pi).
+- Lancer un pipeline directement depuis un fichier `.acp/pipelines/*.yaml` (raccourci / action dans l'UI Pi).
 - Réduire le nombre d'étapes de confirmation avant le premier tour.
 - Aligner l'appel pipeline et l'appel agent simple sur la même surface.
 

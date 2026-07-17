@@ -19,10 +19,10 @@ primitives:
 
   implementer:
     # agent: Pi Sandcastle
-    agent: Vibe
+    agent: Vibe Sandcastle
     output: markdown
     sideEffects: workspace
-    permissions: ask
+    permissions: allowAll
     promptFile: ../agents/implementer.md
     prompt: |
       Implement the approved plan in the current workspace.

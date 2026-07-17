@@ -32,6 +32,18 @@ suite('BridgeConfig', () => {
     assert.strictEqual(config.maxIterations, 5);
   });
 
+  test('accepts Vibe provider and forwards the Mistral API key', () => {
+    const config = parseBridgeConfig(
+      ['--provider', 'vibe', '--model', 'mistral-large-latest'],
+      { MISTRAL_API_KEY: 'test-key' },
+    );
+
+    assert.strictEqual(config.provider, 'vibe');
+    assert.strictEqual(config.model, 'mistral-large-latest');
+    assert.strictEqual(config.env?.MISTRAL_API_KEY, 'test-key');
+    assert.strictEqual(config.maxIterations, 1);
+  });
+
   test('parses explicit max iterations', () => {
     const config = parseBridgeConfig(
       ['--provider', 'pi', '--model', 'opencode-go/kimi-k2.6', '--max-iterations', '7'],
@@ -53,7 +65,7 @@ suite('BridgeConfig', () => {
   test('rejects unsupported providers', () => {
     assert.throws(
       () => parseBridgeConfig(['--provider', 'other', '--model', 'x'], {}),
-      /provider codex\|cursor\|pi/,
+      /provider codex\|cursor\|pi\|vibe/,
     );
   });
 });

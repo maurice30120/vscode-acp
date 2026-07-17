@@ -39,6 +39,12 @@
     "maxIterations": 5,
     "env": {}
   },
+  "Vibe Sandcastle": {
+    "transport": "sandcastle",
+    "provider": "vibe",
+    "model": "mistral-large-latest",
+    "env": {}
+  },
   "OpenCode": {
     "command": "npx",
     "args": [

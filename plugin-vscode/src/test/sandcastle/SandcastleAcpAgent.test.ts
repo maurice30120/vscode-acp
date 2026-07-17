@@ -31,11 +31,15 @@ class FakeConnection {
 class FakeRuntime implements SandcastleRuntime {
   readonly prompts: string[] = [];
   waitForAbort = false;
+  waitForAbortAfterVibeSessionLog = false;
   runDelayMs = 0;
   emitStreamText = true;
+  streamMessages = ['done'];
   writeSentinel = true;
   stdout = 'done';
   rawStreamEventCount = 0;
+  writeVibeSessionLog = false;
+  vibeAssistantText = 'fallback from vibe logs';
   lastMaxIterations: number | undefined;
 
   createProvider(): any {
@@ -79,6 +83,33 @@ class FakeRuntime implements SandcastleRuntime {
         if (this.writeSentinel) {
           fs.writeFileSync(path.join(worktree, 'sentinel.txt'), prompt, 'utf8');
         }
+        if (this.writeVibeSessionLog) {
+          const sessionDir = path.join(repo, '.sandcastle', 'vibe-home', 'logs', 'session', 'session_test');
+          fs.mkdirSync(sessionDir, { recursive: true });
+          fs.writeFileSync(path.join(sessionDir, 'meta.json'), JSON.stringify({
+            session_id: 'vibe-session-test',
+            start_time: new Date().toISOString(),
+            end_time: new Date().toISOString(),
+            stats: {
+              steps: 3,
+              tool_calls_succeeded: 2,
+              tool_calls_rejected: 0,
+            },
+          }), 'utf8');
+          fs.writeFileSync(path.join(sessionDir, 'messages.jsonl'), [
+            JSON.stringify({ role: 'assistant', content: '' }),
+            JSON.stringify({ role: 'tool', content: 'read file' }),
+            JSON.stringify({ role: 'assistant', content: this.vibeAssistantText }),
+          ].join('\n'), 'utf8');
+        }
+        if (this.waitForAbortAfterVibeSessionLog) {
+          if (runOptions.signal?.aborted) {
+            throw runOptions.signal.reason;
+          }
+          await new Promise<void>((resolve, reject) => {
+            runOptions.signal?.addEventListener('abort', () => reject(runOptions.signal?.reason), { once: true });
+          });
+        }
         if (runOptions.logging?.type === 'file') {
           for (let index = 0; index < this.rawStreamEventCount; index += 1) {
             runOptions.logging.onAgentStreamEvent?.({
@@ -89,12 +120,14 @@ class FakeRuntime implements SandcastleRuntime {
           }
         }
         if (this.emitStreamText && runOptions.logging?.type === 'file') {
-          runOptions.logging.onAgentStreamEvent?.({
-            type: 'text',
-            message: 'done',
-            iteration: 1,
-            timestamp: new Date(),
-          });
+          for (const message of this.streamMessages) {
+            runOptions.logging.onAgentStreamEvent?.({
+              type: 'text',
+              message,
+              iteration: 1,
+              timestamp: new Date(),
+            });
+          }
         }
         return {
           iterations: [],
@@ -183,6 +216,27 @@ suite('SandcastleAcpAgent', () => {
     await agent.dispose();
   });
 
+  test('keeps one message ID across streamed chunks', async () => {
+    const connection = new FakeConnection();
+    const runtime = new FakeRuntime();
+    runtime.streamMessages = ['hel', 'lo'];
+    const agent = new SandcastleAcpAgent(connection as unknown as AgentSideConnection, {
+      provider: 'codex', model: 'test', imageName: 'fake', maxIterations: 1,
+      agentId: 'custom-security-agent',
+    }, runtime);
+    const { sessionId } = await agent.newSession({ cwd: repo, mcpServers: [] });
+
+    await agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'stream' }] });
+
+    const chunks = connection.updates.filter(update =>
+      update.update.sessionUpdate === 'agent_message_chunk',
+    );
+    assert.deepStrictEqual(chunks.map(update => update.update.content?.text), ['hel', 'lo']);
+    assert.strictEqual(chunks[0]?.update.messageId, chunks[1]?.update.messageId);
+    assert.strictEqual(chunks[0]?.update.agentId, 'custom-security-agent');
+    await agent.dispose();
+  });
+
   test('passes configured max iterations to the sandbox run', async () => {
     const connection = new FakeConnection();
     const runtime = new FakeRuntime();
@@ -244,6 +298,54 @@ suite('SandcastleAcpAgent', () => {
     assert.strictEqual(runningStatuses.length, 0);
     assert.strictEqual(textUpdates.length, 0);
     assert.strictEqual(preview.filesChanged, 0);
+    await agent.dispose();
+  });
+
+  test('falls back to Vibe session logs when streaming and stdout are empty', async () => {
+    const connection = new FakeConnection();
+    const runtime = new FakeRuntime();
+    runtime.emitStreamText = false;
+    runtime.writeSentinel = false;
+    runtime.stdout = '';
+    runtime.writeVibeSessionLog = true;
+    runtime.vibeAssistantText = 'implemented from vibe logs';
+    const agent = new SandcastleAcpAgent(connection as unknown as AgentSideConnection, {
+      provider: 'vibe', model: 'test', imageName: 'fake', maxIterations: 1,
+    }, runtime);
+    const { sessionId } = await agent.newSession({ cwd: repo, mcpServers: [] });
+
+    await agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'silent vibe' }] });
+
+    const textUpdates = connection.updates.filter(update =>
+      update.update.sessionUpdate === 'agent_message_chunk',
+    );
+    assert.deepStrictEqual(textUpdates.map(update => update.update.content?.text), ['implemented from vibe logs']);
+    await agent.dispose();
+  });
+
+  test('completes Vibe run when the process hangs after writing completed session logs', async () => {
+    const connection = new FakeConnection();
+    const runtime = new FakeRuntime();
+    runtime.emitStreamText = false;
+    runtime.writeSentinel = false;
+    runtime.stdout = '';
+    runtime.writeVibeSessionLog = true;
+    runtime.waitForAbortAfterVibeSessionLog = true;
+    runtime.vibeAssistantText = 'completed despite hanging process';
+    const agent = new SandcastleAcpAgent(connection as unknown as AgentSideConnection, {
+      provider: 'vibe', model: 'test', imageName: 'fake', maxIterations: 1,
+    }, runtime);
+    const { sessionId } = await agent.newSession({ cwd: repo, mcpServers: [] });
+
+    await agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'hanging vibe' }] });
+
+    assert.ok(connection.updates.some(update =>
+      update.update.sessionUpdate === 'agent_message_chunk' &&
+      update.update.content?.text === 'completed despite hanging process',
+    ));
+    assert.ok(connection.updates.some(update =>
+      update.update.sessionUpdate === 'sandcastle_status' && update.update.status === 'completed',
+    ));
     await agent.dispose();
   });
 

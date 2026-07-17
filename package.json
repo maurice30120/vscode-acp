@@ -2,6 +2,7 @@
   "name": "vscode-acp-workspace",
   "private": true,
   "workspaces": [
+    "acp-sandcastle",
     "acp-pipeline",
     "plugin-vscode",
     "plugin-pi"
@@ -12,7 +13,7 @@
     "watch": "npm run watch -w acp-client",
     "package": "npm run package -w acp-client",
     "test": "npm run test:common && npm run test:vscode && npm run test:pi",
-    "test:common": "npm run test -w @acp-client/pipeline",
+    "test:common": "npm run test -w @acp-client/pipeline && npm run test -w @acp-client/sandcastle",
     "test:vscode": "npm run test -w acp-client",
     "lint": "npm run lint -w acp-client",
     "compile-tests": "npm run compile-tests -w acp-client",

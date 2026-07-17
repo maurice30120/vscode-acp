@@ -28,7 +28,7 @@ export interface AcpAgentConfigEntry {
 
 export interface SandcastleAgentConfigEntry {
   transport: 'sandcastle';
-  provider: 'codex' | 'cursor' | 'pi';
+  provider: 'codex' | 'cursor' | 'pi' | 'vibe';
   model: string;
   displayName?: string;
   env?: Record<string, string>;
@@ -160,7 +160,7 @@ function normalizeAgentConfigEntry(
 
   if (value.transport === 'sandcastle') {
     if (
-      (value.provider !== 'codex' && value.provider !== 'cursor' && value.provider !== 'pi')
+      (value.provider !== 'codex' && value.provider !== 'cursor' && value.provider !== 'pi' && value.provider !== 'vibe')
       || typeof value.model !== 'string'
     ) {
       log(`Ignoring invalid Sandcastle agent "${name}" in ${filePath}: provider and model are required.`);

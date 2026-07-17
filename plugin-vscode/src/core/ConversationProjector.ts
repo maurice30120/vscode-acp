@@ -1,3 +1,4 @@
+import * as crypto from 'node:crypto';
 import type { SessionNotification } from '@agentclientprotocol/sdk';
 
 import {
@@ -19,6 +20,7 @@ export type ConversationWebviewMessage =
       phase?: string;
       role?: string;
       agentName?: string;
+      agentId?: string;
     }
   | {
       type: 'pipelinePlanReady';
@@ -83,13 +85,24 @@ export interface ConversationProjector {
   ): ConversationProjection;
 }
 
-function assistantTextNotification(text: string, sessionId: string): SessionNotification {
+function normalizeAgentId(value?: string): string {
+  if (!value) {
+    return 'agent';
+  }
+  return value.trim().toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'agent';
+}
+
+function assistantTextNotification(text: string, sessionId: string, agentName?: string): SessionNotification {
+  const messageId = crypto.randomUUID();
+  const agentId = normalizeAgentId(agentName);
   return {
     sessionId,
     update: {
       sessionUpdate: 'agent_message_chunk',
-      content: { type: 'text', text },
-    },
+      messageId,
+      agentId,
+      content: { type: 'text', text, messageId, agentId } as any,
+    } as any,
   } as SessionNotification;
 }
 
@@ -163,6 +176,7 @@ export class DefaultConversationProjector implements ConversationProjector {
             phase: event.phase,
             role: event.role,
             agentName: event.agentName,
+            agentId: normalizeAgentId(event.agentName ?? event.role),
         }]
         : [],
       shouldForwardToActiveConversation: shouldForwardToWebview,
@@ -175,7 +189,7 @@ export class DefaultConversationProjector implements ConversationProjector {
   ): ConversationProjection {
     const sessionEffects = event.plan
       ? collectConversationUpdateEffects(
-          assistantTextNotification(event.plan, event.sessionId),
+          assistantTextNotification(event.plan, event.sessionId, event.agentName),
           { isLoading: ctx.isLoading(event.sessionId) },
         )
       : { sessionId: event.sessionId };

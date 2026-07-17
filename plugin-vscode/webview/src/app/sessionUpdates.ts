@@ -1,4 +1,4 @@
-import type { PipelinePhase, SessionUpdate } from '../chatTypes';
+import type { AgentID, PipelinePhase, SessionUpdate } from '../chatTypes';
 import {
   normalizePlanUpdate,
   normalizeSlashCommands,
@@ -9,12 +9,28 @@ import type { AppAction } from './state';
 function getTextContent(update: SessionUpdate): string | undefined {
   const content =
     'content' in update && update.content && typeof update.content === 'object'
-      ? (update.content as { type?: string; text?: string })
+      ? (update.content as { type?: string; text?: string; messageId?: string; agentId?: AgentID })
       : undefined;
   return content?.type === 'text' && typeof content.text === 'string' ? content.text : undefined;
 }
 
-export function mapSessionUpdateToActions(update: SessionUpdate, phase?: PipelinePhase): AppAction[] {
+function getMessageMetadata(update: SessionUpdate, fallbackAgentId?: AgentID): { messageId?: string; agentId?: AgentID } {
+  if ('messageId' in update && typeof update.messageId === 'string') {
+    return {
+      messageId: update.messageId,
+      agentId: 'agentId' in update && typeof update.agentId === 'string' ? update.agentId : fallbackAgentId,
+    };
+  }
+  const content = 'content' in update && update.content && typeof update.content === 'object'
+    ? (update.content as { messageId?: string; agentId?: AgentID })
+    : undefined;
+  return {
+    messageId: content?.messageId,
+    agentId: content?.agentId || fallbackAgentId,
+  };
+}
+
+export function mapSessionUpdateToActions(update: SessionUpdate, phase?: PipelinePhase, agentId?: AgentID): AppAction[] {
   if (!update || typeof update !== 'object') {
     return [];
   }
@@ -36,22 +52,25 @@ export function mapSessionUpdateToActions(update: SessionUpdate, phase?: Pipelin
       if (!contentText) {
         return [];
       }
+      const metadata = getMessageMetadata(update, agentId);
       return [
         isPlannerPhase
-          ? { type: 'appendPlanningDraftChunk', text: contentText }
-          : { type: 'appendAssistantChunk', text: contentText },
+          ? { type: 'appendPlanningDraftChunk', text: contentText, messageId: metadata.messageId, agentId: metadata.agentId }
+          : { type: 'appendAssistantChunk', text: contentText, messageId: metadata.messageId, agentId: metadata.agentId },
       ];
     }
 
     case 'user_message_chunk':
       {
         const contentText = getTextContent(update);
-        return contentText ? [{ type: 'appendUserChunk', text: contentText }] : [];
+        const metadata = getMessageMetadata(update, agentId);
+        return contentText ? [{ type: 'appendUserChunk', text: contentText, messageId: metadata.messageId, agentId: metadata.agentId }] : [];
       }
 
     case 'agent_thought_chunk': {
       const contentText = getTextContent(update);
-      return contentText ? [{ type: 'appendThoughtChunk', text: contentText }] : [];
+      const metadata = getMessageMetadata(update, agentId);
+      return contentText ? [{ type: 'appendThoughtChunk', text: contentText, messageId: metadata.messageId, agentId: metadata.agentId }] : [];
     }
 
     case 'tool_call': {

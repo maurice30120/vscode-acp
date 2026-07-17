@@ -1,4 +1,4 @@
-# ADR-0009 : Sandcastle éphémère sous `.pi/.acp/.sandcastle`, promotion via le canal d'approbation pipeline
+# ADR-0009 : Sandcastle éphémère sous `.acp/.sandcastle`, promotion via le canal d'approbation pipeline
 
 **Statut** : Acceptée
 
@@ -10,7 +10,7 @@ Ajout du transport `sandcastle` (agent en Docker + worktree Git jetable) à `plu
 
 1. **Runtime éphémère** : un run Sandcastle = un process bridge ACP né et mort pour ce run, sans session persistante. On ne porte pas la couche « ConnectedAgent longue durée » de `plugin-vscode` (`SandcastleAcpAgent`, `BridgeConversation`, `PromptHistory`), seulement : `BridgeConfig` + garde Docker/worktree + `WorktreePromotion` + `PromotionPolicy` + `bridge.ts` lancé en process séparé.
 
-2. **Config séparée embarquée** sous `plugin-pi/.pi/.acp/.sandcastle/config.json` : top-level `promotion` (`ask` | `autoApply` | `autoReject`) + `agents` (Sandcastle-only, chaque entrée portant `transport: 'sandcastle'` requis). Providers supportés : `codex`, `cursor`, `pi`, `vibe`. `acp-agents.json` reste natif-only ; si `transport: 'sandcastle'` y apparaît → rejet pointant vers le fichier dédié. Un doublon de nom d'agent entre les deux fichiers est une erreur.
+2. **Config séparée embarquée** sous `plugin-pi/.acp/.sandcastle/config.json` : top-level `promotion` (`ask` | `autoApply` | `autoReject`) + `agents` (Sandcastle-only, chaque entrée portant `transport: 'sandcastle'` requis). Providers supportés : `codex`, `cursor`, `pi`, `vibe`. `acp-agents.json` reste natif-only ; si `transport: 'sandcastle'` y apparaît → rejet pointant vers le fichier dédié. Un doublon de nom d'agent entre les deux fichiers est une erreur.
 
 3. **`sideEffects` est une propriété du *run*, pas de l'agent** — portée par l'input de run (`PipelineAgentRunInput`), pas par la config agent.
 

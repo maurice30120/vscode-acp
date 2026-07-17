@@ -133,6 +133,7 @@ suite('ConversationProjector', () => {
       phase: 'planner',
       role: 'planner',
       agentName: 'planner-agent',
+      agentId: 'planner-agent',
     }]);
   });
 
@@ -170,6 +171,7 @@ suite('ConversationProjector', () => {
       phase: 'implementer',
       role: 'implementer',
       agentName: 'Pi Sandcastle',
+      agentId: 'pi-sandcastle',
     }]);
     assert.strictEqual(projection.shouldForwardToActiveConversation, true);
   });

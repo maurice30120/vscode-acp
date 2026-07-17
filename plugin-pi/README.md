@@ -4,8 +4,8 @@ Extension Pi pour les pipelines ACP. Ce plugin orchestre plusieurs agents ACP ex
 
 ## Ce que ça fait concrètement
 
-- Lit la configuration ACP embarquée dans le plugin (`.pi/.acp/acp-agents.json`)
-- Découvre les **pipelines** embarqués dans le plugin (`.pi/.acp/pipelines/*.yaml`)
+- Lit la configuration ACP embarquée dans le plugin (`.acp/acp-agents.json`)
+- Découvre les **pipelines** embarqués dans le plugin (`.acp/pipelines/*.yaml`)
 - Spawn les processus d'agents ACP, se connecte via le SDK ACP, proxy les appels fichiers/terminal/permissions, et gère l'authentification
 - Expose une commande `/pipeline` dans Pi (`list`, `run`, `approve`, `reject`, `cancel`)
 - Enregistre un outil `run_pipeline` pour que le modèle Pi puisse lancer des pipelines tout seul
@@ -18,11 +18,11 @@ Extension Pi pour les pipelines ACP. Ce plugin orchestre plusieurs agents ACP ex
 
 ## Installation
 
-Le plugin s'installe avec l'hôte Pi. En v1, la configuration Pi est embarquée dans le plugin : le workspace ouvert n'a pas besoin de fournir `.pi/.acp/acp-agents.json` ni `.pi/.acp/pipelines/*.yaml` pour utiliser les pipelines fournis.
+Le plugin s'installe avec l'hôte Pi. En v1, la configuration Pi est embarquée dans le plugin : le workspace ouvert n'a pas besoin de fournir `.acp/acp-agents.json` ni `.acp/pipelines/*.yaml` pour utiliser les pipelines fournis.
 
 ### 1. Configuration ACP embarquée
 
-Le package contient `.pi/.acp/acp-agents.json` :
+Le package contient `.acp/acp-agents.json` :
 
 ```json
 {
@@ -67,11 +67,11 @@ Le package contient `.pi/.acp/acp-agents.json` :
 | `pipeline.enabled` | Active ou désactive la découverte des pipelines (défaut `true`) |
 | `pipeline.instructionsMaxBytes` | Taille max des fichiers `promptFile` chargés par les pipelines (défaut 256 Ko) |
 
-En v1, un fichier `<workspace>/.pi/.acp/acp-agents.json` n'est pas lu comme surcharge. Cette surcharge workspace est prévue pour une v2.
+En v1, un fichier `<workspace>/.acp/acp-agents.json` n'est pas lu comme surcharge. Cette surcharge workspace est prévue pour une v2.
 
 ### 2. Agents Sandcastle embarqués
 
-Le package contient aussi `.pi/.acp/.sandcastle/config.json` :
+Le package contient aussi `.acp/.sandcastle/config.json` :
 
 ```json
 {
@@ -95,15 +95,15 @@ Le package contient aussi `.pi/.acp/.sandcastle/config.json` :
 }
 ```
 
-Fichier embarqué : `plugin-pi/.pi/.acp/.sandcastle/config.json`.
+Fichier embarqué : `plugin-pi/.acp/.sandcastle/config.json`.
 
 Providers acceptés : `codex`, `cursor`, `pi`, `vibe`. Le provider `vibe` lance la CLI programmatique `vibe -p --output streaming --trust`; `vibe-acp` reste le serveur ACP natif, pas le mode utilisé par Sandcastle.
 
 Pour appliquer les changements de la sandbox au workspace, la primitive de pipeline doit avoir `sideEffects: workspace`. La promotion globale vaut `ask`, `autoApply` ou `autoReject`.
 
-### 3. Pipelines embarqués (`.pi/.acp/pipelines/`)
+### 3. Pipelines embarqués (`.acp/pipelines/`)
 
-Fichiers YAML version 2 packagés dans le plugin sous `.pi/.acp/pipelines/`. Exemple :
+Fichiers YAML version 2 packagés dans le plugin sous `.acp/pipelines/`. Exemple :
 
 ```yaml
 version: 2
@@ -140,7 +140,7 @@ steps:
 
 Chaque pipeline déclare des **primitives** (appels d'agents paramétrés avec des prompts template) et des **étapes** qui les enchaînent. Les étapes de type `approval` font une pause pour validation humaine avant de continuer.
 
-Le plugin fournit aussi un workflow asynchrone dans `.pi/.acp/pipelines/async-use-case-review.yaml`. Il teste le pattern :
+Le plugin fournit aussi un workflow asynchrone dans `.acp/pipelines/async-use-case-review.yaml`. Il teste le pattern :
 
 ```text
 cadrage -> analyses produit + technique en parallele -> synthese
@@ -154,7 +154,7 @@ Les primitives peuvent aussi utiliser `promptFile` pour externaliser les instruc
 primitives:
   planificateur:
     agent: Codex CLI
-    promptFile: .pi/.acp/agents/planner.md
+    promptFile: .acp/agents/planner.md
     prompt: |
       Demande utilisateur :
       {{userPrompt}}
@@ -181,7 +181,7 @@ primitives:
     sideEffects: none
 ```
 
-Si `skills` est absent, aucun catalogue de skills n'est injecté. Si l'agent a `"skills": false` dans la config embarquée `.pi/.acp/acp-agents.json`, l'injection est désactivée pour cet agent.
+Si `skills` est absent, aucun catalogue de skills n'est injecté. Si l'agent a `"skills": false` dans la config embarquée `.acp/acp-agents.json`, l'injection est désactivée pour cet agent.
 
 ## Build
 
@@ -223,8 +223,8 @@ src/
 ├── types.ts                  Types partagés (PiAcpConfig, Logger, NativeAcpAgentConfig, etc.)
 │
 ├── catalog/                  Découverte de la configuration et des définitions
-│   ├── config.ts             Charge et parse la config .pi/.acp embarquée
-│   ├── pipelineCatalog.ts    Charge et valide les pipelines .pi/.acp embarqués
+│   ├── config.ts             Charge et parse la config .acp embarquée
+│   ├── pipelineCatalog.ts    Charge et valide les pipelines .acp embarqués
 │   ├── promptFileResolver.ts Résout et compose les fichiers promptFile des pipelines
 │   └── skillCatalog.ts       Charge et filtre le catalogue .agents/skills
 │
@@ -276,8 +276,8 @@ flowchart TD
   Cm -.->|"auth required"| Auth["authHandler"]
   Auth -.-> Host
 
-  Ctrl -.->|"lit config embarquée"| Cfg[("plugin/.pi/.acp/acp-agents.json")]
-  Svc -.->|"lit pipelines embarqués"| Pipes[("plugin/.pi/.acp/pipelines/*.yaml")]
+  Ctrl -.->|"lit config embarquée"| Cfg[("plugin/.acp/acp-agents.json")]
+  Svc -.->|"lit pipelines embarqués"| Pipes[("plugin/.acp/pipelines/*.yaml")]
   Proc -.->|"stdio"| Agent[("Agent ACP externe<br/>(Codex, Pi Agent, …)")]
 ```
 
@@ -285,7 +285,7 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-  Plugin[("Plugin package<br/>.pi/.acp")]
+  Plugin[("Plugin package<br/>.acp")]
   Disk[("Workspace<br/>.agents/")]
   Cfg["config.ts"]
   Pipes["pipelineCatalog.ts"]
@@ -293,8 +293,8 @@ flowchart LR
   Skills["skillCatalog.ts"]
   Defs(["PipelineDefinition[]"])
 
-  Plugin -->|".pi/.acp/acp-agents.json"| Cfg
-  Plugin -->|".pi/.acp/pipelines/*.yaml (v2)"| Pipes
+  Plugin -->|".acp/acp-agents.json"| Cfg
+  Plugin -->|".acp/pipelines/*.yaml (v2)"| Pipes
   Plugin -->|"promptFile *.md"| PromptFiles
   Disk -->|"skills/*/SKILL.md"| Skills
 

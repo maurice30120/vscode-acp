@@ -720,7 +720,7 @@ test("/pipeline run then approve executes planner and implementer", async () => 
 	const calls: string[] = [];
 	const runner: PipelineAgentRunner = async (input) => {
 		calls.push(input.agentName);
-		if (input.agentName === "Codex CLI") {
+		if (input.agentName === "Pi Agent") {
 			return "<proposed_plan>Implement the feature.</proposed_plan>";
 		}
 		return "implementation done";
@@ -741,7 +741,7 @@ test("/pipeline run then approve executes planner and implementer", async () => 
 	await handlePipelineCommand("run plan-execute-verify add tests", ctx, controller);
 	await handlePipelineCommand("approve", ctx, controller);
 
-	assert.deepEqual(calls, ["Codex CLI", "Pi Sandcastle", "Vibe"]);
+	assert.deepEqual(calls, ["Pi Agent", "Vibe Sandcastle", "Vibe"]);
 	assert.match(notifications.join("\n"), /plan ready/i);
 	assert.ok(messages.length >= 2);
 	assert.ok(messages.some((message) => String(message.content).includes("ACP Pipeline Plan")));
@@ -834,7 +834,7 @@ test("PipelineController activity relays agent message chunks", async () => {
 	const messages: Array<{ content: unknown; details?: { kind?: string } }> = [];
 	const runner: PipelineAgentRunner = async (input) => {
 		input.onSessionUpdate?.(textChunk("s1", "generated chunk"));
-		if (input.agentName === "Codex CLI") {
+		if (input.agentName === "Pi Agent") {
 			return "<proposed_plan>Implement the feature.</proposed_plan>";
 		}
 		return "implementation done";
@@ -856,7 +856,7 @@ test("PipelineController activity relays agent message chunks", async () => {
 	assert.ok(messages.some((message) => message.details?.kind === "activity-status"));
 	assert.ok(messages.some((message) => message.details?.kind === "agent-message-chunk"));
 	assert.ok(messages.some((message) => String(message.content).includes("generated chunk")));
-	assert.ok(messages.some((message) => String(message.content).includes("Agent: Codex CLI")));
+	assert.ok(messages.some((message) => String(message.content).includes("Agent: Pi Agent")));
 	assert.ok(messages.some((message) => String(message.content).includes("Step: plan")));
 	assert.ok(messages.some((message) => /^Phase: \S+/m.test(String(message.content))));
 });
@@ -869,7 +869,7 @@ test("PipelineController groups adjacent agent message chunks", async () => {
 		input.onSessionUpdate?.(textChunk("s1", "gen"));
 		input.onSessionUpdate?.(textChunk("s1", "erated"));
 		input.onSessionUpdate?.(textChunk("s1", " chunk"));
-		if (input.agentName === "Codex CLI") {
+		if (input.agentName === "Pi Agent") {
 			return "<proposed_plan>Implement the feature.</proposed_plan>";
 		}
 		return "implementation done";
@@ -899,7 +899,7 @@ test("PipelineController activity relays agent thought chunks", async () => {
 	const messages: Array<{ content: unknown; details?: { kind?: string } }> = [];
 	const runner: PipelineAgentRunner = async (input) => {
 		input.onSessionUpdate?.(thoughtChunk("s1", "thinking chunk"));
-		if (input.agentName === "Codex CLI") {
+		if (input.agentName === "Pi Agent") {
 			return "<proposed_plan>Implement the feature.</proposed_plan>";
 		}
 		return "implementation done";
@@ -940,7 +940,7 @@ test("PipelineController verbose activity still reports non-text session updates
 				content: [],
 			},
 		} as SessionNotification);
-		if (input.agentName === "Codex CLI") {
+		if (input.agentName === "Pi Agent") {
 			return "<proposed_plan>Implement the feature.</proposed_plan>";
 		}
 		return "implementation done";
@@ -1050,7 +1050,7 @@ test("PipelineController status reports agent update counters without duplicatin
 	assert.match(snapshot, /Agent text chunks received: 1/);
 	assert.match(snapshot, /Agent thought chunks received: 0/);
 	assert.match(snapshot, /Agent threads:/);
-	assert.match(snapshot, /Codex CLI:/);
+	assert.match(snapshot, /Pi Agent:/);
 	assert.ok(!snapshot.includes("hidden chunk"));
 	assert.ok(messages.some((message) => String(message.content).includes("hidden chunk")));
 });

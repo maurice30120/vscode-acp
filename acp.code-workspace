@@ -9,6 +9,10 @@
       "path": "plugin-vscode"
     },
     {
+      "name": "acp-sandcastle",
+      "path": "acp-sandcastle"
+    },
+    {
       "name": "plugin-pi",
       "path": "plugin-pi"
     }

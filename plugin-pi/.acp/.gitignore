@@ -1,2 +1,10 @@
 *
 !.gitignore
+!.bootstrap-version
+!acp-agents.json
+!agents/
+!agents/**
+!pipelines/
+!pipelines/**
+!.sandcastle/
+!.sandcastle/config.json

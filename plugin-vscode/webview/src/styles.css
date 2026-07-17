@@ -193,6 +193,25 @@ body {
   line-height: var(--acp-line-height);
   white-space: pre-wrap;
   word-break: break-word;
+  border-left: 4px solid transparent;
+}
+
+.message-header {
+  display: flex;
+  align-items: center;
+  gap: var(--acp-space-xs);
+  margin-bottom: var(--acp-space-xs);
+  font-size: var(--acp-font-size-sm);
+}
+
+.agent-avatar {
+  font-size: 1.1em;
+  flex-shrink: 0;
+}
+
+.agent-name {
+  font-weight: 600;
+  color: var(--acp-text-primary);
 }
 
 .message.user {
@@ -1494,4 +1513,9 @@ body {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Ensure message content has proper spacing */
+.message-header + .md-rendered {
+  margin-top: var(--acp-space-xs);
 }

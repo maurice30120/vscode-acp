@@ -1,4 +1,5 @@
 import type {
+  AgentID,
   ChatWebviewSharedState,
   FileSearchResult,
   MarkdownRenderItem,
@@ -19,8 +20,8 @@ export type HostToWebviewMessage =
       activeSessionId?: string | null;
       session?: SessionSnapshot | null;
     }
-  | { type: 'sessionUpdate'; update: SessionUpdate; sessionId?: string; phase?: PipelinePhase; role?: PipelinePhase; agentName?: string }
-  | { type: 'promptStart' }
+  | { type: 'sessionUpdate'; update: SessionUpdate; sessionId?: string; phase?: PipelinePhase; role?: PipelinePhase; agentName?: string; agentId?: AgentID }
+  | { type: 'promptStart'; turnId?: string; messageId?: string; agentId?: AgentID }
   | { type: 'promptEnd'; stopReason?: string; usage?: unknown }
   | { type: 'clearChat' }
   | { type: 'error'; message?: string }

@@ -13,7 +13,7 @@ import { getPiPluginRoot } from "./pluginRoot.js";
 import { resolvePipelinePromptFiles } from "./promptFileResolver.js";
 import type { Logger, PiAgentConfigEntry } from "../types.js";
 
-const PIPELINE_DIR = path.join(".pi", ".acp", "pipelines");
+const PIPELINE_DIR = path.join(".acp", "pipelines");
 
 export function getPipelineDefinitions(
 	workspaceCwd: string,

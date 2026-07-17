@@ -1,4 +1,5 @@
 import type {
+  AgentID,
   ChatHistoryItem,
   CurrentTurn,
   PersistedWebviewState,
@@ -22,7 +23,7 @@ export function emptyPersistedState(): PersistedWebviewState {
   };
 }
 
-export function createCurrentTurn(turnId: string): CurrentTurn {
+export function createCurrentTurn(turnId: string, messageId?: string, agentId?: AgentID): CurrentTurn {
   return {
     turnId,
     assistantText: '',
@@ -31,6 +32,8 @@ export function createCurrentTurn(turnId: string): CurrentTurn {
     status: null,
     toolCalls: [],
     historyToolCallIndexes: [],
+    messageId,
+    agentId,
   };
 }
 
@@ -103,6 +106,19 @@ export function commitCurrentTurnToHistory(
   }
 
   const nextHistory = [...chatHistory];
+
+  // Skip if this message ID already exists in history
+  if (currentTurn.messageId && currentTurn.assistantText) {
+    const hasDuplicate = chatHistory.some(item =>
+      item.kind === 'message' &&
+      'messageId' in item &&
+      item.messageId === currentTurn.messageId
+    );
+    if (hasDuplicate) {
+      return chatHistory;
+    }
+  }
+
   if (currentTurn.thought?.text) {
     const endTime = currentTurn.thought.finishedAt ?? Date.now();
     const durationSec = currentTurn.thought.startedAt
@@ -122,6 +138,8 @@ export function commitCurrentTurnToHistory(
       role: 'assistant',
       text: currentTurn.assistantText,
       turnId: currentTurn.turnId,
+      messageId: currentTurn.messageId,
+      agentId: currentTurn.agentId,
     });
   }
 

@@ -8,7 +8,7 @@ Le moteur pipeline sait déjà représenter les workflows simples et avancés : 
 
 ## Décision
 
-Le plugin Pi utilise un seul moteur runtime : `pipeline`. Son catalogue canonique est `.pi/.acp/pipelines/*.yaml`.
+Le plugin Pi utilise un seul moteur runtime : `pipeline`. Son catalogue canonique est `.acp/pipelines/*.yaml`.
 
 Tout workflow orchestré par Pi doit être exprimé comme pipeline v2 dans ce catalogue.
 

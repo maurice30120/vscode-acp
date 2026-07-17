@@ -1,7 +1,7 @@
 # Rétrospective d'exécution : pipeline `plan-execute-verify`
 
 > **Pipeline exécuté** : `plan-execute-verify`
-> (runtime actif : [`.pi/.acp/pipelines/plan-execute-verify.yaml`](../.pi/.acp/pipelines/plan-execute-verify.yaml))
+> (runtime actif : [`.acp/pipelines/plan-execute-verify.yaml`](../.acp/pipelines/plan-execute-verify.yaml))
 > **Demande initiale** : « Fait un document pour expliqué l'architecture du projet »
 > **Livrable visé** : [`docs/plan-execute-verify-archi.md`](./plan-execute-verify-archi.md)
 > **Résultat final** : ❌ échec à l'étape `verify`
@@ -36,7 +36,7 @@ Il existe **deux** copies du pipeline `plan-execute-verify` dans le dépôt :
 | Fichier | Rôle | `planner` | `implementer` | `verifier` |
 | --- | --- | --- | --- | --- |
 | [`.acp/pipelines/plan-execute-verify.yaml`](../.acp/pipelines/plan-execute-verify.yaml) | Canonical / documenté | Cursor CLI | Vibe | Cursor CLI |
-| [`.pi/.acp/pipelines/plan-execute-verify.yaml`](../.pi/.acp/pipelines/plan-execute-verify.yaml) | **Runtime actif** | Pi Agent | Pi Agent | **Vibe** |
+| [`.acp/pipelines/plan-execute-verify.yaml`](../.acp/pipelines/plan-execute-verify.yaml) | **Runtime actif** | Pi Agent | Pi Agent | **Vibe** |
 
 C'est la seconde (sous `.pi/`) qui tourne réellement — la liste d'agents du journal d'exécution
 (`Pi Agent`, `Pi Agent`, `Vibe`) le confirme. Les quatre étapes sont :
@@ -84,7 +84,7 @@ schémas Mermaid, critères d'acceptation et risques). Le livrable `output: prop
 pris la forme d'un unique bloc `<proposed_plan>`.
 
 **Pourquoi ça a marché** : `Pi Agent` = `npx pi-acp` (cf.
-[`.pi/.acp/acp-agents.json`](../.pi/.acp/acp-agents.json)), lancé en **transport ACP natif** (spawn
+[`.acp/acp-agents.json`](../.acp/acp-agents.json)), lancé en **transport ACP natif** (spawn
 de process direct, ndjson). Le runtime pi-acp était chaud (c'est le même hôte qui orchestre le
 pipeline), donc l'opération [`initialize`](../src/acp/connectionManager.ts) s'est terminée loin
 sous le budget de 30 s.
@@ -174,9 +174,9 @@ mais n'avait toujours pas renvoyé son `InitializeResponse` sur le flux ndjson a
 Le pipeline déclare `verifier.agent: Vibe`. La résolution se fait par
 [`loadPiAgentCatalog`](../src/catalog/config.ts), qui fusionne par **nom exact** :
 
-- [`.pi/.acp/acp-agents.json`](../.pi/.acp/acp-agents.json) → `"Vibe": { command: "vibe" }`
+- [`.acp/acp-agents.json`](../.acp/acp-agents.json) → `"Vibe": { command: "vibe" }`
   (transport natif par défaut, *pas* Sandcastle) ;
-- [`.pi/.acp/.sandcastle/config.json`](../.pi/.acp/.sandcastle/config.json) → `"Vibe Sandcastle":
+- [`.acp/.sandcastle/config.json`](../.acp/.sandcastle/config.json) → `"Vibe Sandcastle":
   { transport: "sandcastle", provider: "vibe" }` — **un autre nom**, non référencé par le
   pipeline.
 
@@ -271,7 +271,7 @@ divergence réussite/échec entre étapes pourtant structurellement identiques.
 - Architecture générale : [`docs/architecture.md`](./architecture.md)
 - Rétrospective précédente : [`docs/session-analysis.md`](./session-analysis.md)
 - Glossaire canonique : [`CONTEXT.md`](../CONTEXT.md)
-- Pipeline runtime : [`.pi/.acp/pipelines/plan-execute-verify.yaml`](../.pi/.acp/pipelines/plan-execute-verify.yaml)
+- Pipeline runtime : [`.acp/pipelines/plan-execute-verify.yaml`](../.acp/pipelines/plan-execute-verify.yaml)
 - ADR : [ADR-0006](../adr/0006-annulation-runner-abortsignal.md) (annulation / `AbortSignal`),
   [ADR-0007](../adr/0007-configuration-embarquee-v1.md) (config embarquée v1),
   [ADR-0008](../adr/0008-plugin-pi-autonome.md) (autonomie vs `plugin-vscode`),

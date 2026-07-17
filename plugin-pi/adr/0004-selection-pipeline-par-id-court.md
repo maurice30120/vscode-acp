@@ -21,5 +21,5 @@ Le titre reste un libellé de lecture. L'ID est l'interface stable de commande.
 ## Conséquences
 
 - Le chemin recommandé est `/pipeline run pev <prompt>`.
-- Les IDs doivent rester courts, mémorisables et uniques dans `.pi/.acp/pipelines`.
+- Les IDs doivent rester courts, mémorisables et uniques dans `.acp/pipelines`.
 - Les titres peuvent évoluer pour être plus clairs sans casser les habitudes de commande.
