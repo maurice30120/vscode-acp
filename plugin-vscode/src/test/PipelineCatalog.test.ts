@@ -135,6 +135,9 @@ suite('PipelineCatalog', () => {
 
     assert.deepStrictEqual(result.errors, []);
     assert.strictEqual(result.definition?.id, 'plan-execute-verify');
+    assert.strictEqual(result.definition?.primitives.planner.permissions, 'allowAll');
+    assert.strictEqual(result.definition?.primitives.implementer.permissions, 'allowAll');
+    assert.strictEqual(result.definition?.primitives.verifier.permissions, 'allowAll');
   });
 
   test('resolves promptFile content before returning workspace definitions', () => {

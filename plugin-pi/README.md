@@ -97,7 +97,7 @@ Le package contient aussi `.acp/.sandcastle/config.json` :
 
 Fichier embarqué : `plugin-pi/.acp/.sandcastle/config.json`.
 
-Providers acceptés : `codex`, `cursor`, `pi`, `vibe`. Le provider `vibe` lance la CLI programmatique `vibe -p --output streaming --trust`; `vibe-acp` reste le serveur ACP natif, pas le mode utilisé par Sandcastle.
+Providers acceptés : `codex`, `cursor`, `pi`, `vibe`. Le provider `vibe` lance la CLI programmatique `vibe --prompt '<prompt>' --output streaming --trust`; `vibe-acp` reste le serveur ACP natif, pas le mode utilisé par Sandcastle.
 
 Pour appliquer les changements de la sandbox au workspace, la primitive de pipeline doit avoir `sideEffects: workspace`. La promotion globale vaut `ask`, `autoApply` ou `autoReject`.
 

@@ -41,7 +41,7 @@ suite('BridgeConfig', () => {
     assert.strictEqual(config.provider, 'vibe');
     assert.strictEqual(config.model, 'mistral-large-latest');
     assert.strictEqual(config.env?.MISTRAL_API_KEY, 'test-key');
-    assert.strictEqual(config.maxIterations, 1);
+    assert.strictEqual(config.maxIterations, 5);
   });
 
   test('parses explicit max iterations', () => {

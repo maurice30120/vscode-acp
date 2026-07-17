@@ -374,7 +374,7 @@ inchangé.
 
 | Fichier | Rôle |
 | --- | --- |
-| `DefaultSandcastleRuntime.ts` | `defaultSandcastleRuntime` : fournit `createSandbox`, `createProvider` (factory de providers `codex`/`pi`/`vibe`/`cursor`), `createSandboxProvider` (sandbox `docker` + mounts). Provider `vibe` = CLI programmatique `vibe -p --output streaming --trust`. |
+| `DefaultSandcastleRuntime.ts` | `defaultSandcastleRuntime` : fournit `createSandbox`, `createProvider` (factory de providers `codex`/`pi`/`vibe`/`cursor`), `createSandboxProvider` (sandbox `docker` + mounts). Provider `vibe` = CLI programmatique `vibe --prompt '<prompt>' --output streaming --trust`. |
 | `BridgeConfig.ts` | Config passée au bridge (provider, model, effort, image, env). |
 | `SandboxMounts.ts` | `buildSandboxMounts` — montages de volumes Docker (worktree, homes). |
 | `BridgeAgent.ts` | `SandcastleBridgeAgent` — côté **agent** (process séparé) : `initialize`, `newSession` (crée worktree), `prompt` (run dans le sandbox + stream), `extMethod` (preview/apply de la promotion), `cancel`, `dispose`. |

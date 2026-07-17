@@ -12,6 +12,8 @@ primitives:
     prompt: |
       Create a decision-complete implementation plan only.
       Return exactly one <proposed_plan>...</proposed_plan> block.
+      Include likely code areas to change (file paths, modules, or search targets),
+      concrete implementation steps, validation commands, and acceptance criteria.
 
       User request:
       {{userPrompt}}
@@ -24,6 +26,9 @@ primitives:
     promptFile: ../agents/implementer.md
     prompt: |
       Implement the approved plan in the current workspace.
+      Make the required workspace changes; do not stop after inventory or analysis.
+      If implementation is impossible, explain the blocker and name the files or missing facts.
+      Before finishing, inspect the diff and summarize changed files plus validation run.
 
       Original request:
       {{userPrompt}}
@@ -35,7 +40,7 @@ primitives:
     agent: Vibe
     output: markdown
     sideEffects: none
-    permissions: ask
+    permissions: allowAll
     promptFile: ../agents/reviewer.md
     prompt: |
       Verify whether the approved plan was completed.

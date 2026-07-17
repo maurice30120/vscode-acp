@@ -299,6 +299,8 @@ primitives:
     prompt: |
       Create a decision-complete implementation plan only.
       Return exactly one <proposed_plan> block.
+      Include likely code areas to change, concrete implementation steps,
+      validation commands, and acceptance criteria.
 
       User request:
       {{userPrompt}}
@@ -309,6 +311,9 @@ primitives:
     sideEffects: workspace
     prompt: |
       Implement the approved plan in the current workspace.
+      Make the required workspace changes; do not stop after inventory or analysis.
+      If implementation is impossible, explain the blocker and name the files or missing facts.
+      Before finishing, inspect the diff and summarize changed files plus validation run.
 
       Original request:
       {{userPrompt}}

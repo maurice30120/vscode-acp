@@ -60,8 +60,7 @@ function vibe(model: string, options: VibeOptions = {}): AgentProvider {
     captureSessions: false,
     buildPrintCommand({ prompt }) {
       return {
-        command: 'vibe -p --output streaming --trust',
-        stdin: prompt,
+        command: `vibe --prompt ${shellEscape(prompt)} --output streaming --trust`,
       };
     },
     buildInteractiveArgs({ prompt }) {
@@ -77,6 +76,10 @@ function vibe(model: string, options: VibeOptions = {}): AgentProvider {
   };
 }
 
+function shellEscape(arg: string): string {
+  return `'${arg.replace(/'/g, "'\\''")}'`;
+}
+
 function parseVibeStreamLine(line: string): ReturnType<AgentProvider['parseStreamLine']> {
   if (!line.startsWith('{')) {
     return [];
@@ -86,12 +89,16 @@ function parseVibeStreamLine(line: string): ReturnType<AgentProvider['parseStrea
     const role = obj.role;
     const content = typeof obj.content === 'string' ? obj.content : undefined;
     const reasoningContent = typeof obj.reasoning_content === 'string' ? obj.reasoning_content : undefined;
-    const assistantText = content || reasoningContent;
-    if (role === 'assistant' && assistantText) {
-      return [
-        { type: 'text', text: assistantText },
-        { type: 'result', result: assistantText },
-      ];
+    if (role === 'assistant') {
+      if (content) {
+        return [
+          { type: 'text', text: content },
+          { type: 'result', result: content },
+        ];
+      }
+      if (reasoningContent) {
+        return [{ type: 'text', text: reasoningContent }];
+      }
     }
     if (typeof obj.session_id === 'string') {
       return [{ type: 'session_id', sessionId: obj.session_id }];

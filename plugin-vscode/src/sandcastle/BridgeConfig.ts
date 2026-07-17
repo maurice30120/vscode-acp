@@ -58,7 +58,7 @@ export function parseBridgeConfig(argv: string[], env: NodeJS.ProcessEnv): Bridg
 
 function readMaxIterations(value: string | undefined, provider: SandcastleProviderName): number {
   if (value === undefined) {
-    return provider === 'pi' ? 5 : 1;
+    return provider === 'pi' || provider === 'vibe' ? 5 : 1;
   }
   if (!/^\d+$/.test(value)) {
     throw new Error('Expected --max-iterations to be an integer between 1 and 20.');

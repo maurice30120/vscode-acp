@@ -48,6 +48,10 @@ test("parseBridgeConfig parses provider model effort and image", () => {
 		1,
 	);
 	assert.equal(
+		parseBridgeConfig(["--provider", "vibe", "--model", "mistral-large-latest"], {}).maxIterations,
+		5,
+	);
+	assert.equal(
 		parseBridgeConfig(["--provider", "pi", "--model", "glm-5.2", "--max-iterations", "7"], {}).maxIterations,
 		7,
 	);
@@ -88,8 +92,13 @@ test("defaultSandcastleRuntime creates Pi and Vibe providers", () => {
 		prompt: "hello",
 		dangerouslySkipPermissions: true,
 	}), {
-		command: "vibe -p --output streaming --trust",
-		stdin: "hello",
+		command: "vibe --prompt 'hello' --output streaming --trust",
+	});
+	assert.deepEqual(vibeProvider.buildPrintCommand({
+		prompt: "don't lose quotes",
+		dangerouslySkipPermissions: true,
+	}), {
+		command: "vibe --prompt 'don'\\''t lose quotes' --output streaming --trust",
 	});
 	assert.deepEqual(vibeProvider.parseStreamLine(JSON.stringify({
 		role: "assistant",
@@ -104,7 +113,6 @@ test("defaultSandcastleRuntime creates Pi and Vibe providers", () => {
 		reasoning_content: "I'll inspect the pipeline UI.",
 	})), [
 		{ type: "text", text: "I'll inspect the pipeline UI." },
-		{ type: "result", result: "I'll inspect the pipeline UI." },
 	]);
 });
 

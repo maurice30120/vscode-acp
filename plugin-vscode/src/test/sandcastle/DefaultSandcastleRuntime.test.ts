@@ -61,8 +61,13 @@ suite('DefaultSandcastleRuntime', () => {
       prompt: 'hello',
       dangerouslySkipPermissions: true,
     }), {
-      command: 'vibe -p --output streaming --trust',
-      stdin: 'hello',
+      command: "vibe --prompt 'hello' --output streaming --trust",
+    });
+    assert.deepStrictEqual(provider.buildPrintCommand({
+      prompt: "don't lose quotes",
+      dangerouslySkipPermissions: true,
+    }), {
+      command: "vibe --prompt 'don'\\''t lose quotes' --output streaming --trust",
     });
     assert.deepStrictEqual(provider.parseStreamLine(JSON.stringify({
       role: 'assistant',
@@ -70,7 +75,6 @@ suite('DefaultSandcastleRuntime', () => {
       reasoning_content: "I'll inspect the pipeline UI.",
     })), [
       { type: 'text', text: "I'll inspect the pipeline UI." },
-      { type: 'result', result: "I'll inspect the pipeline UI." },
     ]);
   });
 });
