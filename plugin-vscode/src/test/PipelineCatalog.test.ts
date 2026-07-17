@@ -130,7 +130,7 @@ suite('PipelineCatalog', () => {
     const result = parsePipelineYaml(
       text,
       '/repo/.acp/pipelines/plan-execute-verify.yaml',
-      { 'Pi Sandcastle': {}, Vibe: {}, 'Codex CLI': {}, 'Claude Code': {} },
+      { 'Cursor CLI': {}, 'Vibe Sandcastle': {}, Vibe: {}, 'Codex CLI': {}, 'Claude Code': {} },
     );
 
     assert.deepStrictEqual(result.errors, []);

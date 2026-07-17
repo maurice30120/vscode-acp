@@ -2,8 +2,8 @@
   "name": "vscode-acp-workspace",
   "private": true,
   "workspaces": [
-    "acp-sandcastle",
     "acp-pipeline",
+    "acp-sandcastle",
     "plugin-vscode",
     "plugin-pi"
   ],

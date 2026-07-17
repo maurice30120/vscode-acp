@@ -515,7 +515,8 @@
             "Cursor CLI",
             "Codex Sandcastle",
             "Cursor Sandcastle",
-            "Pi Sandcastle"
+            "Pi Sandcastle",
+            "Vibe Sandcastle"
           ],
           "description": "ACP agent names that receive skills catalog injection and Sandcastle skill mounts."
         },

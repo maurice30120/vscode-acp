@@ -45,6 +45,14 @@
     "model": "mistral-large-latest",
     "env": {}
   },
+  "Vibe Sandcastle": {
+    "transport": "sandcastle",
+    "provider": "vibe",
+    "model": "mistral-large-latest",
+    "env": {
+      "VIBE_HOME": ".sandcastle/vibe-home"
+    }
+  },
   "OpenCode": {
     "command": "npx",
     "args": [

@@ -55,6 +55,7 @@ suite('WorkspaceBootstrap', () => {
     const agentNames = listSelectableAgentNames(workspaceRoot, {
       'Codex CLI': { command: 'codex' },
       'Pi Sandcastle': { transport: 'sandcastle', provider: 'pi', model: 'opencode-go/kimi-k2.6' },
+      'Vibe Sandcastle': { transport: 'sandcastle', provider: 'vibe', model: 'mistral-large-latest' },
       Vibe: { command: 'vibe' },
     } as any);
 

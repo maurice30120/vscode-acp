@@ -45,3 +45,4 @@ _À éviter_ : aperçu, vue diff (générique)
 - Du point de vue utilisateur, une Conversation Sandcastle ressemble à tout autre chat : même arbre, même ChatHistory streamée depuis les mises à jour ACP.
 - Ce qui diffère : isolation filesystem, absence de `session/load` / `session/resume` natifs sur le bridge, et BridgeTranscript séparé pour le contexte provider.
 - Le ContextHandoff depuis Discussion fonctionne toujours au niveau extension ; il n’alimente pas automatiquement le BridgeTranscript.
+- **Alignement avec plugin-pi** : garder les comportements Sandcastle aussi proches que possible entre `plugin-vscode` et `plugin-pi` (promotion, statuts, parsing provider, erreurs). Les différences de cycle de vie restent légitimes (`ConnectedSandcastleAgent` longue durée ici, run éphémère côté Pi), mais toute divergence observable doit être intentionnelle et couverte par test ou contexte.

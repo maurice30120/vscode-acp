@@ -62,6 +62,16 @@ suite('BridgeConfig', () => {
     }
   });
 
+  test('accepts Vibe provider', () => {
+    const config = parseBridgeConfig(
+      ['--provider', 'vibe', '--model', 'mistral-large-latest'],
+      {},
+    );
+
+    assert.strictEqual(config.provider, 'vibe');
+    assert.strictEqual(config.model, 'mistral-large-latest');
+  });
+
   test('rejects unsupported providers', () => {
     assert.throws(
       () => parseBridgeConfig(['--provider', 'other', '--model', 'x'], {}),

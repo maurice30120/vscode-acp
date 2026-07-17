@@ -86,6 +86,21 @@ suite('AgentConfig', () => {
     assert.strictEqual(getAgentConfig('Bad Sandcastle', workspaceRoot), undefined);
   });
 
+  test('accepts Vibe Sandcastle agents with explicit transport', () => {
+    writeConfig({
+      'Vibe Sandcastle': {
+        transport: 'sandcastle',
+        provider: 'vibe',
+        model: 'mistral-large-latest',
+      },
+    });
+
+    const config = getAgentConfig('Vibe Sandcastle', workspaceRoot);
+    assert.ok(config);
+    assert.ok(isSandcastleAgentConfig(config));
+    assert.strictEqual(config.provider, 'vibe');
+  });
+
   test('ignores invalid JSON instead of throwing', () => {
     const configPath = path.join(workspaceRoot, '.acp', 'acp-agents.json');
     fs.mkdirSync(path.dirname(configPath), { recursive: true });

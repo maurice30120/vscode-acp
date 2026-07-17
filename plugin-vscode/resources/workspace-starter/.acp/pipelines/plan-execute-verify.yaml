@@ -18,7 +18,6 @@ primitives:
       {{userPrompt}}
 
   implementer:
-    # agent: Pi Sandcastle
     agent: Vibe Sandcastle
     output: markdown
     sideEffects: workspace

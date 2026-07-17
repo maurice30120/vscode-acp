@@ -30,5 +30,5 @@ _À éviter_: rejeté (ambigu entre les deux), abandonné
 
 ## Relationships
 
-- **Pi ↔ plugin-vscode** : implémentations sœurs et divergentes. La duplication de code est intentionnelle ; aucun ne dépend de l'autre.
+- **Pi ↔ plugin-vscode** : implémentations sœurs avec duplication intentionnelle ; aucun ne dépend de l'autre. Aligner les comportements autant que possible (promotion, statuts, parsing provider, erreurs) et ne diverger que lorsqu'un écart de runtime l'impose. Toute divergence doit être explicite dans le test ou le contexte local.
 - **Pi ↔ @acp-client/pipeline** : pi consomme le package partagé (runtime pipeline, statuts, approbation). Cette frontière est commune aux deux plugins.
