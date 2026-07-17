@@ -1,17 +1,19 @@
 import {
+  createDockerSandboxProvider,
+  prepareCodexHome,
+} from '@acp-client/sandcastle';
+import {
   codex,
   createSandbox,
   cursor,
   pi,
   type AgentProvider,
 } from '@ai-hero/sandcastle';
-import { docker } from '@ai-hero/sandcastle/sandboxes/docker';
 
 import type { BridgeConfig } from './BridgeConfig.js';
 import type { SandcastleRuntime } from './BridgeAgent.js';
-import { buildSandboxMounts } from './SandboxMounts.js';
 
-export { prepareCodexHome } from './SandboxMounts.js';
+export { prepareCodexHome };
 
 export const defaultSandcastleRuntime: SandcastleRuntime = {
   createSandbox,
@@ -38,11 +40,7 @@ export const defaultSandcastleRuntime: SandcastleRuntime = {
     return cursor(config.model);
   },
   createSandboxProvider(config: BridgeConfig, cwd: string, branch?: string) {
-    return docker({
-      imageName: config.imageName,
-      cpus: 2,
-      mounts: buildSandboxMounts(config, cwd, branch),
-    });
+    return createDockerSandboxProvider(config, cwd, branch);
   },
 };
 
@@ -61,8 +59,7 @@ function vibe(model: string, options: VibeOptions = {}): AgentProvider {
     captureSessions: false,
     buildPrintCommand({ prompt }) {
       return {
-        command: 'vibe -p --output streaming --trust',
-        stdin: prompt,
+        command: `vibe --prompt ${shellEscape(prompt)} --output streaming --trust`,
       };
     },
     buildInteractiveArgs({ prompt }) {
@@ -78,6 +75,10 @@ function vibe(model: string, options: VibeOptions = {}): AgentProvider {
   };
 }
 
+function shellEscape(arg: string): string {
+  return `'${arg.replace(/'/g, "'\\''")}'`;
+}
+
 function parseVibeStreamLine(line: string): ReturnType<AgentProvider['parseStreamLine']> {
   if (!line.startsWith('{')) {
     return [];
@@ -86,11 +87,17 @@ function parseVibeStreamLine(line: string): ReturnType<AgentProvider['parseStrea
     const obj = JSON.parse(line) as Record<string, unknown>;
     const role = obj.role;
     const content = typeof obj.content === 'string' ? obj.content : undefined;
-    if (role === 'assistant' && content) {
-      return [
-        { type: 'text', text: content },
-        { type: 'result', result: content },
-      ];
+    const reasoningContent = typeof obj.reasoning_content === 'string' ? obj.reasoning_content : undefined;
+    if (role === 'assistant') {
+      if (content) {
+        return [
+          { type: 'text', text: content },
+          { type: 'result', result: content },
+        ];
+      }
+      if (reasoningContent) {
+        return [{ type: 'text', text: reasoningContent }];
+      }
     }
     if (typeof obj.session_id === 'string') {
       return [{ type: 'session_id', sessionId: obj.session_id }];

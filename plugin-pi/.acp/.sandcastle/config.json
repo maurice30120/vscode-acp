@@ -5,6 +5,7 @@
       "transport": "sandcastle",
       "provider": "vibe",
       "model": "mistral-large-latest",
+      "maxIterations": 1,
       "env": {
         "VIBE_HOME": ".sandcastle/vibe-home"
       }
@@ -13,7 +14,8 @@
       "transport": "sandcastle",
       "provider": "pi",
       "model": "opencode-go/kimi-k2.6",
-      "effort": "high"
+      "effort": "high",
+      "maxIterations": 5
     }
   }
 }

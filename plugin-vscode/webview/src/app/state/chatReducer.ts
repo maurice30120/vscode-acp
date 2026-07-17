@@ -67,19 +67,39 @@ export function chatReducer(state: AppState, action: ChatAction): AppState {
         state.currentTurn,
       );
       const last = nextHistory[nextHistory.length - 1];
+
+      const existingIndex = action.messageId
+        ? nextHistory.findIndex(item =>
+            item.kind === 'message' && item.role === 'user' && item.messageId === action.messageId,
+          )
+        : -1;
+      if (existingIndex >= 0) {
+        const existing = nextHistory[existingIndex];
+        if (existing?.kind !== 'message') {
+          return state;
+        }
+        const chatHistory = [...nextHistory];
+        chatHistory[existingIndex] = { ...existing, text: existing.text + action.text };
+        return {
+          ...state,
+          persisted: { ...state.persisted, chatHistory },
+          currentTurn: null,
+        };
+      }
+
       if (last?.kind === 'message' && last.role === 'user' && last.text === action.text) {
         return { ...state, currentTurn: null };
       }
 
       const chatHistory: ChatHistoryItem[] =
-        last?.kind === 'message' && last.role === 'user'
+        last?.kind === 'message' && last.role === 'user' && !last.messageId
           ? [
               ...nextHistory.slice(0, -1),
-              { ...last, text: last.text + action.text },
+              { ...last, text: last.text + action.text, agentId: 'user', messageId: action.messageId || `user-${Date.now()}` },
             ]
           : [
               ...nextHistory,
-              { kind: 'message' as const, role: 'user' as const, text: action.text },
+              { kind: 'message' as const, role: 'user' as const, text: action.text, agentId: 'user', messageId: action.messageId || `user-${Date.now()}` },
             ];
 
       return {
@@ -117,7 +137,7 @@ export function chatReducer(state: AppState, action: ChatAction): AppState {
       return {
         ...state,
         isProcessing: true,
-        currentTurn: createCurrentTurn(action.turnId),
+        currentTurn: createCurrentTurn(action.turnId, action.messageId, action.agentId),
         slashPopupSuppressedFor: null,
       };
 
@@ -138,6 +158,8 @@ export function chatReducer(state: AppState, action: ChatAction): AppState {
         ...state,
         currentTurn: {
           ...currentTurn,
+          messageId: currentTurn.messageId ?? action.messageId,
+          agentId: action.agentId ?? currentTurn.agentId,
           thought: currentTurn.thought
             ? { ...currentTurn.thought, text: currentTurn.thought.text + action.text }
             : {
@@ -180,20 +202,25 @@ export function chatReducer(state: AppState, action: ChatAction): AppState {
       const currentTurn = ensureCurrentTurn(state);
       const assistantText = currentTurn.assistantText + action.text;
       const shouldCloseThought = assistantText.trim().length > 0 && currentTurn.thought;
+
+      const updatedTurn = {
+        ...currentTurn,
+        assistantText,
+        messageId: currentTurn.messageId ?? action.messageId,
+        agentId: action.agentId ?? currentTurn.agentId,
+        thought:
+          currentTurn.thought && shouldCloseThought
+            ? {
+                ...currentTurn.thought,
+                finishedAt: currentTurn.thought.finishedAt ?? Date.now(),
+                isOpen: false,
+              }
+            : currentTurn.thought,
+      };
+
       return {
         ...state,
-        currentTurn: {
-          ...currentTurn,
-          assistantText,
-          thought:
-            currentTurn.thought && shouldCloseThought
-              ? {
-                  ...currentTurn.thought,
-                  finishedAt: currentTurn.thought.finishedAt ?? Date.now(),
-                  isOpen: false,
-                }
-              : currentTurn.thought,
-        },
+        currentTurn: updatedTurn,
       };
     }
 
@@ -204,6 +231,8 @@ export function chatReducer(state: AppState, action: ChatAction): AppState {
         currentTurn: {
           ...currentTurn,
           planningDraft: currentTurn.planningDraft + action.text,
+          messageId: currentTurn.messageId ?? action.messageId,
+          agentId: action.agentId ?? currentTurn.agentId,
         },
       };
     }

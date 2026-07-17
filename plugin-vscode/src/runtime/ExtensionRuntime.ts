@@ -9,6 +9,8 @@ import { resolveWorkspaceIdentity } from '../core/WorkspaceIdentity';
 import { SessionUpdateHandler } from '../handlers/SessionUpdateHandler';
 import { SessionTreeProvider } from '../ui/SessionTreeProvider';
 import { StatusBarManager } from '../ui/StatusBarManager';
+import { PipelineTreeProvider } from '../ui/pipeline/PipelineTreeProvider';
+import { PipelineHoverProvider } from '../ui/pipeline/PipelineHoverProvider';
 import { ChatWebviewController } from '../ui/ChatWebviewController';
 import { ChatWebviewProvider } from '../ui/ChatWebviewProvider';
 import { ChatWebviewStateStore } from '../ui/ChatWebviewStateStore';
@@ -103,6 +105,22 @@ function initializeExtensionRuntime(
   });
   resources.add(sessionTreeProvider);
   resources.add(treeView);
+
+  // --- Pipeline UI ---
+  const pipelineTreeProvider = new PipelineTreeProvider(workspaceIdentity().cwd);
+  const pipelineTreeView = vscode.window.createTreeView('acp-pipelines', {
+    treeDataProvider: pipelineTreeProvider,
+  });
+  resources.add(pipelineTreeProvider);
+  resources.add(pipelineTreeView);
+
+  const pipelineHoverProvider = new PipelineHoverProvider();
+  const hoverRegistration = vscode.languages.registerHoverProvider(
+    { language: 'yaml', scheme: 'file' },
+    pipelineHoverProvider,
+  );
+  resources.add(hoverRegistration);
+
   const debugWebviewPanel = new DebugWebviewPanel(
     context.extensionUri,
     sessionManager,
@@ -218,6 +236,38 @@ function initializeExtensionRuntime(
     historyStore,
   });
   for (const command of commandDisposables) { resources.add(command); }
+
+  // Register pipeline commands
+  const refreshPipelineCmd = vscode.commands.registerCommand('acp.pipeline.refresh', () => {
+    sendEvent('command/refreshPipelines');
+    pipelineTreeProvider.refresh();
+  });
+  resources.add(refreshPipelineCmd);
+
+  const runPipelineCmd = vscode.commands.registerCommand('acp.pipeline.run', async (pipelineIdOrItem?: string | { pipeline?: { id?: string } }) => {
+    sendEvent('command/openPipelineChat');
+    const pipelineId = typeof pipelineIdOrItem === 'string'
+      ? pipelineIdOrItem
+      : pipelineIdOrItem?.pipeline?.id;
+    const selectedId = pipelineId ?? await pipelineTreeProvider.showPipelineSelector();
+    if (!selectedId) { return; }
+
+    const pipeline = pipelineTreeProvider.getPipelineById(selectedId);
+    if (!pipeline) {
+      vscode.window.showErrorMessage(`Pipeline not found: ${selectedId}`);
+      return;
+    }
+
+    const pipelineAgentName = pipeline.title || pipeline.id;
+    await vscode.commands.executeCommand('acp.connectAgent', pipelineAgentName);
+    if (sessionManager.getActiveAgentName() !== pipelineAgentName) {
+      return;
+    }
+
+    await sessionManager.newConversation();
+    await vscode.commands.executeCommand('acp-chat.focus');
+  });
+  resources.add(runPipelineCmd);
   const openDebugSnapshotCmd = vscode.commands.registerCommand('acp.openDebugSnapshot', async () => {
     sendEvent('command/openDebugSnapshot');
     await debugWebviewPanel.open();

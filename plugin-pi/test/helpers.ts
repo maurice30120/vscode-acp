@@ -20,7 +20,7 @@ export function writeFile(
 export function writeDefaultConfig(workspace: string): void {
 	writeFile(
 		workspace,
-		".pi/.acp/acp-agents.json",
+		".acp/acp-agents.json",
 		JSON.stringify(
 			{
 				agents: {
@@ -49,7 +49,7 @@ export function writeDefaultConfig(workspace: string): void {
 export function writeDemoPipeline(workspace: string): void {
 	writeFile(
 		workspace,
-		".pi/.acp/pipelines/demo.yaml",
+		".acp/pipelines/demo.yaml",
 		[
 			"version: 2",
 			"id: demo",
@@ -133,7 +133,7 @@ export function writePipelineFile(
 	fileName: string,
 	lines: string[],
 ): void {
-	writeFile(workspace, `.pi/.acp/pipelines/${fileName}`, lines.join("\n"));
+	writeFile(workspace, `.acp/pipelines/${fileName}`, lines.join("\n"));
 }
 
 export function assertIncludes(

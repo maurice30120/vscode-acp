@@ -64,6 +64,7 @@ export class AcpClientImpl implements Client {
   }
 
   async sessionUpdate(params: SessionNotification): Promise<void> {
+    this.permissionHandler.trackSessionUpdate(params);
     this.sessionUpdateHandler.handleUpdate(params);
   }
 

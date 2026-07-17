@@ -1,4 +1,4 @@
-import type { FileSearchResult } from '../chatTypes';
+import type { AgentID, FileSearchResult } from '../chatTypes';
 import type { HostToWebviewMessage } from '../vscode';
 import {
   normalizeConfigOptions,
@@ -176,7 +176,9 @@ export function routeHostMessage(
       ui.nextTurnCounter = refs.turnCounter + 1;
       actions.push({
         type: 'promptStart',
-        turnId: `turn-${Date.now()}-${ui.nextTurnCounter}`,
+        turnId: (message as { turnId?: string }).turnId || `turn-${Date.now()}-${ui.nextTurnCounter}`,
+        messageId: (message as { messageId?: string }).messageId,
+        agentId: (message as { agentId?: AgentID }).agentId,
       });
       break;
 
@@ -222,6 +224,7 @@ export function routeHostMessage(
       actions.push(...mapSessionUpdateToActions(
         normalizeSessionUpdate(message.update),
         normalizePipelinePhase(message.phase ?? message.role),
+        (message as { agentId?: AgentID }).agentId,
       ));
       actions.push(...mapSessionOrchestrationMetaToActions(
         normalizePipelinePhase(message.role ?? message.phase),

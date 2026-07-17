@@ -324,7 +324,7 @@ Reprise de [`CONTEXT.md`](../CONTEXT.md) ; définitions complètes dedans.
 
 ### Annexe — variante asynchrone parallèle
 
-Le pipeline [`.pi/.acp/pipelines/async-use-case-review.yaml`](../.pi/.acp/pipelines/async-use-case-review.yaml)
+Le pipeline [`.acp/pipelines/async-use-case-review.yaml`](../.acp/pipelines/async-use-case-review.yaml)
 montre une variante : l'étape `investigation` est `type: parallel` avec deux
 `branches` (`produit`, `technique`) exécutées concurremment, et l'étape de
 synthèse référence leurs outputs via

@@ -11,11 +11,12 @@ import type {
 	Sandbox,
 	SandboxRunOptions,
 } from "@ai-hero/sandcastle";
+import { buildSandboxMounts } from "@acp-client/sandcastle";
 
 import { parseBridgeConfig } from "../src/sandcastle/BridgeConfig.js";
 import { defaultSandcastleRuntime } from "../src/sandcastle/DefaultSandcastleRuntime.js";
+import { enrichProviderRunError } from "../src/sandcastle/ProviderRunError.js";
 import { decidePromotionPolicy } from "../src/sandcastle/PromotionPolicy.js";
-import { buildSandboxMounts } from "../src/sandcastle/SandboxMounts.js";
 import {
 	SandcastleBridgeAgent,
 	type SandcastleRuntime,
@@ -31,6 +32,7 @@ test("parseBridgeConfig parses provider model effort and image", () => {
 		provider: "pi",
 		model: "glm-5.2",
 		effort: "high",
+		maxIterations: 5,
 		imageName: "custom:image",
 		env: {
 			ACP_SANDCASTLE_IMAGE: "custom:image",
@@ -41,6 +43,22 @@ test("parseBridgeConfig parses provider model effort and image", () => {
 		() => parseBridgeConfig(["--provider", "other", "--model", "gpt-5"], {}),
 		/provider/,
 	);
+	assert.equal(
+		parseBridgeConfig(["--provider", "codex", "--model", "gpt-5"], {}).maxIterations,
+		1,
+	);
+	assert.equal(
+		parseBridgeConfig(["--provider", "vibe", "--model", "mistral-large-latest"], {}).maxIterations,
+		5,
+	);
+	assert.equal(
+		parseBridgeConfig(["--provider", "pi", "--model", "glm-5.2", "--max-iterations", "7"], {}).maxIterations,
+		7,
+	);
+	assert.throws(
+		() => parseBridgeConfig(["--provider", "pi", "--model", "glm-5.2", "--max-iterations", "1.5"], {}),
+		/max-iterations/,
+	);
 });
 
 test("defaultSandcastleRuntime creates Pi and Vibe providers", () => {
@@ -48,6 +66,7 @@ test("defaultSandcastleRuntime creates Pi and Vibe providers", () => {
 		provider: "pi",
 		model: "opencode-go/kimi-k2.6",
 		effort: "high",
+		maxIterations: 5,
 		imageName: "fake",
 		env: { FOO: "bar" },
 	});
@@ -61,6 +80,7 @@ test("defaultSandcastleRuntime creates Pi and Vibe providers", () => {
 	const vibeProvider = defaultSandcastleRuntime.createProvider({
 		provider: "vibe",
 		model: "mistral-large-latest",
+		maxIterations: 1,
 		imageName: "fake",
 		env: { FOO: "bar" },
 	});
@@ -72,8 +92,13 @@ test("defaultSandcastleRuntime creates Pi and Vibe providers", () => {
 		prompt: "hello",
 		dangerouslySkipPermissions: true,
 	}), {
-		command: "vibe -p --output streaming --trust",
-		stdin: "hello",
+		command: "vibe --prompt 'hello' --output streaming --trust",
+	});
+	assert.deepEqual(vibeProvider.buildPrintCommand({
+		prompt: "don't lose quotes",
+		dangerouslySkipPermissions: true,
+	}), {
+		command: "vibe --prompt 'don'\\''t lose quotes' --output streaming --trust",
 	});
 	assert.deepEqual(vibeProvider.parseStreamLine(JSON.stringify({
 		role: "assistant",
@@ -81,6 +106,13 @@ test("defaultSandcastleRuntime creates Pi and Vibe providers", () => {
 	})), [
 		{ type: "text", text: "done" },
 		{ type: "result", result: "done" },
+	]);
+	assert.deepEqual(vibeProvider.parseStreamLine(JSON.stringify({
+		role: "assistant",
+		content: "",
+		reasoning_content: "I'll inspect the pipeline UI.",
+	})), [
+		{ type: "text", text: "I'll inspect the pipeline UI." },
 	]);
 });
 
@@ -98,6 +130,21 @@ test("decidePromotionPolicy maps no changes and promotion modes", () => {
 	assert.equal(decidePromotionPolicy(changed, "autoApply"), "auto_apply");
 	assert.equal(decidePromotionPolicy(changed, "autoReject"), "auto_reject");
 	assert.equal(decidePromotionPolicy(changed, "ask"), "prompt");
+});
+
+test("enrichProviderRunError surfaces Pi Go usage limit as a UI-ready message", () => {
+	const error = enrichProviderRunError(
+		new Error([
+			"pi exited with code 1:",
+			"Error: 429 GoUsageLimitError: usage limit reached for opencode-go/kimi-k2.6",
+		].join("\n")),
+		{ provider: "pi", cwd: process.cwd() },
+	);
+
+	assert.equal(
+		error.message,
+		"Pi Sandcastle failed before writing: provider returned 429 GoUsageLimitError for opencode-go/kimi-k2.6, so no write tool was executed.",
+	);
 });
 
 test("buildSandboxMounts adds Linux git overrides for docker worktrees", () => {
@@ -166,6 +213,7 @@ test("SandcastleBridgeAgent previews applies and rejects through an isolated wor
 			provider: "codex",
 			model: "test",
 			imageName: "fake",
+			maxIterations: 1,
 		}, runtime);
 		const { sessionId } = await agent.newSession({ cwd: repo, mcpServers: [] });
 
@@ -175,6 +223,7 @@ test("SandcastleBridgeAgent previews applies and rejects through an isolated wor
 		});
 
 		assert.equal(result.stopReason, "end_turn");
+		assert.equal(runtime.lastMaxIterations, 1);
 		assert.equal(fs.existsSync(path.join(repo, "sentinel.txt")), false);
 		assert.ok(connection.updates.some(update => update.update.content?.text === "done"));
 		const preview = await agent.extMethod("sandcastle/preview", { sessionId });
@@ -201,6 +250,8 @@ class FakeConnection {
 }
 
 class FakeRuntime implements SandcastleRuntime {
+	lastMaxIterations: number | undefined;
+
 	createProvider(): any {
 		return {
 			name: "fake",
@@ -226,6 +277,7 @@ class FakeRuntime implements SandcastleRuntime {
 			worktreePath: worktree,
 			run: async (runOptions: SandboxRunOptions) => {
 				const prompt = runOptions.prompt || "";
+				this.lastMaxIterations = runOptions.maxIterations;
 				fs.writeFileSync(path.join(worktree, "sentinel.txt"), prompt, "utf8");
 				(runOptions.logging as { onAgentStreamEvent?: (event: {
 					type: "text";

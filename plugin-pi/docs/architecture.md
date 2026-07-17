@@ -126,10 +126,10 @@ package installé, et les chargeurs lisent à partir de là.
 
 | Fichier / motif | Chargé par | Produit |
 | --- | --- | --- |
-| `.pi/.acp/acp-agents.json` | `config.ts` → `loadPiAcpConfig` | `PiAcpConfig` (agents natifs + `pipeline.enabled`, `instructionsMaxBytes`, `timeouts`) |
-| `.pi/.acp/.sandcastle/config.json` | `config.ts` → `loadSandcastleConfig` | `SandcastleConfig` (agents Sandcastle + `promotion`) |
-| `.pi/.acp/pipelines/*.yaml` (version 2) | `pipelineCatalog.ts` | `PipelineDefinition[]` |
-| `.pi/.acp/agents/*.md` | `promptFileResolver.ts` → `resolvePipelinePromptFiles` | Prompts composés (le `promptFile` est ajouté **avant** le `prompt` inline) |
+| `.acp/acp-agents.json` | `config.ts` → `loadPiAcpConfig` | `PiAcpConfig` (agents natifs + `pipeline.enabled`, `instructionsMaxBytes`, `timeouts`) |
+| `.acp/.sandcastle/config.json` | `config.ts` → `loadSandcastleConfig` | `SandcastleConfig` (agents Sandcastle + `promotion`) |
+| `.acp/pipelines/*.yaml` (version 2) | `pipelineCatalog.ts` | `PipelineDefinition[]` |
+| `.acp/agents/*.md` | `promptFileResolver.ts` → `resolvePipelinePromptFiles` | Prompts composés (le `promptFile` est ajouté **avant** le `prompt` inline) |
 
 ### Ce qui est lu dans le workspace
 
@@ -144,7 +144,7 @@ Règles de validation notables (dans `config.ts`) :
 
 - `acp-agents.json` est **natif-only** : une entrée avec
   `transport: "sandcastle"` y est rejetée, avec un message pointant vers le
-  fichier dédié `.pi/.acp/.sandcastle/config.json`.
+  fichier dédié `.acp/.sandcastle/config.json`.
 - Un même nom d'agent déclaré dans les deux fichiers est une erreur (l'entrée
   est supprimée du catalogue fusionné).
 - Providers Sandcastle acceptés : `codex`, `cursor`, `pi`, `vibe`. Efforts :
@@ -152,7 +152,7 @@ Règles de validation notables (dans `config.ts`) :
 
 ### Limitation explicite (v1)
 
-Les fichiers `<workspace>/.pi/.acp/...` ne sont **pas** lus comme surcharge en
+Les fichiers `<workspace>/.acp/...` ne sont **pas** lus comme surcharge en
 v1 (ADR-0007). La surcharge workspace est reportée à une v2. Les skills font
 exception : elles représentent les capacités du projet ouvert et restent chargées
 depuis `<workspace>/.agents/skills/`.
@@ -161,7 +161,7 @@ depuis `<workspace>/.agents/skills/`.
 
 ```mermaid
 flowchart LR
-  Plugin[("Plugin package<br/>.pi/.acp")]
+  Plugin[("Plugin package<br/>.acp")]
   Disk[("Workspace<br/>.agents/")]
   Cfg["config.ts"]
   Pipes["pipelineCatalog.ts"]
@@ -169,9 +169,9 @@ flowchart LR
   Skills["skillCatalog.ts"]
   Defs(["PipelineDefinition[]"])
 
-  Plugin -->|".pi/.acp/acp-agents.json"| Cfg
-  Plugin -->|".pi/.acp/.sandcastle/config.json"| Cfg
-  Plugin -->|".pi/.acp/pipelines/*.yaml (v2)"| Pipes
+  Plugin -->|".acp/acp-agents.json"| Cfg
+  Plugin -->|".acp/.sandcastle/config.json"| Cfg
+  Plugin -->|".acp/pipelines/*.yaml (v2)"| Pipes
   Plugin -->|"promptFile *.md"| PromptFiles
   Disk -->|"skills/*/SKILL.md"| Skills
 
@@ -374,7 +374,7 @@ inchangé.
 
 | Fichier | Rôle |
 | --- | --- |
-| `DefaultSandcastleRuntime.ts` | `defaultSandcastleRuntime` : fournit `createSandbox`, `createProvider` (factory de providers `codex`/`pi`/`vibe`/`cursor`), `createSandboxProvider` (sandbox `docker` + mounts). Provider `vibe` = CLI programmatique `vibe -p --output streaming --trust`. |
+| `DefaultSandcastleRuntime.ts` | `defaultSandcastleRuntime` : fournit `createSandbox`, `createProvider` (factory de providers `codex`/`pi`/`vibe`/`cursor`), `createSandboxProvider` (sandbox `docker` + mounts). Provider `vibe` = CLI programmatique `vibe --prompt '<prompt>' --output streaming --trust`. |
 | `BridgeConfig.ts` | Config passée au bridge (provider, model, effort, image, env). |
 | `SandboxMounts.ts` | `buildSandboxMounts` — montages de volumes Docker (worktree, homes). |
 | `BridgeAgent.ts` | `SandcastleBridgeAgent` — côté **agent** (process séparé) : `initialize`, `newSession` (crée worktree), `prompt` (run dans le sandbox + stream), `extMethod` (preview/apply de la promotion), `cancel`, `dispose`. |
@@ -484,10 +484,10 @@ Synthèses courtes ; voir les ADR complets dans [`adr/`](../adr/).
 
 ### ADR-0007 — Configuration Pi embarquée en v1
 
-Le runtime lit `.pi/.acp/` depuis la **racine du package plugin**, pas depuis le
+Le runtime lit `.acp/` depuis la **racine du package plugin**, pas depuis le
 workspace. Un workspace vide peut utiliser les pipelines fournis sans créer de
-fichiers `.pi/.acp`. La surcharge workspace est reportée à une v2 ; les
-`promptFile` commençant par `.pi/.acp/` sont résolus depuis la racine du plugin.
+fichiers `.acp`. La surcharge workspace est reportée à une v2 ; les
+`promptFile` commençant par `.acp/` sont résolus depuis la racine du plugin.
 → [`adr/0007-configuration-embarquee-v1.md`](../adr/0007-configuration-embarquee-v1.md)
 
 ### ADR-0008 — `plugin-pi` autonome, indépendant de `plugin-vscode`
@@ -498,12 +498,12 @@ duplication est **intentionnelle**, pas une dette. La seule frontière commune
 reste `@acp-client/pipeline`. Chaque plugin évolue à son rythme (pi est
 éphémère, vscode est longue durée). → [`adr/0008-plugin-pi-autonome.md`](../adr/0008-plugin-pi-autonome.md)
 
-### ADR-0009 — Sandcastle éphémère sous `.pi/.acp/.sandcastle`
+### ADR-0009 — Sandcastle éphémère sous `.acp/.sandcastle`
 
 Décisions corrélées difficiles à défaire : (1) runtime éphémère — on ne porte que
 `BridgeConfig`, garde Docker/worktree, `WorktreePromotion`, `PromotionPolicy`,
 `bridge.ts` ; (2) config séparée embarquée sous
-`plugin-pi/.pi/.acp/.sandcastle/config.json` (top-level `promotion` + agents
+`plugin-pi/.acp/.sandcastle/config.json` (top-level `promotion` + agents
 Sandcastle-only) ; (3) `sideEffects` est une propriété du **run**, pas de l'agent ;
 (4) `EphemeralAcpRunner` route selon `config.transport`, `sandcastleConnector`
 spawn `bridge.js` parlant ACP ; (5) outcomes `'applied' | 'no_changes' |
@@ -557,7 +557,7 @@ dans `ROADMAP.md`).
    types stables.
 
 5. **Bootstrap des pipelines (templates vs runtime).**
-   Le runtime lit `.pi/.acp/pipelines`. Des exemples vivent aussi sous
+   Le runtime lit `.acp/pipelines`. Des exemples vivent aussi sous
    `plugin-pi/.acp/pipelines` (hors `.pi/`). Manque un seam clair de
    bootstrap/copie. La roadmap doit rester alignée sur le catalogue canonique
    pipeline v2 côté Pi.

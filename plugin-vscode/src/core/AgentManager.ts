@@ -96,6 +96,7 @@ export class AgentManager extends EventEmitter {
           '--provider', config.provider,
           '--model', config.model,
           ...(config.effort ? ['--effort', config.effort] : []),
+          ...(config.maxIterations ? ['--max-iterations', String(config.maxIterations)] : []),
         ], {
           stdio: ['pipe', 'pipe', 'pipe'],
           cwd: cwd || undefined,

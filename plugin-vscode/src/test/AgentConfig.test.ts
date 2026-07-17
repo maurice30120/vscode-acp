@@ -62,6 +62,7 @@ suite('AgentConfig', () => {
         provider: 'pi',
         model: 'opencode-go/kimi-k2.6',
         effort: 'high',
+        maxIterations: 5,
       },
     });
 
@@ -69,6 +70,35 @@ suite('AgentConfig', () => {
     assert.ok(config);
     assert.ok(isSandcastleAgentConfig(config));
     assert.strictEqual(config.provider, 'pi');
+    assert.strictEqual(config.maxIterations, 5);
+  });
+
+  test('ignores Sandcastle agents with invalid maxIterations', () => {
+    writeConfig({
+      'Bad Sandcastle': {
+        transport: 'sandcastle',
+        provider: 'pi',
+        model: 'opencode-go/kimi-k2.6',
+        maxIterations: 21,
+      },
+    });
+
+    assert.strictEqual(getAgentConfig('Bad Sandcastle', workspaceRoot), undefined);
+  });
+
+  test('accepts Vibe Sandcastle agents with explicit transport', () => {
+    writeConfig({
+      'Vibe Sandcastle': {
+        transport: 'sandcastle',
+        provider: 'vibe',
+        model: 'mistral-large-latest',
+      },
+    });
+
+    const config = getAgentConfig('Vibe Sandcastle', workspaceRoot);
+    assert.ok(config);
+    assert.ok(isSandcastleAgentConfig(config));
+    assert.strictEqual(config.provider, 'vibe');
   });
 
   test('ignores invalid JSON instead of throwing', () => {

@@ -279,10 +279,14 @@ export function normalizeSessionUpdate(value: unknown): SessionUpdate {
           : null;
       return {
         sessionUpdate,
+        messageId: typeof candidate.messageId === 'string' ? candidate.messageId : undefined,
+        agentId: typeof candidate.agentId === 'string' ? candidate.agentId : undefined,
         content: content
           ? {
               type: typeof content.type === 'string' ? content.type : undefined,
               text: typeof content.text === 'string' ? content.text : undefined,
+              messageId: typeof content.messageId === 'string' ? content.messageId : undefined,
+              agentId: typeof content.agentId === 'string' ? content.agentId : undefined,
             }
           : undefined,
       };

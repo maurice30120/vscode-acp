@@ -2,18 +2,26 @@
   "agents": {
     "Codex CLI": {
       "command": "npx",
-      "args": ["@zed-industries/codex-acp@latest"],
+      "args": [
+        "@zed-industries/codex-acp@latest"
+      ],
       "env": {},
       "displayName": "Codex"
     },
     "Pi Agent": {
       "command": "npx",
-      "args": ["-y", "pi-acp"],
+      "args": [
+        "-y",
+        "pi-acp"
+      ],
       "env": {}
     },
     "OpenCode": {
       "command": "npx",
-      "args": ["opencode-ai@latest", "acp"],
+      "args": [
+        "opencode-ai@latest",
+        "acp"
+      ],
       "env": {}
     },
     "Vibe": {

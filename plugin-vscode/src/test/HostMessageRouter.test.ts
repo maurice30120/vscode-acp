@@ -130,6 +130,38 @@ suite('HostMessageRouter', () => {
     assert.ok(result.actions.some(action => action.type === 'appendAssistantChunk'));
   });
 
+  test('sessionUpdate preserves metadata for an arbitrary pipeline agent', () => {
+    const result = routeHostMessage(
+      {
+        type: 'sessionUpdate',
+        agentId: 'security-auditor-v2',
+        update: {
+          sessionUpdate: 'agent_message_chunk',
+          messageId: 'message-42',
+          content: { type: 'text', text: 'safe', messageId: 'message-42' },
+        },
+      },
+      {
+        getState: () => createInitialState(emptyPersistedState()),
+        refs: {
+          sharedVersion: 0,
+          sharedUpdatedAt: 0,
+          orchestrationVersion: 0,
+          orchestrationUpdatedAt: 0,
+          fileSearchRequestId: 0,
+          turnCounter: 0,
+        },
+      },
+    );
+
+    assert.deepStrictEqual(result.actions[0], {
+      type: 'appendAssistantChunk',
+      text: 'safe',
+      messageId: 'message-42',
+      agentId: 'security-auditor-v2',
+    });
+  });
+
   test('sandcastle_status updates current turn without appending chat history', () => {
     let state = createInitialState(emptyPersistedState());
     state = appReducer(state, { type: 'promptStart', turnId: 'turn-1' });

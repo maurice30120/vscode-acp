@@ -52,6 +52,48 @@ suite('WebviewAppState', () => {
     );
   });
 
+  test('appendUserChunk concatenates chunks sharing one message ID', () => {
+    const initial = createInitialState(emptyPersistedState());
+    const first = appReducer(initial, {
+      type: 'appendUserChunk', text: 'hel', messageId: 'user-message-1', agentId: 'user',
+    });
+    const second = appReducer(first, {
+      type: 'appendUserChunk', text: 'lo', messageId: 'user-message-1', agentId: 'user',
+    });
+
+    assert.strictEqual(second.persisted.chatHistory.length, 1);
+    assert.deepStrictEqual(second.persisted.chatHistory[0], {
+      kind: 'message',
+      role: 'user',
+      text: 'hello',
+      agentId: 'user',
+      messageId: 'user-message-1',
+    });
+  });
+
+  test('assistant chunk metadata overrides the prompt fallback agent', () => {
+    let state = createInitialState(emptyPersistedState());
+    state = appReducer(state, {
+      type: 'promptStart', turnId: 'turn-1', agentId: 'pipeline',
+    });
+    state = appReducer(state, {
+      type: 'appendAssistantChunk',
+      text: 'reviewed',
+      messageId: 'agent-message-1',
+      agentId: 'custom-security-reviewer',
+    });
+    state = appReducer(state, { type: 'promptEnd' });
+
+    assert.deepStrictEqual(state.persisted.chatHistory[0], {
+      kind: 'message',
+      role: 'assistant',
+      text: 'reviewed',
+      turnId: 'turn-1',
+      messageId: 'agent-message-1',
+      agentId: 'custom-security-reviewer',
+    });
+  });
+
   test('hydrateOrchestrationState preserves shared slice', () => {
     const initial = createInitialState(emptyPersistedState());
     const withPrompt = appReducer(initial, { type: 'setPromptText', text: 'draft' });

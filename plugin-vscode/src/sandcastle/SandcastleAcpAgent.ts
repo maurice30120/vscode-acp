@@ -28,6 +28,7 @@ import {
 } from './PromptHistory';
 import { enrichProviderRunError } from './ProviderRunError';
 import { runGit } from './runGit';
+import { readVibeSessionFallback } from './VibeSessionLogs';
 import { applyWorktreeToHost, previewWorktreeChanges } from './WorktreePromotion';
 
 interface BridgeSession {
@@ -38,10 +39,11 @@ interface BridgeSession {
   sandbox?: Sandbox;
   history: PromptHistoryEntry[];
   activeRun?: AbortController;
+  activeMessageId?: string;
   notifications: Promise<void>;
 }
 
-type SandcastleRunStatus = 'starting' | 'running' | 'completed' | 'cancelled' | 'failed';
+type SandcastleRunStatus = 'starting' | 'completed' | 'cancelled' | 'failed';
 
 type SandcastleStatusInput = {
   status: SandcastleRunStatus;
@@ -49,20 +51,24 @@ type SandcastleStatusInput = {
   lastProviderEventAt?: string;
 };
 
+type MinimalRunResult = {
+  stdout: string;
+};
+
+const VIBE_COMPLETION_POLL_INTERVAL_MS = 1_000;
+
+class VibeCompletedSignal extends Error {
+  constructor(readonly fallbackText: string) {
+    super('Vibe session completed in logs.');
+  }
+}
+
 /** Abstraction injectable pour créer sandboxes, providers et backends Docker du bridge ACP. */
 export interface SandcastleRuntime {
   createSandbox(options: CreateSandboxOptions): Promise<Sandbox>;
   createProvider(config: BridgeConfig): AgentProvider;
-  createSandboxProvider(config: BridgeConfig, cwd: string): CreateSandboxOptions['sandbox'];
+  createSandboxProvider(config: BridgeConfig, cwd: string, branch?: string): CreateSandboxOptions['sandbox'];
 }
-
-export interface SandcastleAcpAgentOptions {
-  heartbeatIntervalMs?: number;
-  providerStatusIntervalMs?: number;
-}
-
-const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
-const DEFAULT_PROVIDER_STATUS_INTERVAL_MS = 1_000;
 
 function logSandcastleActivity(message: string): void {
   process.stderr.write(`[${new Date().toISOString()}] ${message}\n`);
@@ -81,7 +87,6 @@ export class SandcastleAcpAgent implements Agent {
     private readonly connection: AgentSideConnection,
     private readonly config: BridgeConfig,
     private readonly runtime: SandcastleRuntime,
-    private readonly options: SandcastleAcpAgentOptions = {},
   ) {}
 
   /**
@@ -162,17 +167,10 @@ export class SandcastleAcpAgent implements Agent {
     const promptText = this.extractTextPrompt(params);
     const controller = new AbortController();
     session.activeRun = controller;
+    session.activeMessageId = crypto.randomUUID();
     let streamedText = false;
-    let heartbeat: NodeJS.Timeout | undefined;
     const startedAt = new Date().toISOString();
     let lastProviderEventAt: string | undefined;
-    let lastProviderStatusAtMs = 0;
-    const stopHeartbeat = (): void => {
-      if (heartbeat) {
-        clearInterval(heartbeat);
-        heartbeat = undefined;
-      }
-    };
 
     try {
       const sandbox = await this.ensureSandbox(session);
@@ -180,19 +178,10 @@ export class SandcastleAcpAgent implements Agent {
         status: 'starting',
         startedAt,
       });
-      heartbeat = setInterval(() => {
-        if (session.activeRun === controller && !controller.signal.aborted) {
-          void this.enqueueSandcastleStatus(session, {
-            status: 'running',
-            startedAt,
-            lastProviderEventAt,
-          });
-        }
-      }, this.options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS);
-      const result = await sandbox.run({
+      const result = await this.runSandbox(session, sandbox, controller, startedAt, {
         agent: this.runtime.createProvider(this.config),
         prompt: buildPromptWithHistory(session.history, promptText),
-        maxIterations: 1,
+        maxIterations: this.config.maxIterations,
         signal: controller.signal,
         idleTimeoutSeconds: 600,
         name: `${this.config.provider}-${session.id.slice(0, 8)}`,
@@ -201,17 +190,6 @@ export class SandcastleAcpAgent implements Agent {
           path: path.join('.sandcastle', 'logs', `acp-${session.id}.log`),
           onAgentStreamEvent: event => {
             lastProviderEventAt = new Date().toISOString();
-            const nowMs = Date.now();
-            const providerStatusIntervalMs = this.options.providerStatusIntervalMs ?? DEFAULT_PROVIDER_STATUS_INTERVAL_MS;
-            if (nowMs - lastProviderStatusAtMs >= providerStatusIntervalMs) {
-              lastProviderStatusAtMs = nowMs;
-              logSandcastleActivity(`Sandcastle provider activity: sessionId=${session.id}, provider=${this.config.provider}, type=${event.type}, timestamp=${lastProviderEventAt}`);
-              void this.enqueueSandcastleStatus(session, {
-                status: 'running',
-                startedAt,
-                lastProviderEventAt,
-              });
-            }
             if (event.type === 'text' && event.message) {
               streamedText = true;
             }
@@ -220,14 +198,14 @@ export class SandcastleAcpAgent implements Agent {
         },
       });
 
-      stopHeartbeat();
       await session.notifications;
-      if (!streamedText && result.stdout.trim()) {
-        await this.sendText(session.id, result.stdout.trim());
+      const finalText = this.resolveFinalText(session, result.stdout, streamedText, startedAt);
+      if (!streamedText && finalText) {
+        await this.sendText(session, finalText);
       }
       session.history.push(
         { role: 'user', text: promptText },
-        { role: 'assistant', text: result.stdout.trim() },
+        { role: 'assistant', text: finalText },
       );
       await this.enqueueSandcastleStatus(session, {
         status: 'completed',
@@ -236,7 +214,6 @@ export class SandcastleAcpAgent implements Agent {
       });
       return { stopReason: 'end_turn' };
     } catch (error) {
-      stopHeartbeat();
       if (controller.signal.aborted) {
         await this.enqueueSandcastleStatus(session, {
           status: 'cancelled',
@@ -255,9 +232,9 @@ export class SandcastleAcpAgent implements Agent {
         cwd: session.cwd,
       });
     } finally {
-      stopHeartbeat();
       if (session.activeRun === controller) {
         session.activeRun = undefined;
+        session.activeMessageId = undefined;
       }
     }
   }
@@ -374,7 +351,7 @@ export class SandcastleAcpAgent implements Agent {
       cwd: session.cwd,
       branch: session.branch,
       baseBranch: session.baseRef,
-      sandbox: this.runtime.createSandboxProvider(this.config, session.cwd),
+      sandbox: this.runtime.createSandboxProvider(this.config, session.cwd, session.branch),
     });
     return session.sandbox;
   }
@@ -411,7 +388,7 @@ export class SandcastleAcpAgent implements Agent {
   private enqueueStreamEvent(session: BridgeSession, event: AgentStreamEvent): void {
     session.notifications = session.notifications.then(async () => {
       if (event.type === 'text') {
-        await this.sendText(session.id, event.message);
+        await this.sendText(session, event.message);
         return;
       }
       if (event.type !== 'toolCall') {
@@ -439,17 +416,92 @@ export class SandcastleAcpAgent implements Agent {
    * @param text - Contenu texte à streamer ; ignoré si vide.
    * @returns Promise résolue après `sessionUpdate` sur la connexion.
    */
-  private async sendText(sessionId: string, text: string): Promise<void> {
+  private async sendText(session: BridgeSession, text: string): Promise<void> {
     if (!text) {
       return;
     }
+    const messageId = session.activeMessageId ?? crypto.randomUUID();
+    const agentId = this.config.agentId || this.config.provider;
     await this.connection.sessionUpdate({
-      sessionId,
+      sessionId: session.id,
       update: {
         sessionUpdate: 'agent_message_chunk',
-        content: { type: 'text', text },
-      },
+        messageId,
+        agentId,
+        content: { type: 'text', text, messageId, agentId } as any,
+      } as any,
     });
+  }
+
+  private resolveFinalText(
+    session: BridgeSession,
+    stdout: string,
+    streamedText: boolean,
+    startedAt: string,
+  ): string {
+    const stdoutText = stdout.trim();
+    if (streamedText || stdoutText || this.config.provider !== 'vibe') {
+      return stdoutText;
+    }
+
+    const fallback = readVibeSessionFallback(session.cwd, startedAt, { requireCompleted: true });
+    if (!fallback) {
+      return '';
+    }
+    logSandcastleActivity([
+      `Vibe fallback: sessionId=${session.id}`,
+      fallback.sessionId ? `vibeSessionId=${fallback.sessionId}` : undefined,
+      fallback.logPath ? `logPath=${fallback.logPath}` : undefined,
+    ].filter(Boolean).join(', '));
+    return fallback.text.trim();
+  }
+
+  private async runSandbox(
+    session: BridgeSession,
+    sandbox: Sandbox,
+    controller: AbortController,
+    startedAt: string,
+    options: Parameters<Sandbox['run']>[0],
+  ): Promise<MinimalRunResult> {
+    if (this.config.provider !== 'vibe') {
+      return await sandbox.run(options);
+    }
+
+    const run = sandbox.run(options).catch(error => {
+      if (error instanceof VibeCompletedSignal) {
+        return { stdout: error.fallbackText };
+      }
+      throw error;
+    });
+    const completion = this.waitForVibeCompletion(session, controller, startedAt);
+    return await Promise.race([run, completion]);
+  }
+
+  private async waitForVibeCompletion(
+    session: BridgeSession,
+    controller: AbortController,
+    startedAt: string,
+  ): Promise<MinimalRunResult> {
+    while (!controller.signal.aborted) {
+      await new Promise(resolve => setTimeout(resolve, VIBE_COMPLETION_POLL_INTERVAL_MS));
+      if (controller.signal.aborted) {
+        break;
+      }
+      const fallback = readVibeSessionFallback(session.cwd, startedAt, { requireCompleted: true });
+      if (!fallback) {
+        continue;
+      }
+      logSandcastleActivity([
+        `Vibe completed in session logs: sessionId=${session.id}`,
+        fallback.sessionId ? `vibeSessionId=${fallback.sessionId}` : undefined,
+        fallback.logPath ? `logPath=${fallback.logPath}` : undefined,
+      ].filter(Boolean).join(', '));
+      controller.abort(new VibeCompletedSignal(fallback.text.trim()));
+      return { stdout: fallback.text.trim() };
+    }
+    throw controller.signal.reason instanceof Error
+      ? controller.signal.reason
+      : new Error('Vibe completion watcher aborted.');
   }
 
   private enqueueSandcastleStatus(session: BridgeSession, input: SandcastleStatusInput): Promise<void> {

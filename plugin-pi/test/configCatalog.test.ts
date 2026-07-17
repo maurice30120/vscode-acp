@@ -31,7 +31,7 @@ import {
 	writeSkill,
 } from "./helpers.js";
 
-test("loads .pi/.acp/acp-agents.json compatible native ACP config", () => {
+test("loads .acp/acp-agents.json compatible native ACP config", () => {
 	const config = parsePiAcpConfig(
 		JSON.stringify({
 			agents: {
@@ -67,7 +67,7 @@ test("loadPiAcpConfig loads the embedded plugin config for an empty workspace", 
 	assert.equal(config.agents["Pi Agent"].command, "npx");
 	assert.equal(config.pipeline.enabled, true);
 	assert.equal(config.pipeline.instructionsMaxBytes, 262144);
-	assert.match(config.filePath, /plugin-pi[\/\\]\.pi[\/\\]\.acp[\/\\]acp-agents\.json$/);
+	assert.match(config.filePath, /plugin-pi[\/\\]\.acp[\/\\]acp-agents\.json$/);
 });
 
 test("parsePiAcpConfig reports JSON parse errors as empty config", () => {
@@ -146,7 +146,7 @@ test("rejects sandcastle agents in native Pi config and points to dedicated file
 
 	assert.equal(config.agents.Sandcastle, undefined);
 	assert.match(config.errors.join("\n"), /agents\.Sandcastle\.transport/);
-	assert.match(config.errors.join("\n"), /\.pi\/\.acp\/\.sandcastle\/config\.json/);
+	assert.match(config.errors.join("\n"), /\.acp\/\.sandcastle\/config\.json/);
 });
 
 test("parseSandcastleConfig validates dedicated Sandcastle config", () => {
@@ -159,6 +159,7 @@ test("parseSandcastleConfig validates dedicated Sandcastle config", () => {
 					provider: "codex",
 					model: "gpt-5",
 					effort: "medium",
+					maxIterations: 6,
 					displayName: "Codex in Sandcastle",
 					env: { FOO: "bar" },
 					skills: false,
@@ -183,6 +184,7 @@ test("parseSandcastleConfig validates dedicated Sandcastle config", () => {
 	assert.equal(config.agents["Codex Sandcastle"].provider, "codex");
 	assert.equal(config.agents["Codex Sandcastle"].model, "gpt-5");
 	assert.equal(config.agents["Codex Sandcastle"].effort, "medium");
+	assert.equal(config.agents["Codex Sandcastle"].maxIterations, 6);
 	assert.equal(config.agents["Codex Sandcastle"].displayName, "Codex in Sandcastle");
 	assert.deepEqual(config.agents["Codex Sandcastle"].env, { FOO: "bar" });
 	assert.equal(config.agents["Codex Sandcastle"].skills, false);
@@ -200,6 +202,7 @@ test("parseSandcastleConfig reports explicit field errors", () => {
 					provider: "claude",
 					model: " ",
 					effort: "max",
+					maxIterations: 21,
 					env: { TOKEN: 123 },
 				},
 				MissingTransport: {
@@ -216,6 +219,7 @@ test("parseSandcastleConfig reports explicit field errors", () => {
 	assert.match(errors, /agents\.Bad\.provider/);
 	assert.match(errors, /agents\.Bad\.model/);
 	assert.match(errors, /agents\.Bad\.effort/);
+	assert.match(errors, /agents\.Bad\.maxIterations/);
 	assert.match(errors, /agents\.Bad\.env\.TOKEN/);
 	assert.match(errors, /agents\.MissingTransport\.transport/);
 });
@@ -237,7 +241,7 @@ test("loadPiAgentCatalog keeps native and Sandcastle agents disjoint but combine
 	writeDefaultConfig(pluginRoot);
 	writeFile(
 		pluginRoot,
-		".pi/.acp/.sandcastle/config.json",
+		".acp/.sandcastle/config.json",
 		JSON.stringify({
 			promotion: "autoReject",
 			agents: {
@@ -265,7 +269,7 @@ test("duplicate native and Sandcastle agent names are errors and make pipelines 
 	writeDefaultConfig(pluginRoot);
 	writeFile(
 		pluginRoot,
-		".pi/.acp/.sandcastle/config.json",
+		".acp/.sandcastle/config.json",
 		JSON.stringify({
 			promotion: "ask",
 			agents: {
@@ -279,7 +283,7 @@ test("duplicate native and Sandcastle agent names are errors and make pipelines 
 	);
 	writeFile(
 		pluginRoot,
-		".pi/.acp/pipelines/duplicate.yaml",
+		".acp/pipelines/duplicate.yaml",
 		[
 			"version: 2",
 			"id: duplicate",
@@ -381,7 +385,7 @@ test("getPipelineDefinitions loads embedded pipelines for an empty workspace", (
 	);
 });
 
-test("loads .pi/.acp/pipelines/*.yaml from workspace", () => {
+test("loads .acp/pipelines/*.yaml from workspace", () => {
 	const workspace = createTempWorkspace();
 	writeDefaultConfig(workspace);
 	writeDemoPipeline(workspace);
@@ -395,7 +399,7 @@ test("loads .pi/.acp/pipelines/*.yaml from workspace", () => {
 	assert.equal(definitions[0].title, "Demo Pipeline");
 });
 
-test("loads .pi/.acp/pipelines/*.yml from workspace", () => {
+test("loads .acp/pipelines/*.yml from workspace", () => {
 	const workspace = createTempWorkspace();
 	writeDefaultConfig(workspace);
 	writePipelineFile(workspace, "short.yml", [
@@ -509,7 +513,7 @@ test("primitive requires either prompt or promptFile", () => {
 test("promptFile can be resolved relative to the pipeline YAML file", () => {
 	const workspace = createTempWorkspace();
 	writeDefaultConfig(workspace);
-	writeFile(workspace, ".pi/.acp/pipelines/prompts/planner.md", "Relative plan.");
+	writeFile(workspace, ".acp/pipelines/prompts/planner.md", "Relative plan.");
 	writePipelineFile(workspace, "plan.yaml", [
 		"version: 2",
 		"id: plan",
@@ -536,7 +540,7 @@ test("promptFile can be resolved relative to the pipeline YAML file", () => {
 test("promptFile loads and composes the prompt (promptFile + blank line + prompt)", () => {
 	const workspace = createTempWorkspace();
 	writeDefaultConfig(workspace);
-	writeFile(workspace, ".pi/.acp/agents/planner.md", "You are a careful planner.");
+	writeFile(workspace, ".acp/agents/planner.md", "You are a careful planner.");
 	writePipelineFile(workspace, "plan.yaml", [
 		"version: 2",
 		"id: plan",
@@ -544,7 +548,7 @@ test("promptFile loads and composes the prompt (promptFile + blank line + prompt
 		"primitives:",
 		"  planner:",
 		"    agent: Codex CLI",
-		"    promptFile: .pi/.acp/agents/planner.md",
+		"    promptFile: .acp/agents/planner.md",
 		"    prompt: |",
 		"      User request:",
 		"      {{userPrompt}}",
@@ -642,11 +646,11 @@ test("pipeline primitive permissions rejects invalid values", () => {
 test("embedded promptFile paths resolve from config root, not workspace root", () => {
 	const workspace = createTempWorkspace();
 	const pluginRoot = createTempWorkspace();
-	writeFile(pluginRoot, ".pi/.acp/agents/planner.md", "Embedded planner.");
-	writeFile(workspace, ".pi/.acp/agents/planner.md", "Workspace planner.");
+	writeFile(pluginRoot, ".acp/agents/planner.md", "Embedded planner.");
+	writeFile(workspace, ".acp/agents/planner.md", "Workspace planner.");
 	writeFile(
 		pluginRoot,
-		".pi/.acp/pipelines/plan.yaml",
+		".acp/pipelines/plan.yaml",
 		[
 			"version: 2",
 			"id: plan",
@@ -654,7 +658,7 @@ test("embedded promptFile paths resolve from config root, not workspace root", (
 			"primitives:",
 			"  planner:",
 			"    agent: Codex CLI",
-			"    promptFile: .pi/.acp/agents/planner.md",
+			"    promptFile: .acp/agents/planner.md",
 			"    output: proposed_plan",
 			"steps:",
 			"  - id: planner",
@@ -676,7 +680,7 @@ test("embedded promptFile paths resolve from config root, not workspace root", (
 test("directory promptFile renders the pipeline invalid", () => {
 	const workspace = createTempWorkspace();
 	writeDefaultConfig(workspace);
-	writeFile(workspace, ".pi/.acp/agents/planner/.keep", "");
+	writeFile(workspace, ".acp/agents/planner/.keep", "");
 	writePipelineFile(workspace, "plan.yaml", [
 		"version: 2",
 		"id: plan",
@@ -684,7 +688,7 @@ test("directory promptFile renders the pipeline invalid", () => {
 		"primitives:",
 		"  planner:",
 		"    agent: Codex CLI",
-		"    promptFile: .pi/.acp/agents/planner",
+		"    promptFile: .acp/agents/planner",
 		"    output: proposed_plan",
 		"steps:",
 		"  - id: planner",
@@ -702,7 +706,7 @@ test("directory promptFile renders the pipeline invalid", () => {
 test("promptFile alone (no inline prompt) is accepted", () => {
 	const workspace = createTempWorkspace();
 	writeDefaultConfig(workspace);
-	writeFile(workspace, ".pi/.acp/agents/planner.md", "Plan: {{userPrompt}}");
+	writeFile(workspace, ".acp/agents/planner.md", "Plan: {{userPrompt}}");
 	writePipelineFile(workspace, "plan.yaml", [
 		"version: 2",
 		"id: plan",
@@ -710,7 +714,7 @@ test("promptFile alone (no inline prompt) is accepted", () => {
 		"primitives:",
 		"  planner:",
 		"    agent: Codex CLI",
-		"    promptFile: .pi/.acp/agents/planner.md",
+		"    promptFile: .acp/agents/planner.md",
 		"    output: proposed_plan",
 		"steps:",
 		"  - id: planner",
@@ -739,7 +743,7 @@ test("missing promptFile renders the pipeline invalid", () => {
 		"primitives:",
 		"  planner:",
 		"    agent: Codex CLI",
-		"    promptFile: .pi/.acp/agents/missing.md",
+		"    promptFile: .acp/agents/missing.md",
 		"    output: proposed_plan",
 		"steps:",
 		"  - id: planner",
@@ -757,7 +761,7 @@ test("missing promptFile renders the pipeline invalid", () => {
 test("oversized promptFile renders the pipeline invalid", () => {
 	const workspace = createTempWorkspace();
 	writeDefaultConfig(workspace);
-	writeFile(workspace, ".pi/.acp/agents/planner.md", "0123456789".repeat(100));
+	writeFile(workspace, ".acp/agents/planner.md", "0123456789".repeat(100));
 	writePipelineFile(workspace, "plan.yaml", [
 		"version: 2",
 		"id: plan",
@@ -765,7 +769,7 @@ test("oversized promptFile renders the pipeline invalid", () => {
 		"primitives:",
 		"  planner:",
 		"    agent: Codex CLI",
-		"    promptFile: .pi/.acp/agents/planner.md",
+		"    promptFile: .acp/agents/planner.md",
 		"    output: proposed_plan",
 		"steps:",
 		"  - id: planner",
@@ -782,21 +786,21 @@ test("oversized promptFile renders the pipeline invalid", () => {
 			"primitives:",
 			"  planner:",
 			"    agent: Codex CLI",
-			"    promptFile: .pi/.acp/agents/planner.md",
+			"    promptFile: .acp/agents/planner.md",
 			"    output: proposed_plan",
 			"steps:",
 			"  - id: planner",
 			"    use: planner",
 			"",
 		].join("\n"),
-		`${workspace}/.pi/.acp/pipelines/plan.yaml`,
+		`${workspace}/.acp/pipelines/plan.yaml`,
 		{ "Codex CLI": { command: "codex" } },
 	);
 
 	const resolved = resolvePipelinePromptFiles(result.definition!.primitives, {
 		workspaceCwd: workspace,
 		maxBytes: 4,
-		pipelineFilePath: `${workspace}/.pi/.acp/pipelines/plan.yaml`,
+		pipelineFilePath: `${workspace}/.acp/pipelines/plan.yaml`,
 	});
 
 	assert.equal(resolved.errors.length, 1);
@@ -836,14 +840,14 @@ test("promptFile outside the workspace is rejected", () => {
 			"    use: planner",
 			"",
 		].join("\n"),
-		`${workspace}/.pi/.acp/pipelines/plan.yaml`,
+		`${workspace}/.acp/pipelines/plan.yaml`,
 		{ "Codex CLI": { command: "codex" } },
 	);
 
 	const resolved = resolvePipelinePromptFiles(result.definition!.primitives, {
 		workspaceCwd: workspace,
 		maxBytes: 262144,
-		pipelineFilePath: `${workspace}/.pi/.acp/pipelines/plan.yaml`,
+		pipelineFilePath: `${workspace}/.acp/pipelines/plan.yaml`,
 	});
 
 	assert.equal(resolved.errors.length, 1);

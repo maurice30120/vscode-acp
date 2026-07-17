@@ -16,6 +16,9 @@ RUN npm install -g @openai/codex@0.141.0
 
 USER ${AGENT_UID}:${AGENT_GID}
 
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+  && /home/agent/.local/bin/uv tool install mistral-vibe
+
 RUN curl https://cursor.com/install -fsS | bash
 
 ENV PATH="/home/agent/.local/bin:$PATH"

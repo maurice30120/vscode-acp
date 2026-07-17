@@ -6,7 +6,7 @@ Travailler la **frontière** : tout ticket dont les blockers sont tous faits. Ap
 
 ## Types & config : lire `.sandcastle/config.json`
 
-**À construire :** un utilisateur peut écrire `.pi/.acp/.sandcastle/config.json` (`promotion` + `agents`, `transport: "sandcastle"` requis par entrée) ; sa validation rejette explicitement `provider`/`model`/`effort`/`promotion` invalides et pointe vers le champ fautif. `acp-agents.json` reste natif-only : tout `transport: "sandcastle"` y est rejeté avec un message pointant vers `.pi/.acp/.sandcastle/config.json`. Un doublon de nom d'agent entre les deux fichiers est une erreur, et aucun pipeline référençant ce nom ne démarre. Les agents Sandcastle et natifs restent disjoints sauf pour cette validation de doublon. L'absence de fichier Sandcastle ne change rien au comportement natif.
+**À construire :** un utilisateur peut écrire `.acp/.sandcastle/config.json` (`promotion` + `agents`, `transport: "sandcastle"` requis par entrée) ; sa validation rejette explicitement `provider`/`model`/`effort`/`promotion` invalides et pointe vers le champ fautif. `acp-agents.json` reste natif-only : tout `transport: "sandcastle"` y est rejeté avec un message pointant vers `.acp/.sandcastle/config.json`. Un doublon de nom d'agent entre les deux fichiers est une erreur, et aucun pipeline référençant ce nom ne démarre. Les agents Sandcastle et natifs restent disjoints sauf pour cette validation de doublon. L'absence de fichier Sandcastle ne change rien au comportement natif.
 
 **Bloqué par :** None — démarrable immédiatement.
 

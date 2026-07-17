@@ -28,11 +28,12 @@ export interface AcpAgentConfigEntry {
 
 export interface SandcastleAgentConfigEntry {
   transport: 'sandcastle';
-  provider: 'codex' | 'cursor' | 'pi';
+  provider: 'codex' | 'cursor' | 'pi' | 'vibe';
   model: string;
   displayName?: string;
   env?: Record<string, string>;
   effort?: 'low' | 'medium' | 'high' | 'xhigh';
+  maxIterations?: number;
   /** When false, disables `.agents/skills` wiring for this agent. */
   skills?: boolean;
 }
@@ -159,10 +160,22 @@ function normalizeAgentConfigEntry(
 
   if (value.transport === 'sandcastle') {
     if (
-      (value.provider !== 'codex' && value.provider !== 'cursor' && value.provider !== 'pi')
+      (value.provider !== 'codex' && value.provider !== 'cursor' && value.provider !== 'pi' && value.provider !== 'vibe')
       || typeof value.model !== 'string'
     ) {
       log(`Ignoring invalid Sandcastle agent "${name}" in ${filePath}: provider and model are required.`);
+      return undefined;
+    }
+    if (
+      value.maxIterations !== undefined
+      && (
+        typeof value.maxIterations !== 'number'
+        || !Number.isInteger(value.maxIterations)
+        || value.maxIterations < 1
+        || value.maxIterations > 20
+      )
+    ) {
+      log(`Ignoring invalid Sandcastle agent "${name}" in ${filePath}: maxIterations must be an integer between 1 and 20.`);
       return undefined;
     }
     return value as SandcastleAgentConfigEntry;

@@ -312,6 +312,44 @@ suite('PermissionHandler', () => {
     assert.strictEqual(capturedItems?.[1].description, 'reject_once - npm run build -- --watch');
   });
 
+  test('uses details from an earlier tool call when permission only contains the ID', async () => {
+    let capturedItems: any[] | undefined;
+    let capturedOptions: any;
+    vscode.window.showQuickPick = async function(items: any, options: any) {
+      capturedItems = items;
+      capturedOptions = options;
+      return items[0];
+    };
+    vscode.workspace.getConfiguration = function(_section) {
+      return { get: () => 'ask' } as any;
+    };
+
+    const handler = new PermissionHandler();
+    handler.trackSessionUpdate({
+      sessionId: 'test-session-1',
+      update: {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'test-tool-1',
+        title: 'Run git command',
+        kind: 'execute',
+        rawInput: { command: 'git status --short' },
+      },
+    });
+
+    await handler.requestPermission({
+      sessionId: 'test-session-1',
+      toolCall: { toolCallId: 'test-tool-1' },
+      options: [
+        { optionId: 'allow_once', name: 'Allow once', kind: 'allow_once' },
+        { optionId: 'deny', name: 'Deny', kind: 'reject_once' },
+      ],
+    });
+
+    assert.strictEqual(capturedOptions?.placeHolder, 'Run git command - git status --short');
+    assert.strictEqual(capturedItems?.[0].description, 'allow_once - git status --short');
+    assert.strictEqual(capturedItems?.[1].description, 'reject_once - git status --short');
+  });
+
   test('cancelled permission returns cancelled outcome', async () => {
     vscode.window.showQuickPick = async function(_items: any, _options: any) {
       return undefined; // User cancelled

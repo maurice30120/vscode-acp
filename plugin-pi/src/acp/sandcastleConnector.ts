@@ -37,6 +37,9 @@ export function buildSandcastleBridgeProcessConfig(
   if (config.effort) {
     args.push('--effort', config.effort);
   }
+  if (config.maxIterations) {
+    args.push('--max-iterations', String(config.maxIterations));
+  }
   const fileEnv = loadSandcastleEnv(workspaceCwd);
   const env = {
     ...fileEnv,

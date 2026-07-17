@@ -176,6 +176,7 @@ test("EphemeralAcpRunner auto-applies Sandcastle workspace promotion", async () 
 test("EphemeralAcpRunner maps Sandcastle no changes to no_changes", async () => {
 	const workspace = createTempWorkspace();
 	const calls: string[] = [];
+	const statuses: string[] = [];
 	const runner = new EphemeralAcpRunner(workspace, {
 		getAgentConfigs: () => ({
 			Sandbox: {
@@ -204,10 +205,12 @@ test("EphemeralAcpRunner maps Sandcastle no changes to no_changes", async () => 
 		agentName: "Sandbox",
 		promptText: "prompt",
 		sideEffects: "workspace",
+		onStatus: event => statuses.push(event.message ?? ""),
 	});
 
 	assert.equal(result.promotion, "no_changes");
 	assert.deepEqual(calls, ["sandcastle/preview", "sandcastle/reject"]);
+	assert.deepEqual(statuses, ["Sandcastle run produced no text, no tool calls, and no file diff."]);
 });
 
 test("EphemeralAcpRunner auto-rejects Sandcastle workspace promotion", async () => {
@@ -738,7 +741,7 @@ test("/pipeline run then approve executes planner and implementer", async () => 
 	await handlePipelineCommand("run plan-execute-verify add tests", ctx, controller);
 	await handlePipelineCommand("approve", ctx, controller);
 
-	assert.deepEqual(calls, ["Pi Agent", "Pi Agent", "Vibe"]);
+	assert.deepEqual(calls, ["Pi Agent", "Vibe Sandcastle", "Vibe"]);
 	assert.match(notifications.join("\n"), /plan ready/i);
 	assert.ok(messages.length >= 2);
 	assert.ok(messages.some((message) => String(message.content).includes("ACP Pipeline Plan")));

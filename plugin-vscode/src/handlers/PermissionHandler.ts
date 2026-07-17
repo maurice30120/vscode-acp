@@ -2,7 +2,12 @@ import * as vscode from 'vscode';
 import { log } from '../utils/Logger';
 import { sendEvent } from '../utils/TelemetryManager';
 
-import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk';
+import type {
+  RequestPermissionRequest,
+  RequestPermissionResponse,
+  SessionNotification,
+  ToolCallUpdate,
+} from '@agentclientprotocol/sdk';
 
 const CANCELLED: RequestPermissionResponse = { outcome: { outcome: 'cancelled' } };
 
@@ -18,8 +23,20 @@ export interface PermissionHandlerOptions {
 
 export class PermissionHandler {
   private queue: Promise<void> = Promise.resolve();
+  private readonly toolCalls = new Map<string, ToolCallUpdate>();
 
   constructor(private readonly options: PermissionHandlerOptions = {}) {}
+
+  /** Keeps the complete tool call because permission requests may only contain its ID. */
+  trackSessionUpdate(params: SessionNotification): void {
+    const update = params.update;
+    if (update.sessionUpdate !== 'tool_call' && update.sessionUpdate !== 'tool_call_update') {
+      return;
+    }
+
+    const key = toolCallKey(params.sessionId, update.toolCallId);
+    this.toolCalls.set(key, mergeToolCall(this.toolCalls.get(key), update));
+  }
 
   async requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
     const result = this.queue.then(() => this.handlePermission(params));
@@ -32,9 +49,11 @@ export class PermissionHandler {
   }
 
   private async handlePermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
-    const title = params.toolCall?.title || 'Permission Request';
-    const kind = params.toolCall?.kind;
-    const detail = formatToolCallDetail(params.toolCall?.rawInput);
+    const cachedToolCall = this.toolCalls.get(toolCallKey(params.sessionId, params.toolCall.toolCallId));
+    const toolCall = mergeToolCall(cachedToolCall, params.toolCall);
+    const title = toolCall.title || formatToolKind(toolCall.kind) || 'Permission Request';
+    const kind = toolCall.kind;
+    const detail = formatToolCallDetail(toolCall.rawInput);
 
     if (this.options.autoApproveAll) {
       const allowOption = params.options.find(o =>
@@ -125,13 +144,14 @@ function formatToolCallDetail(rawInput: unknown): string | undefined {
     return undefined;
   }
 
-  const normalized = typeof rawInput === 'string'
-    ? rawInput
+  const displayValue = extractDisplayValue(rawInput);
+  const normalized = typeof displayValue === 'string'
+    ? displayValue
     : (() => {
         try {
-          return JSON.stringify(rawInput);
+          return JSON.stringify(displayValue);
         } catch {
-          return String(rawInput);
+          return String(displayValue);
         }
       })();
 
@@ -142,6 +162,40 @@ function formatToolCallDetail(rawInput: unknown): string | undefined {
 
   const maxLength = 180;
   return trimmed.length > maxLength ? `${trimmed.slice(0, maxLength - 3)}...` : trimmed;
+}
+
+function extractDisplayValue(rawInput: unknown): unknown {
+  if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) {
+    return rawInput;
+  }
+
+  const input = rawInput as Record<string, unknown>;
+  for (const key of ['command', 'cmd', 'path', 'query', 'url']) {
+    if (typeof input[key] === 'string' && input[key].trim()) {
+      return input[key];
+    }
+  }
+
+  return rawInput;
+}
+
+function toolCallKey(sessionId: string, toolCallId: string): string {
+  return `${sessionId}:${toolCallId}`;
+}
+
+function mergeToolCall(
+  previous: ToolCallUpdate | undefined,
+  update: ToolCallUpdate,
+): ToolCallUpdate {
+  const definedEntries = Object.entries(update).filter(([, value]) => value !== undefined);
+  return { ...previous, ...Object.fromEntries(definedEntries) } as ToolCallUpdate;
+}
+
+function formatToolKind(kind: string | null | undefined): string | undefined {
+  if (!kind) {
+    return undefined;
+  }
+  return kind.charAt(0).toUpperCase() + kind.slice(1);
 }
 
 function formatPermissionDescription(kind: string | undefined, detail: string | undefined): string {

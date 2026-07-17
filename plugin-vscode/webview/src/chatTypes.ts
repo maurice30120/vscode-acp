@@ -1,5 +1,8 @@
 export type ChatRole = 'user' | 'assistant' | 'error' | 'info';
 
+/** Opaque identifier supplied by an ACP agent or pipeline definition. */
+export type AgentID = string;
+
 export type ToolCallStatus = 'pending' | 'running' | 'completed' | 'failed';
 
 export type SandcastleRunStatus = 'starting' | 'running' | 'completed' | 'cancelled' | 'failed';
@@ -100,6 +103,8 @@ export type MessageHistoryItem = {
   role: ChatRole;
   text: string;
   turnId?: string;
+  messageId?: string;
+  agentId?: AgentID;
 };
 
 export type ThoughtHistoryItem = {
@@ -165,6 +170,8 @@ export type PipelineRoleOutputHistoryItem = {
   agentName?: string;
   text: string;
   title: string;
+  messageId?: string;
+  agentId?: AgentID;
 };
 
 export type ChatHistoryItem =
@@ -207,21 +214,29 @@ export type SelectedFileMention = FileSearchResult & {
 export type SessionContentChunk = {
   type?: string;
   text?: string;
+  messageId?: string;
+  agentId?: AgentID;
 };
 
 export type AgentMessageChunkUpdate = {
   sessionUpdate: 'agent_message_chunk';
   content?: SessionContentChunk;
+  messageId?: string;
+  agentId?: AgentID;
 };
 
 export type UserMessageChunkUpdate = {
   sessionUpdate: 'user_message_chunk';
   content?: SessionContentChunk;
+  messageId?: string;
+  agentId?: AgentID;
 };
 
 export type AgentThoughtChunkUpdate = {
   sessionUpdate: 'agent_thought_chunk';
   content?: SessionContentChunk;
+  messageId?: string;
+  agentId?: AgentID;
 };
 
 export type ToolCallUpdate = {
@@ -313,6 +328,8 @@ export type CurrentTurn = {
   status: CurrentTurnStatus | null;
   toolCalls: CurrentToolCall[];
   historyToolCallIndexes: number[];
+  messageId?: string;
+  agentId?: AgentID;
 };
 
 export type DebugEventCategory =

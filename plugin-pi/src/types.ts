@@ -28,6 +28,7 @@ export interface SandcastleAgentConfig {
   provider: SandcastleProvider;
   model: string;
   effort?: SandcastleEffort;
+  maxIterations?: number;
   displayName?: string;
   env?: Record<string, string>;
   skills?: boolean;

@@ -5,6 +5,8 @@ import type { SandcastleProviderName } from './BridgeConfig.js';
 
 const NOISE_STDERR = /^reading prompt from stdin\.\.\.?$/i;
 const EXIT_PREFIX = /^(\w[\w-]*) exited with code \d+:\n?([\s\S]*)$/i;
+const GO_USAGE_LIMIT = /\b429\b[\s\S]*\bGoUsageLimitError\b|\bGoUsageLimitError\b[\s\S]*\b429\b/i;
+const OPENCODE_MODEL = /\bopencode-go\/[A-Za-z0-9._-]+\b/i;
 
 export function parseCodexJsonStreamErrors(text: string): string | undefined {
   let lastError: string | undefined;
@@ -86,12 +88,17 @@ export function extractCodexRolloutError(content: string): string | undefined {
 function simplifySandcastleExitMessage(message: string): string | undefined {
   const match = message.match(EXIT_PREFIX);
   if (!match) {
-    return parseCodexJsonStreamErrors(message) || message.trim() || undefined;
+    return parseUsageLimitMessage(message) || parseCodexJsonStreamErrors(message) || message.trim() || undefined;
   }
 
   const body = match[2].trim();
   if (!body || NOISE_STDERR.test(body)) {
     return undefined;
+  }
+
+  const usageLimit = parseUsageLimitMessage(body);
+  if (usageLimit) {
+    return usageLimit;
   }
 
   const fromJson = parseCodexJsonStreamErrors(body);
@@ -106,6 +113,16 @@ function simplifySandcastleExitMessage(message: string): string | undefined {
     .join('\n')
     .trim();
   return withoutNoise || undefined;
+}
+
+function parseUsageLimitMessage(text: string): string | undefined {
+  if (!GO_USAGE_LIMIT.test(text)) {
+    return undefined;
+  }
+
+  const model = text.match(OPENCODE_MODEL)?.[0];
+  const target = model ? ` for ${model}` : '';
+  return `Pi Sandcastle failed before writing: provider returned 429 GoUsageLimitError${target}, so no write tool was executed.`;
 }
 
 export function enrichProviderRunError(

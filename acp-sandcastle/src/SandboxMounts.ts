@@ -1,9 +1,29 @@
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import type { CreateSandboxOptions } from '@ai-hero/sandcastle';
+import { docker } from '@ai-hero/sandcastle/sandboxes/docker';
 
-import type { BridgeConfig } from './BridgeConfig.js';
+import { prepareVibeHome } from './VibeHome.js';
+
+export interface SandboxMount {
+  hostPath: string;
+  sandboxPath: string;
+  readonly: boolean;
+}
+
+export interface SandcastleMountConfig {
+  provider: string;
+  model?: string;
+  imageName?: string;
+  effort?: string;
+}
+
+export interface SandcastleDockerConfig extends SandcastleMountConfig {
+  imageName: string;
+  cpus?: number;
+}
 
 export function prepareCodexHome(repoDir: string): string {
   const codexHome = join(repoDir, '.sandcastle', 'codex-home');
@@ -16,18 +36,7 @@ export function prepareCodexHome(repoDir: string): string {
   return codexHome;
 }
 
-export function prepareVibeHome(repoDir: string): string {
-  const vibeHome = join(repoDir, '.sandcastle', 'vibe-home');
-  mkdirSync(vibeHome, { recursive: true });
-  const hostEnv = join(homedir(), '.vibe', '.env');
-  const sandboxEnv = join(vibeHome, '.env');
-  if (existsSync(hostEnv)) {
-    copyFileSync(hostEnv, sandboxEnv);
-  }
-  return vibeHome;
-}
-
-export function codexAuthMounts(repoDir: string): { hostPath: string; sandboxPath: string; readonly: boolean }[] {
+export function codexAuthMounts(repoDir: string): SandboxMount[] {
   return [{
     hostPath: prepareCodexHome(repoDir),
     sandboxPath: '/home/agent/.codex',
@@ -35,7 +44,7 @@ export function codexAuthMounts(repoDir: string): { hostPath: string; sandboxPat
   }];
 }
 
-export function vibeAuthMounts(repoDir: string): { hostPath: string; sandboxPath: string; readonly: boolean }[] {
+export function vibeAuthMounts(repoDir: string): SandboxMount[] {
   return [{
     hostPath: prepareVibeHome(repoDir),
     sandboxPath: '/home/agent/.vibe',
@@ -43,7 +52,7 @@ export function vibeAuthMounts(repoDir: string): { hostPath: string; sandboxPath
   }];
 }
 
-export function agentsSkillsMounts(repoDir: string): { hostPath: string; sandboxPath: string; readonly: boolean }[] {
+export function agentsSkillsMounts(repoDir: string): SandboxMount[] {
   const agentsDir = join(repoDir, '.agents');
   if (!existsSync(agentsDir)) {
     return [];
@@ -56,7 +65,7 @@ export function agentsSkillsMounts(repoDir: string): { hostPath: string; sandbox
   }];
 }
 
-export function gitWorktreeMounts(repoDir: string, branch: string): { hostPath: string; sandboxPath: string; readonly: boolean }[] {
+export function gitWorktreeMounts(repoDir: string, branch: string): SandboxMount[] {
   const gitDir = resolveGitCommonDir(repoDir);
   if (!gitDir) {
     return [];
@@ -82,23 +91,11 @@ export function gitWorktreeMounts(repoDir: string, branch: string): { hostPath: 
   ];
 }
 
-function resolveGitCommonDir(repoDir: string): string | undefined {
-  try {
-    return execFileSync('git', ['-C', repoDir, 'rev-parse', '--path-format=absolute', '--git-common-dir'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-  } catch {
-    const fallback = join(repoDir, '.git');
-    return existsSync(fallback) ? fallback : undefined;
-  }
-}
-
 export function buildSandboxMounts(
-  config: BridgeConfig,
+  config: SandcastleMountConfig,
   cwd: string,
   branch?: string,
-): { hostPath: string; sandboxPath: string; readonly: boolean }[] {
+): SandboxMount[] {
   const mounts = [...agentsSkillsMounts(cwd)];
   if (branch) {
     mounts.push(...gitWorktreeMounts(cwd, branch));
@@ -110,4 +107,28 @@ export function buildSandboxMounts(
     mounts.push(...vibeAuthMounts(cwd));
   }
   return mounts;
+}
+
+export function createDockerSandboxProvider(
+  config: SandcastleDockerConfig,
+  cwd: string,
+  branch?: string,
+): CreateSandboxOptions['sandbox'] {
+  return docker({
+    imageName: config.imageName,
+    cpus: config.cpus ?? 2,
+    mounts: buildSandboxMounts(config, cwd, branch),
+  });
+}
+
+function resolveGitCommonDir(repoDir: string): string | undefined {
+  try {
+    return execFileSync('git', ['-C', repoDir, 'rev-parse', '--path-format=absolute', '--git-common-dir'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    const fallback = join(repoDir, '.git');
+    return existsSync(fallback) ? fallback : undefined;
+  }
 }

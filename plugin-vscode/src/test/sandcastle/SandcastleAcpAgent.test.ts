@@ -31,9 +31,16 @@ class FakeConnection {
 class FakeRuntime implements SandcastleRuntime {
   readonly prompts: string[] = [];
   waitForAbort = false;
+  waitForAbortAfterVibeSessionLog = false;
   runDelayMs = 0;
   emitStreamText = true;
+  streamMessages = ['done'];
+  writeSentinel = true;
+  stdout = 'done';
   rawStreamEventCount = 0;
+  writeVibeSessionLog = false;
+  vibeAssistantText = 'fallback from vibe logs';
+  lastMaxIterations: number | undefined;
 
   createProvider(): any {
     return {
@@ -61,6 +68,7 @@ class FakeRuntime implements SandcastleRuntime {
       run: async (runOptions: SandboxRunOptions) => {
         const prompt = runOptions.prompt || '';
         this.prompts.push(prompt);
+        this.lastMaxIterations = runOptions.maxIterations;
         if (this.waitForAbort) {
           if (runOptions.signal?.aborted) {
             throw runOptions.signal.reason;
@@ -72,7 +80,36 @@ class FakeRuntime implements SandcastleRuntime {
         if (this.runDelayMs > 0) {
           await new Promise((resolve) => setTimeout(resolve, this.runDelayMs));
         }
-        fs.writeFileSync(path.join(worktree, 'sentinel.txt'), prompt, 'utf8');
+        if (this.writeSentinel) {
+          fs.writeFileSync(path.join(worktree, 'sentinel.txt'), prompt, 'utf8');
+        }
+        if (this.writeVibeSessionLog) {
+          const sessionDir = path.join(repo, '.sandcastle', 'vibe-home', 'logs', 'session', 'session_test');
+          fs.mkdirSync(sessionDir, { recursive: true });
+          fs.writeFileSync(path.join(sessionDir, 'meta.json'), JSON.stringify({
+            session_id: 'vibe-session-test',
+            start_time: new Date().toISOString(),
+            end_time: new Date().toISOString(),
+            stats: {
+              steps: 3,
+              tool_calls_succeeded: 2,
+              tool_calls_rejected: 0,
+            },
+          }), 'utf8');
+          fs.writeFileSync(path.join(sessionDir, 'messages.jsonl'), [
+            JSON.stringify({ role: 'assistant', content: '' }),
+            JSON.stringify({ role: 'tool', content: 'read file' }),
+            JSON.stringify({ role: 'assistant', content: this.vibeAssistantText }),
+          ].join('\n'), 'utf8');
+        }
+        if (this.waitForAbortAfterVibeSessionLog) {
+          if (runOptions.signal?.aborted) {
+            throw runOptions.signal.reason;
+          }
+          await new Promise<void>((resolve, reject) => {
+            runOptions.signal?.addEventListener('abort', () => reject(runOptions.signal?.reason), { once: true });
+          });
+        }
         if (runOptions.logging?.type === 'file') {
           for (let index = 0; index < this.rawStreamEventCount; index += 1) {
             runOptions.logging.onAgentStreamEvent?.({
@@ -83,16 +120,18 @@ class FakeRuntime implements SandcastleRuntime {
           }
         }
         if (this.emitStreamText && runOptions.logging?.type === 'file') {
-          runOptions.logging.onAgentStreamEvent?.({
-            type: 'text',
-            message: 'done',
-            iteration: 1,
-            timestamp: new Date(),
-          });
+          for (const message of this.streamMessages) {
+            runOptions.logging.onAgentStreamEvent?.({
+              type: 'text',
+              message,
+              iteration: 1,
+              timestamp: new Date(),
+            });
+          }
         }
         return {
           iterations: [],
-          stdout: 'done',
+          stdout: this.stdout,
           commits: [],
         };
       },
@@ -128,7 +167,7 @@ suite('SandcastleAcpAgent', () => {
     const connection = new FakeConnection();
     const runtime = new FakeRuntime();
     const agent = new SandcastleAcpAgent(connection as unknown as AgentSideConnection, {
-      provider: 'codex', model: 'test', imageName: 'fake',
+      provider: 'codex', model: 'test', imageName: 'fake', maxIterations: 1,
     }, runtime);
     const { sessionId } = await agent.newSession({ cwd: repo, mcpServers: [] });
 
@@ -152,7 +191,7 @@ suite('SandcastleAcpAgent', () => {
     const connection = new FakeConnection();
     const runtime = new FakeRuntime();
     const agent = new SandcastleAcpAgent(connection as unknown as AgentSideConnection, {
-      provider: 'codex', model: 'test', imageName: 'fake',
+      provider: 'codex', model: 'test', imageName: 'fake', maxIterations: 1,
     }, runtime);
     const { sessionId } = await agent.newSession({ cwd: repo, mcpServers: [] });
 
@@ -177,14 +216,49 @@ suite('SandcastleAcpAgent', () => {
     await agent.dispose();
   });
 
-  test('emits heartbeat while provider stays silent', async () => {
+  test('keeps one message ID across streamed chunks', async () => {
+    const connection = new FakeConnection();
+    const runtime = new FakeRuntime();
+    runtime.streamMessages = ['hel', 'lo'];
+    const agent = new SandcastleAcpAgent(connection as unknown as AgentSideConnection, {
+      provider: 'codex', model: 'test', imageName: 'fake', maxIterations: 1,
+      agentId: 'custom-security-agent',
+    }, runtime);
+    const { sessionId } = await agent.newSession({ cwd: repo, mcpServers: [] });
+
+    await agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'stream' }] });
+
+    const chunks = connection.updates.filter(update =>
+      update.update.sessionUpdate === 'agent_message_chunk',
+    );
+    assert.deepStrictEqual(chunks.map(update => update.update.content?.text), ['hel', 'lo']);
+    assert.strictEqual(chunks[0]?.update.messageId, chunks[1]?.update.messageId);
+    assert.strictEqual(chunks[0]?.update.agentId, 'custom-security-agent');
+    await agent.dispose();
+  });
+
+  test('passes configured max iterations to the sandbox run', async () => {
+    const connection = new FakeConnection();
+    const runtime = new FakeRuntime();
+    const agent = new SandcastleAcpAgent(connection as unknown as AgentSideConnection, {
+      provider: 'pi', model: 'test', imageName: 'fake', maxIterations: 5,
+    }, runtime);
+    const { sessionId } = await agent.newSession({ cwd: repo, mcpServers: [] });
+
+    await agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'make a change' }] });
+
+    assert.strictEqual(runtime.lastMaxIterations, 5);
+    await agent.dispose();
+  });
+
+  test('does not emit running heartbeat while provider stays silent', async () => {
     const connection = new FakeConnection();
     const runtime = new FakeRuntime();
     runtime.runDelayMs = 30;
     runtime.emitStreamText = false;
     const agent = new SandcastleAcpAgent(connection as unknown as AgentSideConnection, {
-      provider: 'codex', model: 'test', imageName: 'fake',
-    }, runtime, { heartbeatIntervalMs: 5 });
+      provider: 'codex', model: 'test', imageName: 'fake', maxIterations: 1,
+    }, runtime);
     const { sessionId } = await agent.newSession({ cwd: repo, mcpServers: [] });
 
     await agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'silent work' }] });
@@ -195,19 +269,21 @@ suite('SandcastleAcpAgent', () => {
     const textUpdates = connection.updates.filter(update =>
       update.update.sessionUpdate === 'agent_message_chunk',
     );
-    assert.ok(runningStatuses.length > 0);
+    assert.strictEqual(runningStatuses.length, 0);
     assert.deepStrictEqual(textUpdates.map(update => update.update.content?.text), ['done']);
     await agent.dispose();
   });
 
-  test('coalesces provider activity status updates', async () => {
+  test('does not treat raw provider events as running status updates', async () => {
     const connection = new FakeConnection();
     const runtime = new FakeRuntime();
     runtime.rawStreamEventCount = 5;
     runtime.emitStreamText = false;
+    runtime.writeSentinel = false;
+    runtime.stdout = '';
     const agent = new SandcastleAcpAgent(connection as unknown as AgentSideConnection, {
-      provider: 'codex', model: 'test', imageName: 'fake',
-    }, runtime, { heartbeatIntervalMs: 30_000, providerStatusIntervalMs: 1_000 });
+      provider: 'pi', model: 'test', imageName: 'fake', maxIterations: 5,
+    }, runtime);
     const { sessionId } = await agent.newSession({ cwd: repo, mcpServers: [] });
 
     await agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'raw burst' }] });
@@ -215,8 +291,61 @@ suite('SandcastleAcpAgent', () => {
     const runningStatuses = connection.updates.filter(update =>
       update.update.sessionUpdate === 'sandcastle_status' && update.update.status === 'running',
     );
-    assert.strictEqual(runningStatuses.length, 1);
-    assert.strictEqual(typeof runningStatuses[0].update.lastProviderEventAt, 'string');
+    const textUpdates = connection.updates.filter(update =>
+      update.update.sessionUpdate === 'agent_message_chunk',
+    );
+    const preview = await agent.extMethod('sandcastle/preview', { sessionId });
+    assert.strictEqual(runningStatuses.length, 0);
+    assert.strictEqual(textUpdates.length, 0);
+    assert.strictEqual(preview.filesChanged, 0);
+    await agent.dispose();
+  });
+
+  test('falls back to Vibe session logs when streaming and stdout are empty', async () => {
+    const connection = new FakeConnection();
+    const runtime = new FakeRuntime();
+    runtime.emitStreamText = false;
+    runtime.writeSentinel = false;
+    runtime.stdout = '';
+    runtime.writeVibeSessionLog = true;
+    runtime.vibeAssistantText = 'implemented from vibe logs';
+    const agent = new SandcastleAcpAgent(connection as unknown as AgentSideConnection, {
+      provider: 'vibe', model: 'test', imageName: 'fake', maxIterations: 1,
+    }, runtime);
+    const { sessionId } = await agent.newSession({ cwd: repo, mcpServers: [] });
+
+    await agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'silent vibe' }] });
+
+    const textUpdates = connection.updates.filter(update =>
+      update.update.sessionUpdate === 'agent_message_chunk',
+    );
+    assert.deepStrictEqual(textUpdates.map(update => update.update.content?.text), ['implemented from vibe logs']);
+    await agent.dispose();
+  });
+
+  test('completes Vibe run when the process hangs after writing completed session logs', async () => {
+    const connection = new FakeConnection();
+    const runtime = new FakeRuntime();
+    runtime.emitStreamText = false;
+    runtime.writeSentinel = false;
+    runtime.stdout = '';
+    runtime.writeVibeSessionLog = true;
+    runtime.waitForAbortAfterVibeSessionLog = true;
+    runtime.vibeAssistantText = 'completed despite hanging process';
+    const agent = new SandcastleAcpAgent(connection as unknown as AgentSideConnection, {
+      provider: 'vibe', model: 'test', imageName: 'fake', maxIterations: 1,
+    }, runtime);
+    const { sessionId } = await agent.newSession({ cwd: repo, mcpServers: [] });
+
+    await agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'hanging vibe' }] });
+
+    assert.ok(connection.updates.some(update =>
+      update.update.sessionUpdate === 'agent_message_chunk' &&
+      update.update.content?.text === 'completed despite hanging process',
+    ));
+    assert.ok(connection.updates.some(update =>
+      update.update.sessionUpdate === 'sandcastle_status' && update.update.status === 'completed',
+    ));
     await agent.dispose();
   });
 
@@ -224,7 +353,7 @@ suite('SandcastleAcpAgent', () => {
     const connection = new FakeConnection();
     const runtime = new FakeRuntime();
     const agent = new SandcastleAcpAgent(connection as unknown as AgentSideConnection, {
-      provider: 'cursor', model: 'test', imageName: 'fake',
+      provider: 'cursor', model: 'test', imageName: 'fake', maxIterations: 1,
     }, runtime);
     const { sessionId } = await agent.newSession({ cwd: repo, mcpServers: [] });
     await agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'first' }] });
@@ -241,7 +370,7 @@ suite('SandcastleAcpAgent', () => {
     const runtime = new FakeRuntime();
     runtime.waitForAbort = true;
     const agent = new SandcastleAcpAgent(connection as unknown as AgentSideConnection, {
-      provider: 'codex', model: 'test', imageName: 'fake',
+      provider: 'codex', model: 'test', imageName: 'fake', maxIterations: 1,
     }, runtime);
     const { sessionId } = await agent.newSession({ cwd: repo, mcpServers: [] });
     const running = agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'wait' }] });
@@ -259,8 +388,8 @@ suite('SandcastleAcpAgent', () => {
     const runtime = new FakeRuntime();
     runtime.waitForAbort = true;
     const agent = new SandcastleAcpAgent(connection as unknown as AgentSideConnection, {
-      provider: 'codex', model: 'test', imageName: 'fake',
-    }, runtime, { heartbeatIntervalMs: 5 });
+      provider: 'codex', model: 'test', imageName: 'fake', maxIterations: 1,
+    }, runtime);
     const { sessionId } = await agent.newSession({ cwd: repo, mcpServers: [] });
 
     const running = agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'wait' }] });

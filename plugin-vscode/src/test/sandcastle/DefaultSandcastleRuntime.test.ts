@@ -3,7 +3,8 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { prepareCodexHome, buildSandboxMounts } from '../../sandcastle/SandboxMounts';
+import { prepareCodexHome, buildSandboxMounts } from '@acp-client/sandcastle';
+import { defaultSandcastleRuntime } from '../../sandcastle/DefaultSandcastleRuntime';
 
 suite('DefaultSandcastleRuntime', () => {
   let repo: string;
@@ -32,5 +33,48 @@ suite('DefaultSandcastleRuntime', () => {
 
     assert.ok(mounts.some(mount => mount.sandboxPath === '.agents'));
     assert.ok(mounts.some(mount => mount.sandboxPath === '/home/agent/.codex'));
+  });
+
+  test('buildSandboxMounts mounts Vibe home for vibe provider', () => {
+    const mounts = buildSandboxMounts({ provider: 'vibe', model: 'test', imageName: 'img' }, repo);
+
+    const vibeHome = mounts.find(mount => mount.sandboxPath === '/home/agent/.vibe');
+    assert.ok(vibeHome);
+    assert.strictEqual(vibeHome.readonly, false);
+    assert.strictEqual(vibeHome.hostPath, path.join(repo, '.sandcastle', 'vibe-home'));
+  });
+
+  test('defaultSandcastleRuntime creates Vibe provider', () => {
+    const provider = defaultSandcastleRuntime.createProvider({
+      provider: 'vibe',
+      model: 'mistral-large-latest',
+      imageName: 'img',
+      maxIterations: 1,
+      env: { FOO: 'bar' },
+    });
+
+    assert.strictEqual(provider.name, 'vibe');
+    assert.strictEqual(provider.env.VIBE_ACTIVE_MODEL, 'mistral-large-latest');
+    assert.strictEqual(provider.env.VIBE_HOME, '/home/agent/.vibe');
+    assert.strictEqual(provider.env.FOO, 'bar');
+    assert.deepStrictEqual(provider.buildPrintCommand({
+      prompt: 'hello',
+      dangerouslySkipPermissions: true,
+    }), {
+      command: "vibe --prompt 'hello' --output streaming --trust",
+    });
+    assert.deepStrictEqual(provider.buildPrintCommand({
+      prompt: "don't lose quotes",
+      dangerouslySkipPermissions: true,
+    }), {
+      command: "vibe --prompt 'don'\\''t lose quotes' --output streaming --trust",
+    });
+    assert.deepStrictEqual(provider.parseStreamLine(JSON.stringify({
+      role: 'assistant',
+      content: '',
+      reasoning_content: "I'll inspect the pipeline UI.",
+    })), [
+      { type: 'text', text: "I'll inspect the pipeline UI." },
+    ]);
   });
 });

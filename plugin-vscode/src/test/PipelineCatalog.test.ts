@@ -130,11 +130,14 @@ suite('PipelineCatalog', () => {
     const result = parsePipelineYaml(
       text,
       '/repo/.acp/pipelines/plan-execute-verify.yaml',
-      { 'Cursor CLI': {}, Vibe: {}, 'Codex CLI': {}, 'Claude Code': {} },
+      { 'Cursor CLI': {}, 'Vibe Sandcastle': {}, Vibe: {}, 'Codex CLI': {}, 'Claude Code': {} },
     );
 
     assert.deepStrictEqual(result.errors, []);
     assert.strictEqual(result.definition?.id, 'plan-execute-verify');
+    assert.strictEqual(result.definition?.primitives.planner.permissions, 'allowAll');
+    assert.strictEqual(result.definition?.primitives.implementer.permissions, 'allowAll');
+    assert.strictEqual(result.definition?.primitives.verifier.permissions, 'allowAll');
   });
 
   test('resolves promptFile content before returning workspace definitions', () => {

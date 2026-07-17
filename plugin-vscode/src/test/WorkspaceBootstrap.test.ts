@@ -53,8 +53,9 @@ suite('WorkspaceBootstrap', () => {
     await syncWorkspaceStarterCore(repoRoot(), workspaceRoot, { starterRoot });
 
     const agentNames = listSelectableAgentNames(workspaceRoot, {
-      'Cursor CLI': { command: 'cursor-agent' },
+      'Codex CLI': { command: 'codex' },
       'Pi Sandcastle': { transport: 'sandcastle', provider: 'pi', model: 'opencode-go/kimi-k2.6' },
+      'Vibe Sandcastle': { transport: 'sandcastle', provider: 'vibe', model: 'mistral-large-latest' },
       Vibe: { command: 'vibe' },
     } as any);
 

@@ -1,3 +1,4 @@
+import * as crypto from 'node:crypto';
 import * as vscode from 'vscode';
 import { marked } from 'marked';
 import type { SessionNotification } from '@agentclientprotocol/sdk';
@@ -251,7 +252,14 @@ export class ChatWebviewController implements vscode.Disposable {
     });
 
     this.sessionManager.recordUserMessage(activeId, text);
-    this.postMessage({ type: 'promptStart' });
+    const agentName = this.sessionManager.getActiveAgentName();
+    const agentId = this.getAgentIdFromName(agentName);
+    const turnId = `turn-${Date.now()}-${crypto.randomUUID()}`;
+    this.postMessage({
+      type: 'promptStart',
+      turnId,
+      agentId,
+    });
 
     try {
       const response = await this.sessionManager.sendPrompt(activeId, agentText);
@@ -523,6 +531,13 @@ export class ChatWebviewController implements vscode.Disposable {
 
     this.postMessage({ type: 'externalUserMessage', text });
     await this.handleSendPrompt(text);
+  }
+
+  private getAgentIdFromName(agentName?: string | null): string {
+    if (!agentName) {
+      return 'agent';
+    }
+    return agentName.trim().toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'agent';
   }
 
   dispose(): void {

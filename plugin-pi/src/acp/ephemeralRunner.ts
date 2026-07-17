@@ -202,7 +202,7 @@ export class EphemeralAcpRunner {
 		const config = configs[agentName];
 		if (!config) {
 			throw new Error(
-				`Agent "${agentName}" is not configured in .pi/.acp/acp-agents.json or .pi/.acp/.sandcastle/config.json.`,
+				`Agent "${agentName}" is not configured in .acp/acp-agents.json or .acp/.sandcastle/config.json.`,
 			);
 		}
 		return config;
@@ -338,7 +338,7 @@ export class EphemeralAcpRunner {
 		if (decision === "discard_no_changes") {
 			input.onStatus?.({
 				status: "implementing",
-				message: "Sandcastle run completed with no file changes.",
+				message: "Sandcastle run produced no text, no tool calls, and no file diff.",
 			});
 			await connected.connInfo.connection.extMethod("sandcastle/reject", { sessionId });
 			return "no_changes";

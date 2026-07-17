@@ -55,6 +55,11 @@
           "id": "acp-chat",
           "name": "Chat",
           "type": "webview"
+        },
+        {
+          "id": "acp-pipelines",
+          "name": "Pipelines",
+          "type": "tree"
         }
       ]
     },
@@ -66,6 +71,10 @@
       {
         "view": "acp-chat",
         "contents": "Start chatting with an AI coding agent.\n[Connect to Agent](command:acp.connectAgent)\nSelect an agent from the list above to begin."
+      },
+      {
+        "view": "acp-pipelines",
+        "contents": "No ACP pipelines configured.\nAdd pipeline files to .acp/pipelines/ to get started."
       }
     ],
     "commands": [
@@ -221,6 +230,21 @@
         "command": "acp.restartAgent",
         "title": "ACP: Restart Agent",
         "icon": "$(debug-restart)"
+      },
+      {
+        "command": "acp.pipeline.refresh",
+        "title": "ACP: Refresh Pipelines",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "acp.pipeline.run",
+        "title": "ACP: Open Pipeline Chat",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "acp.pipeline.stop",
+        "title": "ACP: Stop Pipeline",
+        "icon": "$(debug-stop)"
       }
     ],
     "menus": {
@@ -290,6 +314,16 @@
         {
           "command": "acp.browseRegistry",
           "when": "view == acp-sessions"
+        },
+        {
+          "command": "acp.pipeline.refresh",
+          "when": "view == acp-pipelines",
+          "group": "navigation@1"
+        },
+        {
+          "command": "acp.pipeline.run",
+          "when": "view == acp-pipelines",
+          "group": "navigation@3"
         },
         {
           "command": "acp.newConversation",
@@ -382,6 +416,16 @@
           "command": "acp.forgetSession",
           "when": "view == acp-sessions && viewItem == session-local",
           "group": "session@2"
+        },
+        {
+          "command": "acp.pipeline.run",
+          "when": "view == acp-pipelines && viewItem == pipeline",
+          "group": "inline"
+        },
+        {
+          "command": "acp.pipeline.refresh",
+          "when": "view == acp-pipelines",
+          "group": "navigation"
         }
       ]
     },
@@ -471,7 +515,8 @@
             "Cursor CLI",
             "Codex Sandcastle",
             "Cursor Sandcastle",
-            "Pi Sandcastle"
+            "Pi Sandcastle",
+            "Vibe Sandcastle"
           ],
           "description": "ACP agent names that receive skills catalog injection and Sandcastle skill mounts."
         },
@@ -496,14 +541,14 @@
   "scripts": {
     "vscode:prepublish": "npm run package",
     "clean": "node scripts/clean.mjs",
-    "compile": "npm run build -w @acp-client/pipeline && webpack",
-    "watch": "npm run build -w @acp-client/pipeline && webpack --watch",
-    "package": "npm run sync:workspace-starter && npm run build -w @acp-client/pipeline && webpack --mode production --devtool hidden-source-map",
+    "compile": "npm run build -w @acp-client/pipeline && npm run build -w @acp-client/sandcastle && webpack",
+    "watch": "npm run build -w @acp-client/pipeline && npm run build -w @acp-client/sandcastle && webpack --watch",
+    "package": "npm run sync:workspace-starter && npm run build -w @acp-client/pipeline && npm run build -w @acp-client/sandcastle && webpack --mode production --devtool hidden-source-map",
     "sync:workspace-starter": "node scripts/sync-workspace-starter.mjs",
     "vsx": "vsce package --no-dependencies",
     "clean-tests": "node scripts/clean.mjs out",
-    "compile-tests": "npm run clean-tests && npm run build -w @acp-client/pipeline && tsc -p tsconfig.compile-tests.json --incremental false",
-    "lint": "cd .. && eslint -c plugin-vscode/eslint.config.mjs \"plugin-vscode/src/**/*.ts\" \"acp-pipeline/src/**/*.ts\" \"plugin-pi/src/**/*.ts\" --max-warnings 0",
+    "compile-tests": "npm run clean-tests && npm run build -w @acp-client/pipeline && npm run build -w @acp-client/sandcastle && tsc -p tsconfig.compile-tests.json --incremental false",
+    "lint": "cd .. && eslint -c plugin-vscode/eslint.config.mjs \"plugin-vscode/src/**/*.ts\" \"acp-pipeline/src/**/*.ts\" \"acp-sandcastle/src/**/*.ts\" \"plugin-pi/src/**/*.ts\" --max-warnings 0",
     "sandcastle:smoke:codex": "npm run compile && node scripts/sandcastle-smoke.mjs codex apply",
     "sandcastle:smoke:cursor": "npm run compile && node scripts/sandcastle-smoke.mjs cursor reject",
     "pretest": "npm run sync:workspace-starter && npm run compile-tests && npm run compile && npm run lint",
@@ -513,6 +558,7 @@
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.21.1",
     "@acp-client/pipeline": "file:../acp-pipeline",
+    "@acp-client/sandcastle": "file:../acp-sandcastle",
     "@langchain/core": "^1.1.49",
     "@langchain/langgraph": "^1.4.2",
     "@vscode/codicons": "^0.0.45",
@@ -546,8 +592,5 @@
     "typescript-eslint": "^8.0.0",
     "webpack": "^5.95.0",
     "webpack-cli": "^5.1.0"
-  },
-  "enabledApiProposals": [
-    "editorInsets"
-  ]
+  }
 }

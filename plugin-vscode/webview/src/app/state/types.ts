@@ -1,4 +1,5 @@
 import type {
+  AgentID,
   ChatWebviewSharedState,
   CurrentTurn,
   CurrentTurnStatus,
@@ -50,10 +51,10 @@ export type AppAction =
   | { type: 'showNoSession' }
   | { type: 'appendUserMessage'; text: string }
   | { type: 'submitUserMessage'; text: string }
-  | { type: 'appendUserChunk'; text: string }
+  | { type: 'appendUserChunk'; text: string; messageId?: string; agentId?: AgentID }
   | { type: 'appendErrorMessage'; text: string }
   | { type: 'appendInfoMessage'; text: string }
-  | { type: 'promptStart'; turnId: string }
+  | { type: 'promptStart'; turnId: string; messageId?: string; agentId?: AgentID }
   | { type: 'promptEnd' }
   | { type: 'clearChat' }
   | { type: 'updateModes'; modes: ModesState }
@@ -63,11 +64,11 @@ export type AppAction =
   | { type: 'updateCurrentMode'; modeId: string | null }
   | { type: 'updateCurrentModel'; modelId: string | null }
   | { type: 'updateAvailableCommands'; commands: SlashCommand[] }
-  | { type: 'appendThoughtChunk'; text: string }
+  | { type: 'appendThoughtChunk'; text: string; messageId?: string; agentId?: AgentID }
   | { type: 'setCurrentThoughtOpen'; isOpen: boolean }
   | { type: 'setCurrentTurnStatus'; status: CurrentTurnStatus | null }
-  | { type: 'appendAssistantChunk'; text: string }
-  | { type: 'appendPlanningDraftChunk'; text: string }
+  | { type: 'appendAssistantChunk'; text: string; messageId?: string; agentId?: AgentID }
+  | { type: 'appendPlanningDraftChunk'; text: string; messageId?: string; agentId?: AgentID }
   | { type: 'appendToolCall'; toolCallId: string; title: string; status: ToolCallStatus }
   | { type: 'updateToolCall'; toolCallId: string; title?: string; status: ToolCallStatus }
   | { type: 'appendPlan'; plan: PlanUpdate }

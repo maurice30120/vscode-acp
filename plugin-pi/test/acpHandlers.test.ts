@@ -500,6 +500,7 @@ test("buildSandcastleBridgeProcessConfig builds node bridge command args and ima
 		provider: "codex",
 		model: "gpt-5",
 		effort: "high",
+		maxIterations: 6,
 		env: {
 			FOO: "bar",
 			ACP_SANDCASTLE_IMAGE: "custom:image",
@@ -515,6 +516,8 @@ test("buildSandcastleBridgeProcessConfig builds node bridge command args and ima
 		"gpt-5",
 		"--effort",
 		"high",
+		"--max-iterations",
+		"6",
 	]);
 	assert.equal(config.env?.FOO, "bar");
 	assert.equal(config.env?.ACP_SANDCASTLE_IMAGE, "custom:image");
@@ -553,6 +556,7 @@ test("buildSandcastleBridgeProcessConfig supports Pi and Vibe providers", () => 
 		provider: "pi",
 		model: "opencode-go/kimi-k2.6",
 		effort: "high",
+		maxIterations: 5,
 	});
 	assert.deepEqual(piConfig.args?.slice(1), [
 		"--provider",
@@ -561,6 +565,8 @@ test("buildSandcastleBridgeProcessConfig supports Pi and Vibe providers", () => 
 		"opencode-go/kimi-k2.6",
 		"--effort",
 		"high",
+		"--max-iterations",
+		"5",
 	]);
 
 	const vibeConfig = buildSandcastleBridgeProcessConfig({
