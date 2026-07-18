@@ -4,9 +4,7 @@ import { test } from "node:test";
 import {
 	loadPiAcpConfig,
 	loadPiAgentCatalog,
-	loadSandcastleConfig,
 	parsePiAcpConfig,
-	parseSandcastleConfig,
 } from "../src/catalog/config.js";
 import {
 	getPipelineDefinitionForAgent,
@@ -34,16 +32,10 @@ import {
 test("loads .acp/acp-agents.json compatible native ACP config", () => {
 	const config = parsePiAcpConfig(
 		JSON.stringify({
-			agents: {
-				"Codex CLI": {
-					command: "npx",
-					args: ["@zed-industries/codex-acp@latest"],
-					env: { FOO: "bar" },
-				},
-			},
-			pipeline: {
-				enabled: true,
-				instructionsMaxBytes: 1234,
+			"Codex CLI": {
+				command: "npx",
+				args: ["@zed-industries/codex-acp@latest"],
+				env: { FOO: "bar" },
 			},
 		}),
 	);
@@ -54,20 +46,21 @@ test("loads .acp/acp-agents.json compatible native ACP config", () => {
 		config.agents["Codex CLI"].args?.[0],
 		"@zed-industries/codex-acp@latest",
 	);
-	assert.equal(config.pipeline.instructionsMaxBytes, 1234);
+	assert.equal(config.pipeline.instructionsMaxBytes, 262144);
 });
 
-test("loadPiAcpConfig loads the embedded plugin config for an empty workspace", () => {
+test("loadPiAcpConfig reads the workspace root config", () => {
 	const workspace = createTempWorkspace();
+	writeDefaultConfig(workspace);
 
 	const config = loadPiAcpConfig(workspace);
 
 	assert.deepEqual(config.errors, []);
-	assert.equal(config.agents["Codex CLI"].command, "npx");
-	assert.equal(config.agents["Pi Agent"].command, "npx");
+	assert.equal(config.agents["Codex CLI"].command, "codex");
+	assert.equal(config.agents["Pi Agent"].command, "pi-acp");
 	assert.equal(config.pipeline.enabled, true);
 	assert.equal(config.pipeline.instructionsMaxBytes, 262144);
-	assert.match(config.filePath, /plugin-pi[\/\\]\.acp[\/\\]acp-agents\.json$/);
+	assert.match(config.filePath, /\.acp[\/\\]acp-agents\.json$/);
 });
 
 test("parsePiAcpConfig reports JSON parse errors as empty config", () => {
@@ -81,36 +74,26 @@ test("parsePiAcpConfig reports JSON parse errors as empty config", () => {
 test("parsePiAcpConfig rejects invalid agent and pipeline fields", () => {
 	const config = parsePiAcpConfig(
 		JSON.stringify({
-			agents: {
-				BadArgs: {
-					command: "codex",
-					args: ["ok", 1],
-				},
-				BadEnv: {
-					command: "codex",
-					env: { TOKEN: 123 },
-				},
-				BadTransport: {
-					transport: "stdio",
-					command: "codex",
-				},
-				Good: {
-					transport: "acp",
-					command: "  codex  ",
-					loginShell: true,
-					displayName: "Codex",
-					use_idea_mcp: true,
-					use_custom_mcp: false,
-					skills: false,
-				},
+			BadArgs: {
+				command: "codex",
+				args: ["ok", 1],
 			},
-			pipeline: {
-				enabled: "yes",
-				instructionsMaxBytes: 0,
-				timeouts: {
-					promptMs: 1234,
-					newSessionMs: -1,
-				},
+			BadEnv: {
+				command: "codex",
+				env: { TOKEN: 123 },
+			},
+			BadTransport: {
+				transport: "stdio",
+				command: "codex",
+			},
+			Good: {
+				transport: "acp",
+				command: "  codex  ",
+				loginShell: true,
+				displayName: "Codex",
+				use_idea_mcp: true,
+				use_custom_mcp: false,
+				skills: false,
 			},
 		}),
 	);
@@ -122,200 +105,92 @@ test("parsePiAcpConfig rejects invalid agent and pipeline fields", () => {
 	assert.equal(config.agents.Good.skills, false);
 	assert.equal(config.pipeline.enabled, true);
 	assert.equal(config.pipeline.instructionsMaxBytes, 262144);
-	assert.equal(config.pipeline.timeouts?.promptMs, 1234);
 	assert.match(config.errors.join("\n"), /BadArgs\.args/);
 	assert.match(config.errors.join("\n"), /BadEnv\.env\.TOKEN/);
 	assert.match(config.errors.join("\n"), /BadTransport\.transport/);
-	assert.match(config.errors.join("\n"), /pipeline\.enabled/);
-	assert.match(config.errors.join("\n"), /pipeline\.instructionsMaxBytes/);
-	assert.match(config.errors.join("\n"), /pipeline\.timeouts\.newSessionMs/);
 });
 
-test("rejects sandcastle agents in native Pi config and points to dedicated file", () => {
-	const config = parsePiAcpConfig(
+test("loadPiAgentCatalog reads native and Sandcastle agents from one VS Code style config", () => {
+	const workspace = createTempWorkspace();
+	writeFile(
+		workspace,
+		".acp/acp-agents.json",
 		JSON.stringify({
-			agents: {
-				Sandcastle: {
-					transport: "sandcastle",
-					provider: "codex",
-					model: "gpt-5",
-				},
+			"Codex CLI": {
+				command: "codex",
+				args: [],
+				env: {},
+			},
+			Sandcastle: {
+				transport: "sandcastle",
+				provider: "codex",
+				model: "gpt-5",
 			},
 		}),
 	);
 
-	assert.equal(config.agents.Sandcastle, undefined);
-	assert.match(config.errors.join("\n"), /agents\.Sandcastle\.transport/);
-	assert.match(config.errors.join("\n"), /\.acp\/\.sandcastle\/config\.json/);
+	const catalog = loadPiAgentCatalog(workspace);
+
+	assert.deepEqual(catalog.errors, []);
+	assert.equal(catalog.native.agents["Codex CLI"].command, "codex");
+	assert.equal(catalog.sandcastle.agents.Sandcastle.provider, "codex");
+	assert.equal(catalog.agents["Codex CLI"].transport, undefined);
+	assert.equal(catalog.agents.Sandcastle.transport, "sandcastle");
 });
 
-test("parseSandcastleConfig validates dedicated Sandcastle config", () => {
-	const config = parseSandcastleConfig(
+test("Sandcastle agents report explicit field errors from the shared config", () => {
+	const workspace = createTempWorkspace();
+	writeFile(
+		workspace,
+		".acp/acp-agents.json",
 		JSON.stringify({
-			promotion: "ask",
-			agents: {
-				"Codex Sandcastle": {
-					transport: "sandcastle",
-					provider: "codex",
-					model: "gpt-5",
-					effort: "medium",
-					maxIterations: 6,
-					displayName: "Codex in Sandcastle",
-					env: { FOO: "bar" },
-					skills: false,
-				},
-				"Pi Sandcastle": {
-					transport: "sandcastle",
-					provider: "pi",
-					model: "opencode-go/kimi-k2.6",
-				},
-				"Vibe Sandcastle": {
-					transport: "sandcastle",
-					provider: "vibe",
-					model: "mistral-large-latest",
-				},
+			Bad: {
+				transport: "sandcastle",
+				provider: "claude",
+				model: " ",
+				effort: "max",
+				maxIterations: 21,
+				env: { TOKEN: 123 },
 			},
 		}),
 	);
+	const catalog = loadPiAgentCatalog(workspace);
 
-	assert.deepEqual(config.errors, []);
-	assert.equal(config.promotion, "ask");
-	assert.equal(config.agents["Codex Sandcastle"].transport, "sandcastle");
-	assert.equal(config.agents["Codex Sandcastle"].provider, "codex");
-	assert.equal(config.agents["Codex Sandcastle"].model, "gpt-5");
-	assert.equal(config.agents["Codex Sandcastle"].effort, "medium");
-	assert.equal(config.agents["Codex Sandcastle"].maxIterations, 6);
-	assert.equal(config.agents["Codex Sandcastle"].displayName, "Codex in Sandcastle");
-	assert.deepEqual(config.agents["Codex Sandcastle"].env, { FOO: "bar" });
-	assert.equal(config.agents["Codex Sandcastle"].skills, false);
-	assert.equal(config.agents["Pi Sandcastle"].provider, "pi");
-	assert.equal(config.agents["Vibe Sandcastle"].provider, "vibe");
-});
-
-test("parseSandcastleConfig reports explicit field errors", () => {
-	const config = parseSandcastleConfig(
-		JSON.stringify({
-			promotion: "manual",
-			agents: {
-				Bad: {
-					transport: "sandcastle",
-					provider: "claude",
-					model: " ",
-					effort: "max",
-					maxIterations: 21,
-					env: { TOKEN: 123 },
-				},
-				MissingTransport: {
-					provider: "codex",
-					model: "gpt-5",
-				},
-			},
-		}),
-	);
-
-	assert.deepEqual(config.agents, {});
-	const errors = config.errors.join("\n");
-	assert.match(errors, /promotion/);
+	assert.deepEqual(catalog.sandcastle.agents, {});
+	const errors = catalog.errors.join("\n");
 	assert.match(errors, /agents\.Bad\.provider/);
 	assert.match(errors, /agents\.Bad\.model/);
 	assert.match(errors, /agents\.Bad\.effort/);
 	assert.match(errors, /agents\.Bad\.maxIterations/);
 	assert.match(errors, /agents\.Bad\.env\.TOKEN/);
-	assert.match(errors, /agents\.MissingTransport\.transport/);
-});
-
-test("loadSandcastleConfig missing file is an empty non-regression", () => {
-	const workspace = createTempWorkspace();
-	const pluginRoot = createTempWorkspace();
-
-	const config = loadSandcastleConfig(workspace, pluginRoot);
-
-	assert.deepEqual(config.errors, []);
-	assert.deepEqual(config.agents, {});
-	assert.equal(config.promotion, "ask");
 });
 
 test("loadPiAgentCatalog keeps native and Sandcastle agents disjoint but combines names for pipelines", () => {
 	const workspace = createTempWorkspace();
-	const pluginRoot = createTempWorkspace();
-	writeDefaultConfig(pluginRoot);
 	writeFile(
-		pluginRoot,
-		".acp/.sandcastle/config.json",
+		workspace,
+		".acp/acp-agents.json",
 		JSON.stringify({
-			promotion: "autoReject",
-			agents: {
-				"Codex Sandcastle": {
-					transport: "sandcastle",
-					provider: "codex",
-					model: "gpt-5",
-				},
+			"Codex CLI": {
+				command: "codex",
+				args: [],
+				env: {},
+			},
+			"Codex Sandcastle": {
+				transport: "sandcastle",
+				provider: "codex",
+				model: "gpt-5",
 			},
 		}),
 	);
 
-	const catalog = loadPiAgentCatalog(workspace, pluginRoot);
+	const catalog = loadPiAgentCatalog(workspace);
 
 	assert.deepEqual(catalog.errors, []);
 	assert.ok(catalog.native.agents["Codex CLI"]);
 	assert.equal(catalog.sandcastle.agents["Codex Sandcastle"].transport, "sandcastle");
 	assert.equal(catalog.agents["Codex CLI"].transport, undefined);
 	assert.equal(catalog.agents["Codex Sandcastle"].transport, "sandcastle");
-});
-
-test("duplicate native and Sandcastle agent names are errors and make pipelines referencing the name invalid", () => {
-	const workspace = createTempWorkspace();
-	const pluginRoot = createTempWorkspace();
-	writeDefaultConfig(pluginRoot);
-	writeFile(
-		pluginRoot,
-		".acp/.sandcastle/config.json",
-		JSON.stringify({
-			promotion: "ask",
-			agents: {
-				"Codex CLI": {
-					transport: "sandcastle",
-					provider: "codex",
-					model: "gpt-5",
-				},
-			},
-		}),
-	);
-	writeFile(
-		pluginRoot,
-		".acp/pipelines/duplicate.yaml",
-		[
-			"version: 2",
-			"id: duplicate",
-			"title: Duplicate",
-			"primitives:",
-			"  planner:",
-			"    agent: Codex CLI",
-			'    prompt: "{{userPrompt}}"',
-			"    output: proposed_plan",
-			"steps:",
-			"  - id: planner",
-			"    use: planner",
-			"",
-		].join("\n"),
-	);
-	const errors: string[] = [];
-
-	const catalog = loadPiAgentCatalog(workspace, pluginRoot);
-	const definitions = loadPipelineDefinitionsFromRoot({
-		workspaceCwd: workspace,
-		configRoot: pluginRoot,
-		agentConfigs: catalog.agents,
-		logger: {
-			log: () => {},
-			error: message => errors.push(message),
-		},
-	});
-
-	assert.match(catalog.errors.join("\n"), /declared in both/);
-	assert.equal(catalog.agents["Codex CLI"], undefined);
-	assert.deepEqual(definitions, []);
-	assert.match(errors.join("\n"), /Codex CLI/);
 });
 
 test("parsePipelineYaml reports YAML parse errors", () => {
@@ -374,14 +249,16 @@ test("validates pipeline agent references against Pi config", () => {
 	assert.match(invalid.errors.join("\n"), /Missing Agent/);
 });
 
-test("getPipelineDefinitions loads embedded pipelines for an empty workspace", () => {
+test("getPipelineDefinitions loads workspace root pipelines", () => {
 	const workspace = createTempWorkspace();
+	writeDefaultConfig(workspace);
+	writeDemoPipeline(workspace);
 
 	const definitions = getPipelineDefinitions(workspace);
 
 	assert.deepEqual(
 		definitions.map((definition) => definition.id),
-		["async-use-case-review", "plan-execute-verify", "vibe"],
+		["demo"],
 	);
 });
 
@@ -429,14 +306,16 @@ test("loads .acp/pipelines/*.yml from workspace", () => {
 
 test("getPipelineDefinitionForAgent resolves by id or title", () => {
 	const workspace = createTempWorkspace();
+	writeDefaultConfig(workspace);
+	writeDemoPipeline(workspace);
 
 	assert.equal(
-		getPipelineDefinitionForAgent(workspace, "plan-execute-verify")?.title,
-		"Plan Execute Verify",
+		getPipelineDefinitionForAgent(workspace, "demo")?.title,
+		"Demo Pipeline",
 	);
 	assert.equal(
-		getPipelineDefinitionForAgent(workspace, "Plan Execute Verify")?.id,
-		"plan-execute-verify",
+		getPipelineDefinitionForAgent(workspace, "Demo Pipeline")?.id,
+		"demo",
 	);
 	assert.equal(getPipelineDefinitionForAgent(workspace, "missing"), null);
 });
@@ -643,13 +522,13 @@ test("pipeline primitive permissions rejects invalid values", () => {
 	assert.equal(definitions.length, 0);
 });
 
-test("embedded promptFile paths resolve from config root, not workspace root", () => {
+test("promptFile paths resolve from the pipeline config root", () => {
 	const workspace = createTempWorkspace();
-	const pluginRoot = createTempWorkspace();
-	writeFile(pluginRoot, ".acp/agents/planner.md", "Embedded planner.");
+	const configRoot = createTempWorkspace();
+	writeFile(configRoot, ".acp/agents/planner.md", "Config root planner.");
 	writeFile(workspace, ".acp/agents/planner.md", "Workspace planner.");
 	writeFile(
-		pluginRoot,
+		configRoot,
 		".acp/pipelines/plan.yaml",
 		[
 			"version: 2",
@@ -669,12 +548,12 @@ test("embedded promptFile paths resolve from config root, not workspace root", (
 
 	const definitions = loadPipelineDefinitionsFromRoot({
 		workspaceCwd: workspace,
-		configRoot: pluginRoot,
+		configRoot,
 		agentConfigs: { "Codex CLI": { command: "codex" } },
 	});
 
 	assert.equal(definitions.length, 1);
-	assert.equal(definitions[0].primitives.planner.prompt, "Embedded planner.");
+	assert.equal(definitions[0].primitives.planner.prompt, "Config root planner.");
 });
 
 test("directory promptFile renders the pipeline invalid", () => {

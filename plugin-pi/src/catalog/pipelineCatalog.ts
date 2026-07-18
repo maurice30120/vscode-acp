@@ -9,7 +9,6 @@ import {
 } from "@acp-client/pipeline";
 
 import { loadPiAcpConfig, loadPiAgentCatalog } from "./config.js";
-import { getPiPluginRoot } from "./pluginRoot.js";
 import { resolvePipelinePromptFiles } from "./promptFileResolver.js";
 import type { Logger, PiAgentConfigEntry } from "../types.js";
 
@@ -19,8 +18,7 @@ export function getPipelineDefinitions(
 	workspaceCwd: string,
 	logger?: Logger,
 ): PipelineDefinition[] {
-	const pluginRoot = getPiPluginRoot();
-	const catalog = loadPiAgentCatalog(workspaceCwd, pluginRoot);
+	const catalog = loadPiAgentCatalog(workspaceCwd);
 	const config = catalog.native;
 	if (!config.pipeline.enabled) {
 		return [];
@@ -32,7 +30,7 @@ export function getPipelineDefinitions(
 
 	return loadPipelineDefinitionsFromRoot({
 		workspaceCwd,
-		configRoot: pluginRoot,
+		configRoot: workspaceCwd,
 		agentConfigs: catalog.agents,
 		instructionsMaxBytes: config.pipeline.instructionsMaxBytes,
 		logger,

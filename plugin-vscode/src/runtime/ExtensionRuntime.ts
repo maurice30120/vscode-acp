@@ -22,8 +22,7 @@ import {
   EDITOR_CONTEXT_LINK_STATE_KEY,
   registerCommands,
 } from '../commands/RegisterCommands';
-import { log, logError, disposeChannels } from '../utils/Logger';
-import { runWorkspaceBootstrapCommand, runWorkspaceBootstrapIfNeeded } from '../workspace/WorkspaceBootstrap';
+import { log, disposeChannels } from '../utils/Logger';
 import { initTelemetry, sendEvent } from '../utils/TelemetryManager';
 import { version as extensionVersion } from '../../package.json';
 import { activateFeaturePlugins } from '../plugins/FeaturePluginRegistry';
@@ -86,10 +85,6 @@ function initializeExtensionRuntime(
   );
   resources.add({ dispose: () => sessionManager.dispose() });
   const workspaceIdentity = () => resolveWorkspaceIdentity();
-
-  void runWorkspaceBootstrapIfNeeded(context).catch((error) => {
-    logError('Workspace bootstrap failed', error);
-  });
 
   // Persistent client-side session-history cache (used as the tier-2 tree
   // source for agents that support session/load or session/resume but not
@@ -273,11 +268,6 @@ function initializeExtensionRuntime(
     await debugWebviewPanel.open();
   });
   resources.add(openDebugSnapshotCmd);
-  const bootstrapWorkspaceCmd = vscode.commands.registerCommand('acp.bootstrapWorkspace', async () => {
-    sendEvent('command/bootstrapWorkspace');
-    await runWorkspaceBootstrapCommand(context);
-  });
-  resources.add(bootstrapWorkspaceCmd);
   const sandcastlePromotion = new SandcastlePromotion(sessionManager);
   const featurePlugins = activateFeaturePlugins([
     {

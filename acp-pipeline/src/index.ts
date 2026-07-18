@@ -22,6 +22,7 @@ export * from './PipelineTypes';
 export * from './PipelinePromptFileResolver';
 export * from './PipelineValidator';
 export * from './ProposedPlan';
+export * from './AcpAgentConfigCatalog';
 export * from './engine/PipelineGraphCoordinator';
 export * from './engine/PipelinePlanRevision';
 export * from './engine/PipelineRoleLabels';

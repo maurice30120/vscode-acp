@@ -20,7 +20,7 @@ primitives:
       {{userPrompt}}
 
   implementer:
-    agent: Vibe Sandcastle
+    agent: Vibe
     output: markdown
     sideEffects: workspace
     permissions: allowAll

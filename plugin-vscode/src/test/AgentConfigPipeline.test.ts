@@ -7,6 +7,8 @@ import * as vscode from 'vscode';
 import { getAgentNames } from '../config/AgentConfig';
 import { repoRoot } from './repoRoot';
 
+const monorepoRoot = () => path.join(repoRoot(), '..');
+
 suite('AgentConfig pipeline', () => {
   let workspaceRoot: string;
   let originalGetConfiguration: typeof vscode.workspace.getConfiguration;
@@ -35,7 +37,7 @@ suite('AgentConfig pipeline', () => {
       } as any;
     };
 
-    assert.ok(getAgentNames(repoRoot()).includes('Plan Execute Verify'));
+    assert.ok(getAgentNames(monorepoRoot()).includes('Plan Execute Verify'));
   });
 
   test('does not add virtual pipeline agent when disabled', () => {
@@ -81,7 +83,7 @@ suite('AgentConfig pipeline', () => {
       } as any;
     };
 
-    const names = getAgentNames(repoRoot());
+    const names = getAgentNames(monorepoRoot());
     assert.ok(names.includes('Plan Execute Verify'));
     assert.ok(!names.includes('Feature Team'));
   });

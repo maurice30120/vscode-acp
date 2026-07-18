@@ -124,7 +124,7 @@ suite('PipelineCatalog', () => {
 
   test('parses the repository example pipeline', () => {
     const text = fs.readFileSync(
-      path.join(repoRoot(), '.acp', 'pipelines', 'plan-execute-verify.yaml'),
+      path.join(repoRoot(), '..', '.acp', 'pipelines', 'plan-execute-verify.yaml'),
       'utf8',
     );
     const result = parsePipelineYaml(

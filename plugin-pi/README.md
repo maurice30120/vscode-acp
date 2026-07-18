@@ -4,8 +4,8 @@ Extension Pi pour les pipelines ACP. Ce plugin orchestre plusieurs agents ACP ex
 
 ## Ce que ça fait concrètement
 
-- Lit la configuration ACP embarquée dans le plugin (`.acp/acp-agents.json`)
-- Découvre les **pipelines** embarqués dans le plugin (`.acp/pipelines/*.yaml`)
+- Lit la configuration ACP du workspace (`<cwd>/.acp/acp-agents.json`)
+- Découvre les **pipelines** du workspace (`<cwd>/.acp/pipelines/*.yaml`)
 - Spawn les processus d'agents ACP, se connecte via le SDK ACP, proxy les appels fichiers/terminal/permissions, et gère l'authentification
 - Expose une commande `/pipeline` dans Pi (`list`, `run`, `approve`, `reject`, `cancel`)
 - Enregistre un outil `run_pipeline` pour que le modèle Pi puisse lancer des pipelines tout seul
@@ -18,92 +18,48 @@ Extension Pi pour les pipelines ACP. Ce plugin orchestre plusieurs agents ACP ex
 
 ## Installation
 
-Le plugin s'installe avec l'hôte Pi. En v1, la configuration Pi est embarquée dans le plugin : le workspace ouvert n'a pas besoin de fournir `.acp/acp-agents.json` ni `.acp/pipelines/*.yaml` pour utiliser les pipelines fournis.
+Le plugin s'installe avec l'hôte Pi. Il ne packe plus de configuration ACP : le workspace ouvert par Pi doit fournir `.acp/acp-agents.json` et `.acp/pipelines/*.yaml`, au même format que le plugin VS Code.
 
-### 1. Configuration ACP embarquée
+### 1. Configuration ACP workspace
 
-Le package contient `.acp/acp-agents.json` :
+Le fichier `<workspace>/.acp/acp-agents.json` est une map plate d'agents :
 
 ```json
 {
-  "agents": {
-    "Codex CLI": {
-      "command": "npx",
-      "args": ["@zed-industries/codex-acp@latest"],
-      "env": {},
-      "displayName": "Codex"
-    },
-    "Pi Agent": {
-      "command": "npx",
-      "args": ["-y", "pi-acp"],
-      "env": {}
-    },
-    "OpenCode": {
-      "command": "npx",
-      "args": ["opencode-ai@latest", "acp"],
-      "env": {}
-    },
-    "Vibe": {
-      "command": "vibe",
-      "args": [],
-      "env": {},
-      "displayName": "Vibe"
-    }
+  "Codex CLI": {
+    "command": "npx",
+    "args": ["@zed-industries/codex-acp@latest"],
+    "env": {},
+    "displayName": "Codex"
   },
-  "pipeline": {
-    "enabled": true,
-    "instructionsMaxBytes": 262144
+  "Vibe Sandcastle": {
+    "transport": "sandcastle",
+    "provider": "vibe",
+    "model": "mistral-large-latest",
+    "maxIterations": 1,
+    "env": {
+      "VIBE_HOME": ".sandcastle/vibe-home"
+    }
   }
 }
 ```
 
 | Champ | Description |
 | --- | --- |
-| `agents.<nom>.command` | Exécutable ou commande shell pour lancer l'agent |
-| `agents.<nom>.args` | Arguments CLI (optionnel) |
-| `agents.<nom>.env` | Variables d'environnement supplémentaires (optionnel) |
-| `agents.<nom>.displayName` | Label affiché dans l'UI (optionnel) |
-| `agents.<nom>.skills` | `false` désactive l'injection de skills pour cet agent (optionnel) |
-| `pipeline.enabled` | Active ou désactive la découverte des pipelines (défaut `true`) |
-| `pipeline.instructionsMaxBytes` | Taille max des fichiers `promptFile` chargés par les pipelines (défaut 256 Ko) |
-
-En v1, un fichier `<workspace>/.acp/acp-agents.json` n'est pas lu comme surcharge. Cette surcharge workspace est prévue pour une v2.
-
-### 2. Agents Sandcastle embarqués
-
-Le package contient aussi `.acp/.sandcastle/config.json` :
-
-```json
-{
-  "promotion": "ask",
-  "agents": {
-    "Pi Sandcastle": {
-      "transport": "sandcastle",
-      "provider": "pi",
-      "model": "opencode-go/kimi-k2.6",
-      "effort": "high"
-    },
-    "Vibe Sandcastle": {
-      "transport": "sandcastle",
-      "provider": "vibe",
-      "model": "mistral-large-latest",
-      "env": {
-        "VIBE_HOME": ".sandcastle/vibe-home"
-      }
-    }
-  }
-}
-```
-
-Fichier embarqué : `plugin-pi/.acp/.sandcastle/config.json`.
+| `<nom>.command` | Exécutable ou commande shell pour lancer l'agent ACP natif |
+| `<nom>.args` | Arguments CLI (optionnel) |
+| `<nom>.env` | Variables d'environnement supplémentaires (optionnel) |
+| `<nom>.displayName` | Label affiché dans l'UI (optionnel) |
+| `<nom>.skills` | `false` désactive l'injection de skills pour cet agent (optionnel) |
+| `<nom>.transport` | `sandcastle` active le runtime Sandcastle pour cet agent |
 
 Providers acceptés : `codex`, `cursor`, `pi`, `vibe`. Le provider `vibe` lance la CLI programmatique `vibe --prompt '<prompt>' --output streaming --trust`; `vibe-acp` reste le serveur ACP natif, pas le mode utilisé par Sandcastle.
 
-Pour appliquer les changements de la sandbox au workspace, la primitive de pipeline doit avoir `sideEffects: workspace`. La promotion globale vaut `ask`, `autoApply` ou `autoReject`.
+Pour appliquer les changements de la sandbox au workspace, la primitive de pipeline doit avoir `sideEffects: workspace`. Le comportement de promotion par défaut est `ask`.
 
-### 3. Pipelines embarqués (`.acp/pipelines/`)
+### 2. Pipelines workspace (`.acp/pipelines/`)
 
-Fichiers YAML version 2 packagés dans le plugin sous `.acp/pipelines/`. Exemple :
+Fichiers YAML version 2 dans le workspace sous `.acp/pipelines/`. Exemple :
 
 ```yaml
 version: 2
@@ -181,7 +137,7 @@ primitives:
     sideEffects: none
 ```
 
-Si `skills` est absent, aucun catalogue de skills n'est injecté. Si l'agent a `"skills": false` dans la config embarquée `.acp/acp-agents.json`, l'injection est désactivée pour cet agent.
+Si `skills` est absent, aucun catalogue de skills n'est injecté. Si l'agent a `"skills": false` dans `.acp/acp-agents.json`, l'injection est désactivée pour cet agent.
 
 ## Build
 
@@ -223,8 +179,8 @@ src/
 ├── types.ts                  Types partagés (PiAcpConfig, Logger, NativeAcpAgentConfig, etc.)
 │
 ├── catalog/                  Découverte de la configuration et des définitions
-│   ├── config.ts             Charge et parse la config .acp embarquée
-│   ├── pipelineCatalog.ts    Charge et valide les pipelines .acp embarqués
+│   ├── config.ts             Charge et parse la config .acp du workspace
+│   ├── pipelineCatalog.ts    Charge et valide les pipelines .acp du workspace
 │   ├── promptFileResolver.ts Résout et compose les fichiers promptFile des pipelines
 │   └── skillCatalog.ts       Charge et filtre le catalogue .agents/skills
 │
@@ -276,8 +232,8 @@ flowchart TD
   Cm -.->|"auth required"| Auth["authHandler"]
   Auth -.-> Host
 
-  Ctrl -.->|"lit config embarquée"| Cfg[("plugin/.acp/acp-agents.json")]
-  Svc -.->|"lit pipelines embarqués"| Pipes[("plugin/.acp/pipelines/*.yaml")]
+  Ctrl -.->|"lit config workspace"| Cfg[("workspace/.acp/acp-agents.json")]
+  Svc -.->|"lit pipelines workspace"| Pipes[("workspace/.acp/pipelines/*.yaml")]
   Proc -.->|"stdio"| Agent[("Agent ACP externe<br/>(Codex, Pi Agent, …)")]
 ```
 
@@ -285,7 +241,7 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-  Plugin[("Plugin package<br/>.acp")]
+  Workspace[("Workspace<br/>.acp")]
   Disk[("Workspace<br/>.agents/")]
   Cfg["config.ts"]
   Pipes["pipelineCatalog.ts"]
@@ -293,9 +249,9 @@ flowchart LR
   Skills["skillCatalog.ts"]
   Defs(["PipelineDefinition[]"])
 
-  Plugin -->|".acp/acp-agents.json"| Cfg
-  Plugin -->|".acp/pipelines/*.yaml (v2)"| Pipes
-  Plugin -->|"promptFile *.md"| PromptFiles
+  Workspace -->|".acp/acp-agents.json"| Cfg
+  Workspace -->|".acp/pipelines/*.yaml (v2)"| Pipes
+  Workspace -->|"promptFile *.md"| PromptFiles
   Disk -->|"skills/*/SKILL.md"| Skills
 
   Pipes --> Defs

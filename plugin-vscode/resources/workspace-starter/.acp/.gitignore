@@ -1,7 +1,0 @@
-*
-!.gitignore
-!acp-agents.json
-!agents/
-!pipelines/
-!agents/.gitignore
-!pipelines/.gitignore

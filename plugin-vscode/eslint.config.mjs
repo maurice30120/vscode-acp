@@ -2,7 +2,7 @@ import { defineConfig } from "eslint/config";
 import typescriptEslint from "typescript-eslint";
 
 export default defineConfig({
-	files: ["plugin-vscode/src/**/*.ts", "acp-pipeline/src/**/*.ts", "plugin-pi/src/**/*.ts"],
+	files: ["plugin-vscode/src/**/*.ts", "acp-pipeline/src/**/*.ts", "acp-sandcastle/src/**/*.ts", "plugin-pi/src/**/*.ts"],
 	extends: typescriptEslint.configs.recommended,
 	rules: {
 		"@typescript-eslint/no-explicit-any": "off",

@@ -10,7 +10,7 @@ Le monorepo permet de faire évoluer le modèle pipeline une seule fois, puis de
 | --- | --- | --- |
 | `plugin-vscode` | `acp-client` | Extension VS Code principale. Elle connecte l'éditeur à des agents compatibles ACP, fournit le chat, l'historique de sessions, les pipelines v2 et les runtimes Sandcastle avec promotion Apply/Reject. |
 | `acp-pipeline` | `@acp-client/pipeline` | Bibliothèque TypeScript indépendante de VS Code. Elle porte les types, la validation, la compilation et l'exécution des pipelines déclaratifs, avec approbation humaine, reprise, annulation et branches parallèles. |
-| `plugin-pi` | `@acp-client/pi-extension` | Extension pour l'hôte Pi. Elle embarque sa configuration ACP, expose des commandes `/pipeline`, lance des agents ACP externes et consomme le moteur pipeline partagé pour orchestrer des workflows dans Pi. |
+| `plugin-pi` | `@acp-client/pi-extension` | Extension pour l'hôte Pi. Elle lit la configuration ACP du workspace, expose des commandes `/pipeline`, lance des agents ACP externes et consomme le moteur pipeline partagé pour orchestrer des workflows dans Pi. |
 
 ## Pourquoi ce découpage
 
@@ -39,8 +39,11 @@ Depuis la racine :
 
 ```bash
 npm run compile      # compiler l'extension VS Code
+npm run build        # compiler tous les packages du monorepo
 npm test             # tests centrés sur l'extension VS Code
+npm run test:plugins # tests des deux plugins (VS Code + Pi)
 npm run test:pi      # tests du plugin Pi
+npm run pi:install   # installer le plugin Pi depuis le workspace plugin-pi
 npm run lint         # lint transverse
 npm run package      # build de production VS Code
 npm run vsx          # générer le VSIX

@@ -23,21 +23,29 @@ export function writeDefaultConfig(workspace: string): void {
 		".acp/acp-agents.json",
 		JSON.stringify(
 			{
-				agents: {
-					"Codex CLI": {
-						command: "codex",
-						args: [],
-						env: {},
-					},
-					"Pi Agent": {
-						command: "pi-acp",
-						args: [],
-						env: {},
-					},
+				"Codex CLI": {
+					command: "codex",
+					args: [],
+					env: {},
 				},
-				pipeline: {
-					enabled: true,
-					instructionsMaxBytes: 262144,
+				"Pi Agent": {
+					command: "pi-acp",
+					args: [],
+					env: {},
+				},
+				Vibe: {
+					command: "vibe-acp",
+					args: [],
+					env: {},
+				},
+				"Vibe Sandcastle": {
+					transport: "sandcastle",
+					provider: "vibe",
+					model: "mistral-large-latest",
+					maxIterations: 1,
+					env: {
+						VIBE_HOME: ".sandcastle/vibe-home",
+					},
 				},
 			},
 			null,
@@ -79,6 +87,54 @@ export function writeDemoPipeline(workspace: string): void {
 			'    input: "{{steps.planner.output}}"',
 			"  - id: implementer",
 			"    use: implementer",
+			"",
+		].join("\n"),
+	);
+}
+
+export function writePlanExecuteVerifyPipeline(workspace: string): void {
+	writeFile(workspace, ".acp/agents/planner.md", "Plan carefully.");
+	writeFile(workspace, ".acp/agents/implementer.md", "Implement carefully.");
+	writeFile(workspace, ".acp/agents/reviewer.md", "Review carefully.");
+	writeFile(
+		workspace,
+		".acp/pipelines/plan-execute-verify.yaml",
+		[
+			"version: 2",
+			"id: plan-execute-verify",
+			"title: Plan Execute Verify",
+			"primitives:",
+			"  planner:",
+			"    agent: Pi Agent",
+			"    output: proposed_plan",
+			"    sideEffects: none",
+			"    permissions: allowAll",
+			"    promptFile: ../agents/planner.md",
+			"    prompt: '{{userPrompt}}'",
+			"  implementer:",
+			"    agent: Vibe Sandcastle",
+			"    output: markdown",
+			"    sideEffects: workspace",
+			"    permissions: allowAll",
+			"    promptFile: ../agents/implementer.md",
+			"    prompt: '{{steps.approval.output}}'",
+			"  verifier:",
+			"    agent: Vibe",
+			"    output: markdown",
+			"    sideEffects: none",
+			"    permissions: allowAll",
+			"    promptFile: ../agents/reviewer.md",
+			"    prompt: '{{steps.implement.output}}'",
+			"steps:",
+			"  - id: plan",
+			"    use: planner",
+			"  - id: approval",
+			"    type: approval",
+			"    input: '{{steps.plan.output}}'",
+			"  - id: implement",
+			"    use: implementer",
+			"  - id: verify",
+			"    use: verifier",
 			"",
 		].join("\n"),
 	);

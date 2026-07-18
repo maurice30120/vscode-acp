@@ -202,7 +202,7 @@ export class EphemeralAcpRunner {
 		const config = configs[agentName];
 		if (!config) {
 			throw new Error(
-				`Agent "${agentName}" is not configured in .acp/acp-agents.json or .acp/.sandcastle/config.json.`,
+				`Agent "${agentName}" is not configured in .acp/acp-agents.json.`,
 			);
 		}
 		return config;

@@ -84,9 +84,7 @@ export { EphemeralAcpRunner } from "./acp/ephemeralRunner.js";
 export {
 	loadPiAcpConfig,
 	loadPiAgentCatalog,
-	loadSandcastleConfig,
 	parsePiAcpConfig,
-	parseSandcastleConfig,
 } from "./catalog/config.js";
 export {
 	getPipelineDefinitions,

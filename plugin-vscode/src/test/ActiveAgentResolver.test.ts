@@ -57,7 +57,7 @@ suite('ActiveAgentResolver', () => {
   });
 
   test('active virtual agent session falls back to first configured agent', () => {
-    const workspaceRoot = repoRoot();
+    const workspaceRoot = path.join(repoRoot(), '..');
 
     const resolver = new SessionBackedActiveAgentResolver(
       () => workspaceRoot,
