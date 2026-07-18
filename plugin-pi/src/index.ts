@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+import "./runtime/interactivePlanning.js";
 import { handlePipelineCommand } from "./runtime/commands.js";
 import { PipelineController } from "./runtime/pipelineController.js";
 import { consoleLogger } from "./types.js";
@@ -27,9 +28,9 @@ export default function acpPipelinePiExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("pipeline", {
-		description: "List, run, approve, reject, or cancel ACP pipelines",
+		description: "List, run, answer, approve, reject, or cancel ACP pipelines",
 		getArgumentCompletions: (prefix) => {
-			const words = ["list", "run", "approve", "reject", "cancel", "verbose", "on", "off", "status"];
+			const words = ["list", "run", "answer", "approve", "reject", "cancel", "verbose", "on", "off", "status"];
 			return words
 				.filter((word) => word.startsWith(prefix.trim()))
 				.map((value) => ({ value, label: value }));
@@ -62,9 +63,12 @@ export default function acpPipelinePiExtension(pi: ExtensionAPI): void {
 				params.prompt,
 				ctx,
 			);
-			const text = result.awaitingApproval
-				? `Pipeline plan is ready and awaiting user approval.\n\n${result.plan ?? ""}`
-				: `Pipeline completed.\n\n${result.output ?? ""}`;
+			const controller = getController(ctx.cwd);
+			const text = controller.isAwaitingAnswer()
+				? `Planner interview is waiting for your answer. Use /pipeline answer <response>.\n\n${result.plan ?? ""}`
+				: result.awaitingApproval
+					? `Pipeline plan is ready and awaiting user approval.\n\n${result.plan ?? ""}`
+					: `Pipeline completed.\n\n${result.output ?? ""}`;
 			return {
 				content: [{ type: "text", text }],
 				details: result,
