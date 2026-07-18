@@ -32,6 +32,7 @@ primitives:
     output: markdown
     sideEffects: workspace
     permissions: allowAll
+    promptFile: .acp/agents/skeleton-implementer.md
     prompt: |
       Apply only the structural skeleton from the approved plan.
 
@@ -57,6 +58,7 @@ primitives:
     output: markdown
     sideEffects: workspace
     permissions: allowAll
+    promptFile: .acp/agents/unit-test-writer.md
     prompt: |
       Write unit tests against the approved public seams and the skeleton now
       present in the workspace.
