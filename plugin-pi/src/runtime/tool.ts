@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 
+import './interactivePlanning.js';
 import type { PipelineController } from './pipelineController.js';
 
 const RUN_PIPELINE_PARAMS = Type.Object({
