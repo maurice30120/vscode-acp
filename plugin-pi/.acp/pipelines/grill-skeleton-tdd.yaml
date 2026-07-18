@@ -1,0 +1,94 @@
+version: 2
+id: grill-skeleton-tdd
+title: Grill → Skeleton → TDD
+
+primitives:
+  planner:
+    agent: Pi Agent
+    skills:
+      - grill-me
+    output: proposed_plan
+    sideEffects: none
+    permissions: allowAll
+    prompt: |
+      Conduct an interactive planning interview for the request below.
+
+      Follow the grill-me skill strictly:
+      - ask exactly one question per response
+      - keep all previously confirmed decisions
+      - inspect the workspace instead of asking for discoverable facts
+      - return interview_state=question while a decision is missing
+      - return interview_state=ready only when the plan is decision-complete
+      - never modify files
+
+      User request:
+      {{userPrompt}}
+
+  skeleton:
+    agent: Vibe Sandcastle
+    skills:
+      - skeleton-first-development
+    output: markdown
+    sideEffects: workspace
+    permissions: allowAll
+    prompt: |
+      Apply only the structural skeleton from the approved plan.
+
+      Original request:
+      {{userPrompt}}
+
+      Approved plan:
+      {{steps.approval.output}}
+
+      Create files, modules, types, interfaces, classes, functions, signatures,
+      dependency boundaries, and explicit TODO or NotImplemented bodies.
+      Do not implement business logic and do not write tests.
+      Run the available compile or type-check command and report:
+      - files changed
+      - public seams created
+      - intentionally unimplemented bodies
+      - validation result
+
+  unit_tests:
+    agent: Vibe Sandcastle
+    skills:
+      - tdd
+    output: markdown
+    sideEffects: workspace
+    permissions: allowAll
+    prompt: |
+      Write unit tests against the approved public seams and the skeleton now
+      present in the workspace.
+
+      Original request:
+      {{userPrompt}}
+
+      Approved plan:
+      {{steps.approval.output}}
+
+      Skeleton report:
+      {{steps.skeleton.output}}
+
+      Constraints:
+      - test only public behavior and the seams confirmed in the approved plan
+      - do not test private methods or implementation details
+      - do not add or complete production business logic
+      - use behavior-oriented test names
+      - execute the focused test command
+      - new tests should be red because behavior is intentionally unimplemented
+      - syntax, import, discovery, or configuration failures are not valid red tests
+      - report each test added and its expected failure reason
+
+steps:
+  - id: plan
+    use: planner
+
+  - id: approval
+    type: approval
+    input: "{{steps.plan.output}}"
+
+  - id: skeleton
+    use: skeleton
+
+  - id: unit-tests
+    use: unit_tests
