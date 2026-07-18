@@ -10,6 +10,7 @@ primitives:
     output: proposed_plan
     sideEffects: none
     permissions: allowAll
+    promptFile: .acp/agents/interactive-planner.md
     prompt: |
       Conduct an interactive planning interview for the request below.
 
