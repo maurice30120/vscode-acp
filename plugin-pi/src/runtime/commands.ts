@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext } from '@earendil-works/pi-coding-agent';
 
+import './interactivePlanning.js';
 import type { PipelineController } from './pipelineController.js';
 
 export function registerPipelineCommand(pi: ExtensionAPI, controller: PipelineController): void {
