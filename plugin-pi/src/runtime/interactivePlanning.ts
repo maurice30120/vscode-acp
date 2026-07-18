@@ -15,7 +15,7 @@ export interface PipelineAnswerResult {
   question: string | null;
 }
 
-type InteractiveControllerInternals = PipelineController & {
+type InteractiveControllerInternals = {
   service: PipelineService;
   permissionContext: PiPermissionContext | undefined;
   pendingPlan: PipelinePlanReadyEvent | null;
@@ -34,7 +34,7 @@ declare module './pipelineController.js' {
 }
 
 PipelineController.prototype.isAwaitingAnswer = function isAwaitingAnswer(): boolean {
-  const controller = this as InteractiveControllerInternals;
+  const controller = this as unknown as InteractiveControllerInternals;
   return Boolean(controller.pendingPlan && isProposedPlanAwaitingAnswer(controller.pendingPlan.plan));
 };
 
@@ -42,7 +42,7 @@ PipelineController.prototype.answer = async function answer(
   answerText: string,
   ctx?: ExtensionContext | ExtensionCommandContext,
 ): Promise<PipelineAnswerResult> {
-  const controller = this as InteractiveControllerInternals;
+  const controller = this as unknown as InteractiveControllerInternals;
   const answer = answerText.trim();
   if (!answer) {
     throw new Error('An answer is required.');
