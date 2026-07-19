@@ -44,6 +44,13 @@ test('embedded catalog includes the Matt Pocock engineering pipeline', () => {
   assert.match(String(pipeline.primitives.task_planner.prompt), /tracer-bullet/);
   assert.match(String(pipeline.primitives.implementer.prompt), /red-green/);
   assert.match(String(pipeline.primitives.reviewer.prompt), /git diff HEAD/);
+
+  const deliveryApproval = pipeline.steps.find(step => step.id === 'delivery_approval');
+  if (!deliveryApproval || !('type' in deliveryApproval) || deliveryApproval.type !== 'approval') {
+    assert.fail('expected delivery_approval to be an approval step');
+  }
+  assert.match(deliveryApproval.input, /<proposed_plan>/);
+  assert.match(deliveryApproval.input, /<interview_state>ready<\/interview_state>/);
 });
 
 test('pipeline references vendored Matt Pocock skill files', () => {
