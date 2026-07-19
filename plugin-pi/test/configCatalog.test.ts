@@ -381,7 +381,13 @@ test("getPipelineDefinitions loads embedded pipelines for an empty workspace", (
 
 	assert.deepEqual(
 		definitions.map((definition) => definition.id),
-		["async-use-case-review", "grill-skeleton-tdd", "plan-execute-verify", "vibe"],
+		[
+			"async-use-case-review",
+			"grill-skeleton-tdd",
+			"grill-spec-tickets-implement-review",
+			"plan-execute-verify",
+			"vibe",
+		],
 	);
 });
 
