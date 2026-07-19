@@ -45,3 +45,30 @@ jobs:
         with:
           name: vsix-${{ matrix.os }}
           path: "*.vsix"
+
+  pi-diagnostics:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - run: npm ci --loglevel=error
+
+      - name: Verify local Pi binary
+        run: npx pi --version
+
+      - name: Test Pi extension with compact failure output
+        shell: bash
+        run: |
+          set +e
+          npm run test:pi > pi-test.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            tail -n 160 pi-test.log
+            exit "$status"
+          fi
+          cat pi-test.log
