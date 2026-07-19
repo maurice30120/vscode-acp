@@ -11,7 +11,7 @@ The upstream `implement` skill assumes slash-command orchestration and a later
 commit. In this pipeline:
 
 - Do not call `/tdd`, `/code-review`, or any other slash command. Apply the TDD
-  discipline directly.
+  discipline directly through a red-green-refactor cycle.
 - Do not commit, push, open a pull request, or publish issues.
 - Do not perform the final review; a dedicated review agent runs next.
 - Implement only the approved specification and task plan supplied in the prompt.
@@ -19,7 +19,8 @@ commit. In this pipeline:
   time.
 - For each behavioral slice: write a failing test at a pre-agreed public seam,
   run it to confirm a valid red state, implement the minimum production change,
-  then run the focused test again.
+  run the focused test to confirm green, then refactor without changing observable
+  behavior and rerun the focused test.
 - Tests must verify observable behavior through public interfaces, not private
   methods or internal collaborators.
 - Run typechecking regularly and the full relevant test suite once at the end.
