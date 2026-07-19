@@ -29,12 +29,17 @@ Demande
 | `implementer` | Vibe Sandcastle | `implement`, `tdd` |
 | `reviewer` | Pi Agent | `code-review` |
 
-Les fichiers originaux sont présents sous `.agents/skills/`. Certains sont des
-skills user-invoked qui font référence à des commandes slash ou à un issue tracker.
-Les fichiers `.acp/agents/matt-*.md` les adaptent au transport ACP : ils conservent
-la discipline du skill, mais remplacent les commandes slash, la publication de
+Les fichiers originaux vendus depuis `mattpocock/skills` sont présents sous
+`.agents/skills/` dans ce dépôt. Certains sont des skills user-invoked qui font
+référence à des commandes slash ou à un issue tracker. Les fichiers
+`.acp/agents/matt-*.md` les adaptent au transport ACP : ils conservent la
+discipline du skill, mais remplacent les commandes slash, la publication de
 tickets, le commit et les sous-agents implicites par des étapes explicites du
 pipeline.
+
+Chaque adapter est autonome. Il lit le skill workspace lorsqu'il est disponible,
+mais contient aussi le contrat complet nécessaire lorsque le plugin Pi est utilisé
+dans un workspace qui n'a pas installé `mattpocock/skills`.
 
 ## Utilisation
 
