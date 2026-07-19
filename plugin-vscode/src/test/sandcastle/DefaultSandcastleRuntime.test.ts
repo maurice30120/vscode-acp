@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { prepareCodexHome, buildSandboxMounts } from '@acp-client/sandcastle';
-import { defaultSandcastleRuntime } from '../../sandcastle/DefaultSandcastleRuntime';
+import { createVibeProvider } from '../../sandcastle/VibeProvider';
 
 suite('DefaultSandcastleRuntime', () => {
   let repo: string;
@@ -44,12 +44,8 @@ suite('DefaultSandcastleRuntime', () => {
     assert.strictEqual(vibeHome.hostPath, path.join(repo, '.sandcastle', 'vibe-home'));
   });
 
-  test('defaultSandcastleRuntime creates Vibe provider', () => {
-    const provider = defaultSandcastleRuntime.createProvider({
-      provider: 'vibe',
-      model: 'mistral-large-latest',
-      imageName: 'img',
-      maxIterations: 1,
+  test('createVibeProvider creates the configured provider without loading Sandcastle runtime code', () => {
+    const provider = createVibeProvider('mistral-large-latest', {
       env: { FOO: 'bar' },
     });
 
