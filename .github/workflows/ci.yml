@@ -6,9 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-permissions:
-  contents: write
-
 jobs:
   build:
     strategy:
@@ -18,48 +15,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref || github.ref_name }}
-
-      - name: Finalize Windows test cleanup
-        if: runner.os == 'Linux' && github.event_name == 'pull_request' && github.head_ref == 'agent/interactive-grill-skeleton-tdd'
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          import re
-
-          for path_name in [
-              'plugin-vscode/src/test/sandcastle/WorktreePromotion.test.ts',
-              'plugin-vscode/src/test/sandcastle/SandcastleAcpAgent.test.ts',
-          ]:
-              path = Path(path_name)
-              text = path.read_text(encoding='utf8')
-              if "process.platform !== 'win32'" in text:
-                  continue
-              pattern = r'(?m)^(?P<indent>[ \t]*)await removeDirectoryWithRetries\(repo\);$'
-              match = re.search(pattern, text)
-              if not match:
-                  raise SystemExit(f'{path_name}: cleanup call not found')
-              indent = match.group('indent')
-              replacement = (
-                  f"{indent}if (process.platform !== 'win32') {{\n"
-                  f"{indent}  await removeDirectoryWithRetries(repo);\n"
-                  f"{indent}}}"
-              )
-              text = re.sub(pattern, replacement, text, count=1)
-              path.write_text(text, encoding='utf8')
-          PY
-
-          git diff -- plugin-vscode/src/test/sandcastle
-          if git diff --quiet; then
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add plugin-vscode/src/test/sandcastle
-          git commit -m "test: leave locked temp directories to ephemeral Windows runners"
-          git push origin HEAD:agent/interactive-grill-skeleton-tdd
 
       - uses: actions/setup-node@v4
         with:
