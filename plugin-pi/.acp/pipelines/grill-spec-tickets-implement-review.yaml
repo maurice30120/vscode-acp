@@ -128,6 +128,9 @@ steps:
   - id: delivery_approval
     type: approval
     input: |
+      <proposed_plan>
+      <interview_state>ready</interview_state>
+
       ## Specification
 
       {{steps.spec.output}}
@@ -135,6 +138,7 @@ steps:
       ## Task plan
 
       {{steps.tasks.output}}
+      </proposed_plan>
 
   - id: implementation
     use: implementer
