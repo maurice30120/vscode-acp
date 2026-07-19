@@ -61,14 +61,24 @@ jobs:
       - name: Verify local Pi binary
         run: npx pi --version
 
-      - name: Test Pi extension with compact failure output
+      - name: Capture Pi extension test output
         shell: bash
         run: |
           set +e
           npm run test:pi > pi-test.log 2>&1
-          status=$?
-          if [ "$status" -ne 0 ]; then
-            tail -n 160 pi-test.log
-            exit "$status"
-          fi
-          cat pi-test.log
+          echo $? > pi-test.status
+          tail -n 160 pi-test.log
+
+      - name: Upload Pi diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-test-diagnostics
+          path: |
+            pi-test.log
+            pi-test.status
+
+      - name: Fail when Pi tests failed
+        shell: bash
+        run: |
+          status=$(cat pi-test.status)
+          exit "$status"
