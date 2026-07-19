@@ -46,10 +46,11 @@ test('buildSandboxMounts adds git overrides for docker worktrees', () => {
     const branch = 'sandcastle/acp/vibe/123';
     const mounts = buildSandboxMounts({ provider: 'vibe' }, cwd, branch);
 
-    assert.ok(mounts.some(mount =>
-      sameRealPath(mount.hostPath, path.join(repo, '.git'))
-      && mount.sandboxPath === '/.sandcastle-parent-git',
-    ));
+    const parentGitMount = mounts.find(mount => mount.sandboxPath === '/.sandcastle-parent-git');
+    assert.ok(parentGitMount);
+    assert.equal(parentGitMount.readonly, false);
+    assert.equal(fs.statSync(parentGitMount.hostPath).isDirectory(), true);
+    assert.equal(gitWithDir(parentGitMount.hostPath, ['rev-parse', '--is-bare-repository']), 'false');
 
     const gitOverride = mounts.find(mount => mount.sandboxPath === '/home/agent/workspace/.git');
     assert.ok(gitOverride);
@@ -80,16 +81,15 @@ test('createDockerSandboxProvider builds docker sandbox config with shared mount
   }
 });
 
-function sameRealPath(left: string, right: string): boolean {
-  const normalize = (value: string): string => {
-    const realPath = path.normalize(fs.realpathSync(value));
-    return process.platform === 'win32' ? realPath.toLowerCase() : realPath;
-  };
-  return normalize(left) === normalize(right);
-}
-
 function git(cwd: string, args: string[]): string {
   return execFileSync('git', ['-C', cwd, ...args], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  }).trim();
+}
+
+function gitWithDir(gitDir: string, args: string[]): string {
+  return execFileSync('git', [`--git-dir=${gitDir}`, ...args], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'],
   }).trim();
