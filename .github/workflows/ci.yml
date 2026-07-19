@@ -6,9 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-permissions:
-  contents: write
-
 jobs:
   build:
     strategy:
@@ -18,100 +15,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref || github.ref_name }}
-
-      - name: Apply final Windows fixes
-        if: runner.os == 'Linux' && github.event_name == 'pull_request' && github.head_ref == 'agent/interactive-grill-skeleton-tdd'
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          import re
-
-          session_path = Path('plugin-vscode/src/core/SessionHistoryStore.ts')
-          session = session_path.read_text(encoding='utf8')
-          session = session.replace(
-              '    workspaceKey: entry.workspaceKey || identity.key,',
-              '    workspaceKey: identity.key,',
-          )
-          session_path.write_text(session, encoding='utf8')
-
-          helper = """async function removeDirectoryWithRetries(directory: string): Promise<void> {
-            const retryableCodes = new Set(['EBUSY', 'ENOTEMPTY', 'EPERM']);
-            for (let attempt = 0; attempt < 10; attempt++) {
-              try {
-                fs.rmSync(directory, { recursive: true, force: true });
-                return;
-              } catch (error) {
-                const code = error instanceof Error && 'code' in error
-                  ? String((error as NodeJS.ErrnoException).code)
-                  : '';
-                if (!retryableCodes.has(code) || attempt === 9) {
-                  throw error;
-                }
-                await new Promise(resolve => setTimeout(resolve, 200));
-              }
-            }
-          }
-          """
-
-          worktree_path = Path('plugin-vscode/src/test/sandcastle/WorktreePromotion.test.ts')
-          worktree = worktree_path.read_text(encoding='utf8')
-          if 'async function removeDirectoryWithRetries' not in worktree:
-              marker = "suite('WorktreePromotion', () => {"
-              if marker not in worktree:
-                  raise SystemExit('WorktreePromotion suite marker not found')
-              worktree = worktree.replace(marker, helper + '\n' + marker, 1)
-          worktree, count = re.subn(
-              r"  teardown\(\(\) => \{\r?\n\s*fs\.rmSync\(repo, \{[^\n]+\}\);\r?\n  \}\);",
-              """  teardown(async () => {
-            const worktree = path.join(repo, '.sandcastle-test', branch.replaceAll('/', '-'));
-            if (fs.existsSync(worktree)) {
-              try {
-                git(repo, ['worktree', 'remove', '--force', worktree]);
-              } catch {
-                // Fall through to the retried directory cleanup below.
-              }
-            }
-            await removeDirectoryWithRetries(repo);
-          });""",
-              worktree,
-              count=1,
-          )
-          if count != 1 and "teardown(async () =>" not in worktree:
-              raise SystemExit('WorktreePromotion teardown not replaced')
-          worktree_path.write_text(worktree, encoding='utf8')
-
-          agent_path = Path('plugin-vscode/src/test/sandcastle/SandcastleAcpAgent.test.ts')
-          agent = agent_path.read_text(encoding='utf8')
-          if 'async function removeDirectoryWithRetries' not in agent:
-              marker = "class FakeConnection {"
-              if marker not in agent:
-                  raise SystemExit('SandcastleAcpAgent class marker not found')
-              agent = agent.replace(marker, helper + '\n' + marker, 1)
-          agent, count = re.subn(
-              r"  teardown\(\(\) => \{\r?\n\s*fs\.rmSync\(repo, \{[^\n]+\}\);\r?\n  \}\);",
-              """  teardown(async () => {
-            await removeDirectoryWithRetries(repo);
-          });""",
-              agent,
-              count=1,
-          )
-          if count != 1 and "teardown(async () =>" not in agent:
-              raise SystemExit('SandcastleAcpAgent teardown not replaced')
-          agent_path.write_text(agent, encoding='utf8')
-          PY
-
-          git diff -- plugin-vscode/src/core/SessionHistoryStore.ts plugin-vscode/src/test/sandcastle
-          if git diff --quiet; then
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add plugin-vscode/src/core/SessionHistoryStore.ts plugin-vscode/src/test/sandcastle
-          git commit -m "fix: normalize session keys and retry Windows cleanup"
-          git push origin HEAD:agent/interactive-grill-skeleton-tdd
 
       - uses: actions/setup-node@v4
         with:
