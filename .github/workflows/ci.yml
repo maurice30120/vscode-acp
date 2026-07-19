@@ -76,6 +76,7 @@ jobs:
           path: |
             pi-test.log
             pi-test.status
+            plugin-pi/test/configCatalog.test.ts
 
       - name: Fail when Pi tests failed
         shell: bash
