@@ -887,7 +887,7 @@ suite('SessionManager', () => {
     assert.strictEqual((manager as any).sessionState.getAgentSession('Plan Execute Verify'), result.sessionId);
     assert.strictEqual(manager.isVirtualSession(result.sessionId), true);
     assert.strictEqual(upsertCalls.length, 1);
-    assert.deepStrictEqual(upsertCalls[0], ['Plan Execute Verify', '/test', result.sessionId]);
+    assert.deepStrictEqual(upsertCalls[0], ['Plan Execute Verify', path.resolve('/test'), result.sessionId]);
   });
 
   test('connectToAgent routes pipeline agent through catalog resolution when runtime predicate misses', async () => {

@@ -160,7 +160,7 @@ suite('SandcastleAcpAgent', () => {
   });
 
   teardown(() => {
-    fs.rmSync(repo, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   test('streams, previews and applies without touching the main worktree early', async () => {
