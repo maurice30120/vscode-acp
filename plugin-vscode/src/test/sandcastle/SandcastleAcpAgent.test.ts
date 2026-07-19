@@ -20,6 +20,24 @@ function git(cwd: string, args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 }
 
+async function removeDirectoryWithRetries(directory: string): Promise<void> {
+  const retryableCodes = new Set(['EBUSY', 'ENOTEMPTY', 'EPERM']);
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      fs.rmSync(directory, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      const code = error instanceof Error && 'code' in error
+        ? String((error as NodeJS.ErrnoException).code)
+        : '';
+      if (!retryableCodes.has(code) || attempt === 9) {
+        throw error;
+      }
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+  }
+}
+
 class FakeConnection {
   readonly updates: any[] = [];
 
@@ -159,9 +177,9 @@ suite('SandcastleAcpAgent', () => {
     git(repo, ['commit', '-m', 'initial']);
   });
 
-  teardown(() => {
-    fs.rmSync(repo, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  });
+  teardown(async () => {
+  await removeDirectoryWithRetries(repo);
+});
 
   test('streams, previews and applies without touching the main worktree early', async () => {
     const connection = new FakeConnection();
