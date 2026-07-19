@@ -13,12 +13,16 @@ primitives:
     permissions: allowAll
     promptFile: .acp/agents/interactive-planner.md
     prompt: |
-      Use the behavior defined by `.agents/skills/grill-me/SKILL.md` and
-      `.agents/skills/grilling/SKILL.md`.
+      The upstream sources are `.agents/skills/grill-me/SKILL.md` and
+      `.agents/skills/grilling/SKILL.md`. Read them when available. The rules in
+      this prompt and the planner prompt file form a complete ACP-safe contract
+      when those workspace files are absent.
 
-      Resolve one user decision at a time. Inspect the workspace for facts instead
-      of asking about them. Do not proceed to specification until the user has
-      answered every material question and the plan is decision-complete.
+      Resolve one user decision at a time. Include a recommended answer with a
+      short justification. Inspect the workspace for facts instead of asking
+      about them. Preserve all confirmed decisions. Do not proceed to
+      specification until every material question is answered and the plan is
+      decision-complete. Never modify files during planning.
 
       User request:
       {{userPrompt}}
