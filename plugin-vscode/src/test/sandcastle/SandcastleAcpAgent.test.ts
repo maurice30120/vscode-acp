@@ -178,7 +178,9 @@ suite('SandcastleAcpAgent', () => {
   });
 
   teardown(async () => {
-  await removeDirectoryWithRetries(repo);
+  if (process.platform !== 'win32') {
+    await removeDirectoryWithRetries(repo);
+  }
 });
 
   test('streams, previews and applies without touching the main worktree early', async () => {

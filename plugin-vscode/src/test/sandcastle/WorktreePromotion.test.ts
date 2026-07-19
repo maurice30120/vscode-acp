@@ -63,7 +63,9 @@ suite('WorktreePromotion', () => {
       // Fall through to the retried directory cleanup below.
     }
   }
-  await removeDirectoryWithRetries(repo);
+  if (process.platform !== 'win32') {
+    await removeDirectoryWithRetries(repo);
+  }
 });
 
   test('previewWorktreeChanges reports modified files', async () => {
