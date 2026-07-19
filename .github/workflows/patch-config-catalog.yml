@@ -1,0 +1,44 @@
+name: Temporary config catalog patch
+
+on:
+  push:
+    branches:
+      - agent/interactive-grill-skeleton-tdd
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/interactive-grill-skeleton-tdd
+
+      - name: Update embedded pipeline expectation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('plugin-pi/test/configCatalog.test.ts')
+          content = path.read_text(encoding='utf8')
+          old = '["async-use-case-review", "plan-execute-verify", "vibe"],'
+          new = '["async-use-case-review", "grill-skeleton-tdd", "plan-execute-verify", "vibe"],'
+          if new in content:
+              raise SystemExit(0)
+          if old not in content:
+              raise SystemExit('Expected embedded pipeline assertion was not found')
+          path.write_text(content.replace(old, new, 1), encoding='utf8')
+          PY
+
+          if git diff --quiet; then
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add plugin-pi/test/configCatalog.test.ts
+          git commit -m "test(pi): include interactive pipeline in embedded catalog"
+          git push origin HEAD:agent/interactive-grill-skeleton-tdd
