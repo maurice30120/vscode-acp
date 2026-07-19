@@ -23,14 +23,49 @@ jobs:
 
       - run: npm ci
 
-      - run: xvfb-run -a npm test
+      - name: Run Linux tests
         if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -o pipefail
+          xvfb-run -a npm test 2>&1 | tee ci-test.log
 
-      - run: npm test
-        if: runner.os != 'Linux'
+      - name: Run macOS tests
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee ci-test.log
 
-      - name: Package VSIX
-        run: npx vsce package
+      - name: Run Windows tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          npm test 2>&1 | Tee-Object -FilePath ci-test.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package VSIX on Unix
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run vsx 2>&1 | tee ci-package.log
+
+      - name: Package VSIX on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          npm run vsx 2>&1 | Tee-Object -FilePath ci-package.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-diagnostics-${{ matrix.os }}
+          path: |
+            ci-test.log
+            ci-package.log
 
       - name: Upload VSIX
         uses: actions/upload-artifact@v4
