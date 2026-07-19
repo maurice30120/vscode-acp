@@ -1,0 +1,151 @@
+version: 2
+id: grill-spec-tickets-implement-review
+title: Grill → Spec → Tickets → Implement → Review
+
+primitives:
+  planner:
+    agent: Pi Agent
+    skills:
+      - grill-me
+      - grilling
+    output: proposed_plan
+    sideEffects: none
+    permissions: allowAll
+    promptFile: .acp/agents/interactive-planner.md
+    prompt: |
+      The upstream sources are `.agents/skills/grill-me/SKILL.md` and
+      `.agents/skills/grilling/SKILL.md`. Read them when available. The rules in
+      this prompt and the planner prompt file form a complete ACP-safe contract
+      when those workspace files are absent.
+
+      Resolve one user decision at a time. Include a recommended answer with a
+      short justification. Inspect the workspace for facts instead of asking
+      about them. Preserve all confirmed decisions. Do not proceed to
+      specification until every material question is answered and the plan is
+      decision-complete. Never modify files during planning.
+
+      User request:
+      {{userPrompt}}
+
+  spec_writer:
+    agent: Pi Agent
+    skills:
+      - to-spec
+    output: markdown
+    sideEffects: none
+    permissions: allowAll
+    promptFile: .acp/agents/matt-spec-writer.md
+    prompt: |
+      Original request:
+      {{userPrompt}}
+
+      Approved plan:
+      {{steps.plan_approval.output}}
+
+      Synthesize the approved conversation into the complete specification now.
+
+  task_planner:
+    agent: Pi Agent
+    skills:
+      - to-tickets
+    output: markdown
+    sideEffects: none
+    permissions: allowAll
+    promptFile: .acp/agents/matt-ticket-planner.md
+    prompt: |
+      Original request:
+      {{userPrompt}}
+
+      Approved plan:
+      {{steps.plan_approval.output}}
+
+      Specification:
+      {{steps.spec.output}}
+
+      Produce the ordered tracer-bullet task plan now.
+
+  implementer:
+    agent: Vibe Sandcastle
+    skills:
+      - implement
+      - tdd
+    output: markdown
+    sideEffects: workspace
+    permissions: allowAll
+    promptFile: .acp/agents/matt-implementer.md
+    prompt: |
+      Original request:
+      {{userPrompt}}
+
+      Approved plan:
+      {{steps.plan_approval.output}}
+
+      Approved specification:
+      {{steps.spec.output}}
+
+      Approved task plan:
+      {{steps.tasks.output}}
+
+      Implement the complete approved task plan in dependency order.
+
+  reviewer:
+    agent: Pi Agent
+    skills:
+      - code-review
+    output: markdown
+    sideEffects: none
+    permissions: allowAll
+    promptFile: .acp/agents/matt-plan-reviewer.md
+    prompt: |
+      Original request:
+      {{userPrompt}}
+
+      Approved plan:
+      {{steps.plan_approval.output}}
+
+      Approved specification:
+      {{steps.spec.output}}
+
+      Approved task plan:
+      {{steps.tasks.output}}
+
+      Implementation report:
+      {{steps.implementation.output}}
+
+      Review the actual workspace diff against the plan, specification, tasks,
+      repository standards, and test results.
+
+steps:
+  - id: plan
+    use: planner
+
+  - id: plan_approval
+    type: approval
+    input: "{{steps.plan.output}}"
+
+  - id: spec
+    use: spec_writer
+
+  - id: tasks
+    use: task_planner
+
+  - id: delivery_approval
+    type: approval
+    input: |
+      <proposed_plan>
+      <interview_state>ready</interview_state>
+
+      ## Specification
+
+      {{steps.spec.output}}
+
+      ## Task plan
+
+      {{steps.tasks.output}}
+      </proposed_plan>
+
+  - id: implementation
+    use: implementer
+
+  - id: review
+    use: reviewer
