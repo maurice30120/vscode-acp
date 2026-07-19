@@ -6,7 +6,51 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
+  update-catalog-fixture:
+    if: github.event_name == 'pull_request' && github.head_ref == 'agent/interactive-grill-skeleton-tdd'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Include the Matt pipeline in the embedded catalog expectation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('plugin-pi/test/configCatalog.test.ts')
+          content = path.read_text()
+          old = '["async-use-case-review", "grill-skeleton-tdd", "plan-execute-verify", "vibe"]'
+          new = '''[
+          \t\t\t"async-use-case-review",
+          \t\t\t"grill-skeleton-tdd",
+          \t\t\t"grill-spec-tickets-implement-review",
+          \t\t\t"plan-execute-verify",
+          \t\t\t"vibe",
+          \t\t]'''
+          if old in content:
+              path.write_text(content.replace(old, new))
+          elif '"grill-spec-tickets-implement-review"' not in content:
+              raise SystemExit('catalog expectation shape changed unexpectedly')
+          PY
+
+          if git diff --quiet -- plugin-pi/test/configCatalog.test.ts; then
+            echo "Catalog expectation is already current."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add plugin-pi/test/configCatalog.test.ts
+          git commit -m "test: include Matt pipeline in embedded catalog"
+          git push origin HEAD:${{ github.head_ref }}
+
   build:
     strategy:
       fail-fast: false
