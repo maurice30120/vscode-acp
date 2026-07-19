@@ -46,7 +46,7 @@ export async function handlePipelineCommand(
         return;
       }
       const result = await controller.runPipeline(parsed.pipelineName, parsed.prompt, ctx);
-      if (controller.isAwaitingAnswer()) {
+      if (controller.isAwaitingAnswer?.() ?? false) {
         ctx.ui.notify('Planner interview started. Use /pipeline answer <response> to answer the current question.', 'info');
       } else if (result.awaitingApproval) {
         ctx.ui.notify('Pipeline plan ready. Use /pipeline approve or /pipeline reject.', 'info');
@@ -69,7 +69,7 @@ export async function handlePipelineCommand(
       return;
     }
     case 'approve': {
-      if (controller.isAwaitingAnswer()) {
+      if (controller.isAwaitingAnswer?.() ?? false) {
         ctx.ui.notify('The planner interview is not complete. Use /pipeline answer <response> first.', 'warning');
         return;
       }
