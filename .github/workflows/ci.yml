@@ -33,12 +33,14 @@ jobs:
       - run: npm test
         if: runner.os != 'Linux'
 
-      - name: Upload Linux test log
+      - name: Upload Linux diagnostics
         if: always() && runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
           name: ci-test-log-ubuntu
-          path: ci-test.log
+          path: |
+            ci-test.log
+            plugin-pi/test/configCatalog.test.ts
 
       - name: Package VSIX
         run: npx vsce package
