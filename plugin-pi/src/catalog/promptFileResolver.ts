@@ -115,9 +115,8 @@ function resolveSafePath(
 	const pipelineDir = path.dirname(options.pipelineFilePath);
 	const configRoot = path.resolve(options.configRoot ?? options.workspaceCwd);
 	const acpRoot = path.join(configRoot, ".acp");
-	const baseDir = normalizedRelative.startsWith(".acp/")
-		? configRoot
-		: pipelineDir;
+	const isConfigRootRelative = relativePath.replaceAll("\\", "/").startsWith(".acp/");
+	const baseDir = isConfigRootRelative ? configRoot : pipelineDir;
 	const candidate = path.resolve(baseDir, normalizedRelative);
 	const relativeToAcpRoot = path.relative(acpRoot, candidate);
 
