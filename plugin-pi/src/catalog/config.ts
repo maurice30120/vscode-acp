@@ -14,8 +14,8 @@ import type {
 } from '../types.js';
 import { getPiPluginRoot } from './pluginRoot.js';
 
-const CONFIG_PATH = path.join('.acp', 'acp-agents.json');
-const SANDCASTLE_CONFIG_PATH = path.join('.acp', '.sandcastle', 'config.json');
+const CONFIG_PATH = '.acp/acp-agents.json';
+const SANDCASTLE_CONFIG_PATH = '.acp/.sandcastle/config.json';
 const DEFAULT_INSTRUCTIONS_MAX_BYTES = 256 * 1024;
 const SANDCASTLE_PROVIDERS = new Set<string>(['codex', 'cursor', 'pi', 'vibe']);
 const SANDCASTLE_EFFORTS = new Set<string>(['low', 'medium', 'high', 'xhigh']);

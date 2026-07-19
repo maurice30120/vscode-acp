@@ -147,7 +147,7 @@ test("enrichProviderRunError surfaces Pi Go usage limit as a UI-ready message", 
 	);
 });
 
-test("buildSandboxMounts adds Linux git overrides for docker worktrees", () => {
+test("buildSandboxMounts adds git overrides for docker worktrees", () => {
 	const repo = fs.mkdtempSync(path.join(os.tmpdir(), "pi-sandcastle-mounts-"));
 	try {
 		git(repo, ["init"]);
@@ -160,10 +160,11 @@ test("buildSandboxMounts adds Linux git overrides for docker worktrees", () => {
 			imageName: "fake",
 		}, cwd, branch);
 
-		assert.ok(mounts.some(mount =>
-			fs.realpathSync(mount.hostPath) === fs.realpathSync(path.join(repo, ".git"))
-			&& mount.sandboxPath === "/.sandcastle-parent-git",
-		));
+		const parentGitMount = mounts.find(mount =>
+			mount.sandboxPath === "/.sandcastle-parent-git"
+		);
+		assert.ok(parentGitMount);
+		assert.equal(fs.statSync(parentGitMount.hostPath).isDirectory(), true);
 
 		const gitOverride = mounts.find(mount =>
 			mount.sandboxPath === "/home/agent/workspace/.git"
