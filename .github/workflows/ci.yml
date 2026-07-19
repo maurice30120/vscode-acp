@@ -23,11 +23,22 @@ jobs:
 
       - run: npm ci
 
-      - run: xvfb-run -a npm test
+      - name: Run tests
         if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -o pipefail
+          xvfb-run -a npm test 2>&1 | tee ci-test.log
 
       - run: npm test
         if: runner.os != 'Linux'
+
+      - name: Upload Linux test log
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-test-log-ubuntu
+          path: ci-test.log
 
       - name: Package VSIX
         run: npx vsce package
