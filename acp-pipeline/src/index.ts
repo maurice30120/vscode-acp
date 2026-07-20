@@ -21,6 +21,7 @@ export * from './PipelineStepCompletion';
 export * from './PipelineTypes';
 export * from './PipelineV3Types';
 export * from './PipelineV3Compiler';
+export * from './PipelineV3Catalog';
 export * from './PipelineRuntime';
 export * from './PipelineRunStore';
 export * from './MultiAgentArtifacts';

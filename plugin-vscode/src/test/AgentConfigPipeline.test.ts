@@ -5,6 +5,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 import { getAgentNames } from '../config/AgentConfig';
+import { loadWorkspacePipelinePrograms } from '../config/PipelineCatalog';
 
 suite('AgentConfig pipeline', () => {
   let workspaceRoot: string;
@@ -52,6 +53,23 @@ suite('AgentConfig pipeline', () => {
     assert.ok(!names.includes('Feature Team'));
   });
 
+  test('loads compiled v3 pipeline programs from the workspace', () => {
+    writePipelineConfig(workspaceRoot, 3);
+
+    const result = loadWorkspacePipelinePrograms(workspaceRoot, { 'Codex CLI': { command: 'codex' } });
+
+    assert.deepStrictEqual(result.errors, []);
+    assert.deepStrictEqual(result.programs.map(program => program.id), ['plan-execute-verify']);
+    assert.deepStrictEqual(result.programs[0].rootNodeIds, ['plan']);
+  });
+
+  test('v3 pipeline program loader refuses v2 definitions', () => {
+    const result = loadWorkspacePipelinePrograms(workspaceRoot, { 'Codex CLI': { command: 'codex' } });
+
+    assert.strictEqual(result.programs.length, 0);
+    assert.match(result.errors[0]?.errors.join('\n') ?? '', /Unsupported ACP pipeline version 2/);
+  });
+
   function setPipelineEnabled(enabled: boolean): void {
     vscode.workspace.getConfiguration = function(_section) {
       return {
@@ -69,10 +87,11 @@ function writeAgentConfig(workspaceRoot: string, agents: Record<string, unknown>
   fs.writeFileSync(configPath, `${JSON.stringify(agents, null, 2)}\n`, 'utf8');
 }
 
-function writePipelineConfig(workspaceRoot: string): void {
+function writePipelineConfig(workspaceRoot: string, version: 2 | 3 = 2): void {
   const pipelinePath = path.join(workspaceRoot, '.acp', 'pipelines', 'plan-execute-verify.yaml');
   fs.mkdirSync(path.dirname(pipelinePath), { recursive: true });
-  fs.writeFileSync(pipelinePath, `
+  if (version === 2) {
+    fs.writeFileSync(pipelinePath, `
 version: 2
 id: plan-execute-verify
 title: Plan Execute Verify
@@ -85,5 +104,20 @@ primitives:
 steps:
   - id: plan
     use: planner
+`, 'utf8');
+    return;
+  }
+  fs.writeFileSync(pipelinePath, `
+version: 3
+id: plan-execute-verify
+title: Plan Execute Verify
+nodes:
+  - id: plan
+    agent: Codex CLI
+    prompt: Plan the request.
+    output:
+      name: plan
+      type: acp.plan/v1
+      format: markdown
 `, 'utf8');
 }

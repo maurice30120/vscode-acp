@@ -12,7 +12,9 @@ import {
 	getPipelineDefinitionForAgent,
 	getPipelineDefinitions,
 	loadPipelineDefinitionsFromRoot,
+	loadPipelineProgramsFromRoot,
 	loadWorkspacePipelineDefinitions,
+	loadWorkspacePipelinePrograms,
 	parsePipelineYaml,
 } from "../src/catalog/pipelineCatalog.js";
 import { resolvePipelinePromptFiles } from "../src/catalog/promptFileResolver.js";
@@ -405,6 +407,47 @@ test("loads .acp/pipelines/*.yaml from workspace", () => {
 	assert.equal(definitions[0].title, "Demo Pipeline");
 });
 
+test("loads only compiled v3 pipeline programs from workspace", () => {
+	const workspace = createTempWorkspace();
+	writeDefaultConfig(workspace);
+	writePipelineFile(workspace, "demo.yaml", [
+		"version: 3",
+		"id: demo",
+		"title: Demo Pipeline",
+		"nodes:",
+		"  - id: plan",
+		"    agent: Codex CLI",
+		"    prompt: '{{userPrompt}}'",
+		"    output:",
+		"      name: plan",
+		"      type: acp.plan/v1",
+		"      format: markdown",
+		"",
+	]);
+
+	const result = loadWorkspacePipelinePrograms(workspace, {
+		"Codex CLI": { command: "codex" },
+	});
+
+	assert.deepEqual(result.errors, []);
+	assert.deepEqual(result.programs.map(program => program.id), ["demo"]);
+	assert.deepEqual(result.programs[0].rootNodeIds, ["plan"]);
+});
+
+test("v3 pipeline program loader refuses v2 without conversion", () => {
+	const workspace = createTempWorkspace();
+	writeDefaultConfig(workspace);
+	writeDemoPipeline(workspace);
+
+	const result = loadWorkspacePipelinePrograms(workspace, {
+		"Codex CLI": { command: "codex" },
+		"Pi Agent": { command: "pi-acp" },
+	});
+
+	assert.equal(result.programs.length, 0);
+	assert.match(result.errors[0]?.errors.join("\n") ?? "", /Unsupported ACP pipeline version 2/);
+});
+
 test("loads .acp/pipelines/*.yml from workspace", () => {
 	const workspace = createTempWorkspace();
 	writeDefaultConfig(workspace);
@@ -681,6 +724,40 @@ test("embedded promptFile paths resolve from config root, not workspace root", (
 
 	assert.equal(definitions.length, 1);
 	assert.equal(definitions[0].primitives.planner.prompt, "Embedded planner.");
+});
+
+test("v3 embedded promptFile paths resolve from config root", () => {
+	const workspace = createTempWorkspace();
+	const pluginRoot = createTempWorkspace();
+	writeFile(pluginRoot, ".acp/agents/planner.md", "Embedded planner.");
+	writeFile(workspace, ".acp/agents/planner.md", "Workspace planner.");
+	writeFile(
+		pluginRoot,
+		".acp/pipelines/plan.yaml",
+		[
+			"version: 3",
+			"id: plan",
+			"title: Plan Pipeline",
+			"nodes:",
+			"  - id: plan",
+			"    agent: Codex CLI",
+			"    promptFile: .acp/agents/planner.md",
+			"    output:",
+			"      name: plan",
+			"      type: acp.plan/v1",
+			"      format: markdown",
+			"",
+		].join("\n"),
+	);
+
+	const result = loadPipelineProgramsFromRoot({
+		workspaceCwd: workspace,
+		configRoot: pluginRoot,
+		agentConfigs: { "Codex CLI": { command: "codex" } },
+	});
+
+	assert.deepEqual(result.errors, []);
+	assert.equal(result.programs[0].nodes[0].prompt, "Embedded planner.");
 });
 
 test("directory promptFile renders the pipeline invalid", () => {

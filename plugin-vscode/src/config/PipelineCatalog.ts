@@ -3,9 +3,12 @@ import * as path from 'path';
 
 import * as yaml from 'js-yaml';
 import {
+  compilePipelineV3Catalog,
   extractTemplateVariables,
   resolvePipelinePromptFiles,
   validatePipelineDefinition,
+  type CompiledPipelineProgram,
+  type PipelineV3CatalogResult,
   type PipelineDefinition,
   type PipelineValidationResult,
 } from '@acp-client/pipeline';
@@ -41,6 +44,16 @@ export function getPipelineDefinitions(
     return [];
   }
   return mergePipelineDefinitions(loadWorkspacePipelineDefinitions(workspaceCwd, agentConfigs), workspaceCwd);
+}
+
+export function getPipelinePrograms(
+  workspaceCwd: string = resolveWorkspaceIdentity().cwd,
+  agentConfigs: Record<string, unknown> = readAgentConfigs(),
+): CompiledPipelineProgram[] {
+  if (!isPipelineEnabled()) {
+    return [];
+  }
+  return loadWorkspacePipelinePrograms(workspaceCwd, agentConfigs).programs;
 }
 
 export function getPipelineAgentNames(
@@ -151,21 +164,70 @@ export function loadWorkspacePipelineDefinitions(
   return definitions;
 }
 
+export function loadWorkspacePipelinePrograms(
+  workspaceCwd: string,
+  agentConfigs: Record<string, unknown>,
+): PipelineV3CatalogResult {
+  const dir = path.join(workspaceCwd, PIPELINE_DIR);
+  if (!fs.existsSync(dir)) {
+    return { programs: [], errors: [] };
+  }
+
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(dir);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    log(`Failed to read ACP pipeline directory ${dir}: ${message}`);
+    return {
+      programs: [],
+      errors: [{ filePath: dir, errors: [`Failed to read ACP pipeline directory: ${message}`] }],
+    };
+  }
+
+  const sources: Array<{ filePath: string; definition: unknown }> = [];
+  const parseErrors: PipelineV3CatalogResult['errors'] = [];
+  for (const entry of entries.sort()) {
+    if (!entry.endsWith('.yaml') && !entry.endsWith('.yml')) {
+      continue;
+    }
+    const filePath = path.join(dir, entry);
+    try {
+      sources.push({ filePath, definition: parseYamlDocument(fs.readFileSync(filePath, 'utf8')) });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      parseErrors.push({ filePath, errors: [`YAML parse error: ${message}`] });
+    }
+  }
+
+  const result = compilePipelineV3Catalog(sources, {
+    workspaceCwd,
+    maxPromptFileBytes: getInstructionsMaxBytes(),
+    agentConfigs,
+  });
+  const combined = { programs: result.programs, errors: [...parseErrors, ...result.errors] };
+  for (const error of combined.errors) {
+    log(`Ignoring invalid ACP pipeline ${error.filePath}: ${error.errors.join('; ')}`);
+  }
+  return combined;
+}
+
 export function parsePipelineYaml(
   text: string,
   filePath: string,
   agentConfigs: Record<string, unknown>,
 ): PipelineValidationResult {
-  let parsed: unknown;
   try {
-    parsed = yaml.load(text);
+    return validatePipelineDefinition(parseYamlDocument(text), filePath, agentConfigs);
   } catch (e: any) {
     return { errors: [`YAML parse error: ${e.message || String(e)}`] };
   }
-
-  return validatePipelineDefinition(parsed, filePath, agentConfigs);
 }
 
 function readAgentConfigs(): Record<string, unknown> {
   return getAgentConfigs();
+}
+
+function parseYamlDocument(text: string): unknown {
+  return yaml.load(text);
 }
