@@ -32,8 +32,9 @@ export async function runPipelineInteractive(
       const answer = await askForAnswer(terminal);
       result = await host.resume(result.runId, {
         pauseId: pause.id,
-        kind: 'answer',
-        value: answer,
+        ...(answer === '/done'
+          ? { kind: 'complete-interview' as const }
+          : { kind: 'answer' as const, value: answer }),
       });
       continue;
     }
@@ -103,7 +104,7 @@ function formatPause(pause: PipelinePauseSnapshot): string {
 
 async function askForAnswer(terminal: CliTerminal): Promise<string> {
   while (true) {
-    const answer = await terminal.ask('Answer:');
+    const answer = await terminal.ask('Answer [/done to finish]:');
     if (answer) {
       return answer;
     }

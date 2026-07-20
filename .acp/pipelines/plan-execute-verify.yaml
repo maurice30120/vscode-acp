@@ -4,6 +4,16 @@ title: Plan Execute Verify
 
 nodes:
   - id: plan
+    # Agents disponibles :
+    # agent: Codex CLI
+    # agent: Vibe
+    # agent: Cursor CLI
+    # agent: OpenCode
+    # agent: Pi Agent
+    # agent: Codex Sandcastle
+    # agent: Cursor Sandcastle
+    # agent: Pi Sandcastle
+    # agent: Vibe Sandcastle
     agent: Vibe
     promptFile: ../agents/planner.md
     prompt: |
@@ -42,6 +52,16 @@ nodes:
       format: markdown
 
   - id: implement
+    # Agents disponibles :
+    # agent: Codex CLI
+    # agent: Vibe
+    # agent: Cursor CLI
+    # agent: OpenCode
+    # agent: Pi Agent
+    # agent: Codex Sandcastle
+    # agent: Cursor Sandcastle
+    # agent: Pi Sandcastle
+    # agent: Vibe Sandcastle
     agent: Vibe Sandcastle
     promptFile: ../agents/implementer.md
     prompt: |
@@ -73,6 +93,16 @@ nodes:
       format: markdown
 
   - id: verify
+    # Agents disponibles :
+    # agent: Codex CLI
+    # agent: Vibe
+    # agent: Cursor CLI
+    # agent: OpenCode
+    # agent: Pi Agent
+    # agent: Codex Sandcastle
+    # agent: Cursor Sandcastle
+    # agent: Pi Sandcastle
+    # agent: Vibe Sandcastle
     agent: Vibe
     promptFile: ../agents/reviewer.md
     prompt: |

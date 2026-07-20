@@ -117,3 +117,68 @@ test("compilePipelineV3Definition enforces strict typed artifact inputs", () => 
   assert.match(result.errors.join("\n"), /expects format "markdown"/);
   assert.match(result.errors.join("\n"), /unknown artifact "producer.missing"/);
 });
+
+test("compilePipelineV3Definition validates agent interview interaction", () => {
+  const valid = compilePipelineV3Definition({
+    version: 3,
+    id: "interview",
+    title: "Interview",
+    nodes: [
+      {
+        id: "plan",
+        agent: "Codex",
+        prompt: "Plan",
+        interaction: { protocol: "proposed-plan", repairAttempts: 0 },
+        output: { name: "plan", type: "acp.grill-decision/v1", format: "markdown" },
+      },
+    ],
+  }, agents);
+
+  assert.deepEqual(valid.errors, []);
+  assert.deepEqual(valid.program?.nodesById.get("plan")?.interaction, {
+    protocol: "proposed-plan",
+    repairAttempts: 0,
+  });
+
+  const withDefault = compilePipelineV3Definition({
+    version: 3,
+    id: "interview-default",
+    title: "Interview Default",
+    nodes: [
+      {
+        id: "plan",
+        agent: "Codex",
+        prompt: "Plan",
+        interaction: { protocol: "proposed-plan" },
+        output: { name: "plan", type: "acp.grill-decision/v1", format: "markdown" },
+      },
+    ],
+  }, agents);
+  assert.equal(withDefault.program?.nodesById.get("plan")?.interaction?.repairAttempts, 1);
+
+  const invalid = compilePipelineV3Definition({
+    version: 3,
+    id: "bad-interview",
+    title: "Bad Interview",
+    nodes: [
+      {
+        id: "plan",
+        agent: "Codex",
+        prompt: "Plan",
+        interaction: { protocol: "unknown", repairAttempts: -1 },
+        output: { name: "plan", type: "acp.grill-decision/v1", format: "markdown" },
+      },
+      {
+        id: "approval",
+        type: "pause",
+        pause: "approval",
+        content: "Approve?",
+        interaction: { protocol: "proposed-plan" },
+      },
+    ],
+  }, agents);
+
+  assert.match(invalid.errors.join("\n"), /interaction\.protocol "unknown" is not registered/);
+  assert.match(invalid.errors.join("\n"), /interaction\.repairAttempts must be an integer/);
+  assert.match(invalid.errors.join("\n"), /interaction is only supported on agent nodes/);
+});

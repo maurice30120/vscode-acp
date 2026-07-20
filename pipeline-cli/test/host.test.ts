@@ -11,8 +11,9 @@ import { CliPipelineHost } from '../src/host.js';
 import type { CliTerminal } from '../src/terminal.js';
 
 class FakeTerminal implements CliTerminal {
+  readonly errors: string[] = [];
   write(): void {}
-  writeError(): void {}
+  writeError(message: string): void { this.errors.push(message); }
   async ask(): Promise<string> { return ''; }
   async confirm(): Promise<boolean> { return false; }
   async select(): Promise<string | undefined> { return undefined; }
@@ -106,4 +107,41 @@ test('does not provide a packaged fallback when workspace ACP config is missing'
     () => new CliPipelineHost(cwd, { terminal: new FakeTerminal(), runAgent: async () => '' }),
     /Missing Pi ACP config at workspace root/,
   );
+});
+
+test('loads the checked-in workspace configuration used by the CLI script', () => {
+  const workspaceRoot = path.resolve(import.meta.dirname, '..', '..', '..');
+  const host = new CliPipelineHost(workspaceRoot, {
+    terminal: new FakeTerminal(),
+    runAgent: async () => '',
+  });
+
+  assert.ok(
+    host.listPipelines().some(pipeline => pipeline.id === 'grill-spec-tickets-implement-review'),
+  );
+});
+
+test('verbose mode logs ACP error code and data with the failing agent name', async () => {
+  const cwd = createWorkspace();
+  const terminal = new FakeTerminal();
+  const host = new CliPipelineHost(cwd, {
+    terminal,
+    verbose: true,
+    runAgent: async () => {
+      const error = Object.assign(new Error('Internal error'), {
+        name: 'RequestError',
+        code: -32603,
+        data: { details: 'provider rejected the request' },
+      });
+      throw error;
+    },
+  });
+
+  const result = await host.start('question-flow', 'add a CLI');
+
+  assert.equal(result.status, 'failed');
+  assert.ok(terminal.errors.includes('[acp-cli] Starting node agent "Planner" (skills=grill-me)'));
+  assert.ok(terminal.errors.includes(
+    '[acp-cli] Agent "Planner" failed: Internal error; code=-32603; data={"details":"provider rejected the request"}',
+  ));
 });

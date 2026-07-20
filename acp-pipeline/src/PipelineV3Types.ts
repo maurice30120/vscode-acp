@@ -32,6 +32,11 @@ export interface PipelineRetryDefinition {
   backoffMs?: number;
 }
 
+export interface PipelineInteractionDefinition {
+  protocol: string;
+  repairAttempts: number;
+}
+
 export interface PipelinePolicyReference {
   profile?: string;
   filesystem?: "read-only" | "workspace-write";
@@ -51,6 +56,10 @@ export interface PipelineAgentNodeDefinition {
   inputs?: PipelineNodeInputDefinition[];
   output: PipelineNodeOutputDefinition;
   retry?: PipelineRetryDefinition;
+  interaction?: {
+    protocol: string;
+    repairAttempts?: number;
+  };
   policy?: string | PipelinePolicyReference;
 }
 
@@ -63,6 +72,7 @@ export interface PipelinePauseNodeDefinition {
   needs?: string[];
   inputs?: PipelineNodeInputDefinition[];
   output?: PipelineNodeOutputDefinition;
+  interaction?: never;
   policy?: string | PipelinePolicyReference;
 }
 
@@ -91,6 +101,7 @@ export interface CompiledPipelineNode {
   needs: readonly string[];
   inputs: readonly PipelineNodeInputDefinition[];
   output?: PipelineNodeOutputDefinition;
+  interaction?: PipelineInteractionDefinition;
   retry: PipelineRetryDefinition;
   pause?: PipelinePauseType;
   pauseContent?: string;
@@ -122,6 +133,7 @@ export interface PipelineRuntimeSnapshot {
   nodeStates: Record<string, PipelineRuntimeNodeSnapshot>;
   artifacts: Record<string, PipelineArtifact>;
   pendingPause?: PipelinePauseSnapshot;
+  activeInterview?: PipelineInterviewSnapshot;
   finalArtifact?: PipelineArtifact;
   diagnostics: PipelineRuntimeDiagnostic[];
   createdAt: string;
@@ -143,6 +155,22 @@ export interface PipelinePauseSnapshot {
   format: PipelinePauseFormat;
 }
 
+export type PipelineInterviewState = "question";
+
+export interface PipelineInterviewTurn {
+  role: "agent" | "user";
+  content: string;
+}
+
+export interface PipelineInterviewSnapshot {
+  nodeId: string;
+  protocol: string;
+  state: PipelineInterviewState;
+  completionRequested: boolean;
+  turns: PipelineInterviewTurn[];
+  repairAttemptsUsed: number;
+}
+
 export interface PipelineRuntimeDiagnostic {
   nodeId?: string;
   attempt?: number;
@@ -158,7 +186,7 @@ export type PipelineRuntimeResult =
 
 export interface PipelineResumeDecision {
   pauseId: string;
-  kind: "approve" | "answer" | "reject";
+  kind: "approve" | "answer" | "complete-interview" | "reject";
   value?: unknown;
 }
 

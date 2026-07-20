@@ -83,7 +83,25 @@ export class CliPipelineHost {
       },
       logger: this.logger,
     });
-    this.runner = this.options.runAgent ?? ephemeral.run;
+    const runner = this.options.runAgent ?? ephemeral.run;
+    this.runner = async input => {
+      const skills = this.options.verbose
+        ? ` (skills=${input.skills?.join(',') || 'none'})`
+        : '';
+      this.options.terminal.writeError(
+        `[acp-cli] Starting node agent "${input.agentName}"${skills}`,
+      );
+      try {
+        const result = await runner(input);
+        if (this.options.verbose) {
+          this.options.terminal.writeError(`[acp-cli] Agent "${input.agentName}" completed.`);
+        }
+        return result;
+      } catch (error: unknown) {
+        this.logger.error(`Agent "${input.agentName}" failed`, error);
+        throw error;
+      }
+    };
   }
 
   listPipelines(): CliPipelineListEntry[] {
@@ -171,5 +189,31 @@ export class CliPipelineHost {
 }
 
 function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
+
+  const details: string[] = [error.message || error.name];
+  const rpcError = error as Error & { code?: unknown; data?: unknown; cause?: unknown };
+  if (rpcError.code !== undefined) {
+    details.push(`code=${formatErrorValue(rpcError.code)}`);
+  }
+  if (rpcError.data !== undefined) {
+    details.push(`data=${formatErrorValue(rpcError.data)}`);
+  }
+  if (rpcError.cause !== undefined) {
+    details.push(`cause=${formatError(rpcError.cause)}`);
+  }
+  return details.join('; ');
+}
+
+function formatErrorValue(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }

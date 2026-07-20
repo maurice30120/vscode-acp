@@ -1,5 +1,6 @@
 import { parseArtifactProducer } from "./PipelineV3Compiler";
 import { validateAdapterSupportsPolicy } from "./PipelinePolicy";
+import { getPipelineInterviewProtocol } from "./PipelineInterviewProtocol";
 import type { PipelineAdapterPolicyCapabilities } from "./PipelinePolicy";
 import type {
   CompiledPipelineNode,
@@ -135,6 +136,32 @@ export class PipelineRuntime {
     if (!node) {
       return this.fail(active, { code: "missing_pause_node", message: `Pause node "${pause.nodeId}" is missing.` });
     }
+    if (node.kind === "agent" && node.interaction) {
+      if (!active.snapshot.activeInterview || active.snapshot.activeInterview.nodeId !== node.id) {
+        return this.fail(active, { code: "missing_active_interview", message: `Interview node "${node.id}" is not active.` });
+      }
+      if (decision.kind === "answer") {
+        const value = typeof decision.value === "string" ? decision.value : stringifyTemplateValue(decision.value);
+        active.snapshot.activeInterview.turns.push({ role: "user", content: value });
+      } else if (decision.kind === "complete-interview") {
+        active.snapshot.activeInterview.completionRequested = true;
+      } else {
+        return this.fail(active, { code: "invalid_resume", message: `Decision "${decision.kind}" cannot resume an interview question.` });
+      }
+      active.snapshot.pendingPause = undefined;
+      active.snapshot.status = "running";
+      active.snapshot.nodeStates[node.id] = {
+        ...active.snapshot.nodeStates[node.id],
+        status: "running",
+      };
+      active.snapshot.updatedAt = this.isoNow();
+      await this.persist(active.snapshot);
+      await this.emitRuntimeEvent({ runId, type: "resumed", nodeId: pause.nodeId, at: active.snapshot.updatedAt });
+      return this.continueInterview(active, node);
+    }
+    if (decision.kind === "complete-interview") {
+      return this.fail(active, { code: "invalid_resume", message: "complete-interview can only resume an interview question." });
+    }
     if (node.output) {
       const value = decision.value ?? "";
       active.snapshot.artifacts[artifactKey(node.id, node.output.name)] = {
@@ -197,12 +224,20 @@ export class PipelineRuntime {
         return this.pause(active, pause);
       }
 
-      const batch = ready.filter(node => node.kind === "agent");
+      const firstInterview = ready.find(node => node.kind === "agent" && node.interaction);
+      const batch = ready.filter(node =>
+        node.kind === "agent"
+        && (!node.interaction || node.id === firstInterview?.id)
+      );
       const results = await Promise.all(batch.map(node => this.executeNode(active, node)));
       const failure = results.find(result => "code" in result) as PipelineRuntimeDiagnostic | undefined;
       if (failure) {
         active.controller.abort();
         return this.fail(active, failure);
+      }
+      const paused = results.find((result): result is { paused: PipelineRuntimeResult } => "paused" in result);
+      if (paused) {
+        return paused.paused;
       }
     }
     return { status: "cancelled", runId: active.snapshot.runId, snapshot: cloneSnapshot(active.snapshot) };
@@ -214,7 +249,7 @@ export class PipelineRuntime {
       .filter(node => node.needs.every(dependency => active.snapshot.nodeStates[dependency]?.status === "completed"));
   }
 
-  private async executeNode(active: ActiveRun, node: CompiledPipelineNode): Promise<PipelineRuntimeDiagnostic | { ok: true }> {
+  private async executeNode(active: ActiveRun, node: CompiledPipelineNode): Promise<PipelineRuntimeDiagnostic | { ok: true } | { paused: PipelineRuntimeResult }> {
     const state = active.snapshot.nodeStates[node.id];
     const inputs = resolveInputs(node, active.snapshot.artifacts);
     const prompt = renderRuntimeTemplate(node.prompt ?? "", active.snapshot.inputVariables ?? {}, inputs);
@@ -253,6 +288,9 @@ export class PipelineRuntime {
         code: unsupportedPolicy.code,
         message: unsupportedPolicy.message,
       };
+    }
+    if (node.interaction) {
+      return this.executeInterviewNode(active, node, prompt, inputs);
     }
     for (let attempt = state.attempts + 1; attempt <= node.retry.maxAttempts; attempt++) {
       active.snapshot.nodeStates[node.id] = { ...state, status: "running", attempts: attempt, startedAt: state.startedAt ?? this.isoNow() };
@@ -296,6 +334,171 @@ export class PipelineRuntime {
       await sleep(node.retry.backoffMs ?? 0);
     }
     return { nodeId: node.id, code: "retry_exhausted", message: `Node "${node.id}" exhausted retries.` };
+  }
+
+  private async continueInterview(active: ActiveRun, node: CompiledPipelineNode): Promise<PipelineRuntimeResult> {
+    const state = active.snapshot.nodeStates[node.id];
+    const inputs = resolveInputs(node, active.snapshot.artifacts);
+    const prompt = renderRuntimeTemplate(node.prompt ?? "", active.snapshot.inputVariables ?? {}, inputs);
+    const result = await this.executeInterviewNode(active, node, prompt, inputs, state.attempts);
+    if ("paused" in result) {
+      return result.paused;
+    }
+    if ("code" in result) {
+      active.controller.abort();
+      return this.fail(active, result);
+    }
+    return this.advance(active);
+  }
+
+  private async executeInterviewNode(
+    active: ActiveRun,
+    node: CompiledPipelineNode,
+    originalPrompt: string,
+    inputs: Record<string, PipelineArtifact>,
+    fixedAttempt?: number,
+  ): Promise<PipelineRuntimeDiagnostic | { ok: true } | { paused: PipelineRuntimeResult }> {
+    const protocol = node.interaction ? getPipelineInterviewProtocol(node.interaction.protocol) : undefined;
+    if (!protocol || !node.output || !node.interaction) {
+      return { nodeId: node.id, code: "invalid_interaction", message: `Node "${node.id}" has an invalid interaction configuration.` };
+    }
+    const existing = active.snapshot.activeInterview?.nodeId === node.id
+      ? active.snapshot.activeInterview
+      : undefined;
+    if (!existing) {
+      active.snapshot.activeInterview = {
+        nodeId: node.id,
+        protocol: node.interaction.protocol,
+        state: "question",
+        completionRequested: false,
+        turns: [],
+        repairAttemptsUsed: 0,
+      };
+    }
+    const interview = active.snapshot.activeInterview!;
+    interview.repairAttemptsUsed = 0;
+    let prompt = protocol.renderReplay({
+      originalPrompt,
+      turns: interview.turns,
+      completionRequested: interview.completionRequested,
+    });
+    const firstAttempt = fixedAttempt ?? active.snapshot.nodeStates[node.id].attempts + 1;
+
+    for (let attempt = firstAttempt; attempt <= node.retry.maxAttempts; attempt++) {
+      active.snapshot.nodeStates[node.id] = {
+        ...active.snapshot.nodeStates[node.id],
+        status: "running",
+        attempts: attempt,
+        startedAt: active.snapshot.nodeStates[node.id].startedAt ?? this.isoNow(),
+      };
+      active.snapshot.updatedAt = this.isoNow();
+      await this.persist(active.snapshot);
+      await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "node_started", nodeId: node.id, at: active.snapshot.updatedAt });
+
+      for (;;) {
+        const result = await this.adapter.execute({
+          runId: active.snapshot.runId,
+          node,
+          prompt,
+          inputs,
+          signal: active.controller.signal,
+        });
+        if (!("artifact" in result)) {
+          active.snapshot.diagnostics.push({ nodeId: node.id, attempt, code: result.code, message: result.message });
+          if (!result.retryable || attempt >= node.retry.maxAttempts) {
+            active.snapshot.nodeStates[node.id] = {
+              ...active.snapshot.nodeStates[node.id],
+              status: "failed",
+              completedAt: this.isoNow(),
+            };
+            active.snapshot.updatedAt = this.isoNow();
+            await this.persist(active.snapshot);
+            return { nodeId: node.id, attempt, code: result.code, message: result.message };
+          }
+          await sleep(node.retry.backoffMs ?? 0);
+          break;
+        }
+
+        const text = stringifyTemplateValue(result.artifact.value);
+        try {
+          const parsed = protocol.parseAgentOutput(text);
+          if (parsed.state === "question") {
+            if (interview.completionRequested) {
+              throw new Error("Expected ready after complete-interview, but the agent returned question.");
+            }
+            interview.turns.push({ role: "agent", content: parsed.content });
+            return this.pauseInterview(active, node, parsed.question);
+          }
+
+          const finalResult: PipelineNodeExecutionResult = {
+            artifact: {
+              name: node.output.name,
+              type: node.output.type,
+              format: node.output.format,
+              value: parsed.artifact,
+            },
+          };
+          const artifact = assertArtifact(node, finalResult);
+          active.snapshot.artifacts[artifactKey(node.id, artifact.name)] = artifact;
+          active.snapshot.activeInterview = undefined;
+          active.snapshot.nodeStates[node.id] = {
+            ...active.snapshot.nodeStates[node.id],
+            status: "completed",
+            completedAt: this.isoNow(),
+          };
+          active.snapshot.updatedAt = this.isoNow();
+          await this.persist(active.snapshot);
+          await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "node_completed", nodeId: node.id, at: active.snapshot.updatedAt });
+          return { ok: true };
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (interview.repairAttemptsUsed < node.interaction.repairAttempts) {
+            interview.repairAttemptsUsed += 1;
+            prompt = protocol.renderRepair({ prompt, diagnostic: message });
+            active.snapshot.updatedAt = this.isoNow();
+            await this.persist(active.snapshot);
+            continue;
+          }
+          active.snapshot.diagnostics.push({
+            nodeId: node.id,
+            attempt,
+            code: "malformed_interview_output",
+            message,
+          });
+          active.snapshot.nodeStates[node.id] = {
+            ...active.snapshot.nodeStates[node.id],
+            status: "failed",
+            completedAt: this.isoNow(),
+          };
+          active.snapshot.updatedAt = this.isoNow();
+          await this.persist(active.snapshot);
+          return { nodeId: node.id, attempt, code: "malformed_interview_output", message };
+        }
+      }
+    }
+    return { nodeId: node.id, code: "retry_exhausted", message: `Node "${node.id}" exhausted retries.` };
+  }
+
+  private async pauseInterview(active: ActiveRun, node: CompiledPipelineNode, question: string): Promise<{ paused: PipelineRuntimeResult }> {
+    const state = active.snapshot.nodeStates[node.id];
+    const turn = active.snapshot.activeInterview?.turns.filter(entry => entry.role === "agent").length ?? state.attempts;
+    const pause = {
+      id: `${active.snapshot.runId}:${node.id}:question:${turn}`,
+      nodeId: node.id,
+      type: "question" as const,
+      content: question,
+      format: "markdown" as const,
+    };
+    active.snapshot.nodeStates[node.id] = {
+      ...state,
+      status: "paused",
+    };
+    active.snapshot.pendingPause = pause;
+    active.snapshot.status = "paused";
+    active.snapshot.updatedAt = this.isoNow();
+    await this.persist(active.snapshot);
+    await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "paused", nodeId: node.id, at: active.snapshot.updatedAt });
+    return { paused: { status: "paused", runId: active.snapshot.runId, pause, snapshot: cloneSnapshot(active.snapshot) } };
   }
 
   private async pause(active: ActiveRun, node: CompiledPipelineNode): Promise<PipelineRuntimeResult> {

@@ -12,11 +12,15 @@ class FakeTerminal implements CliTerminal {
   readonly output: string[] = [];
   readonly errors: string[] = [];
   readonly answers: string[] = [];
+  readonly questions: string[] = [];
   readonly confirmations: boolean[] = [];
 
   write(message: string): void { this.output.push(message); }
   writeError(message: string): void { this.errors.push(message); }
-  async ask(): Promise<string> { return this.answers.shift() ?? ''; }
+  async ask(question: string): Promise<string> {
+    this.questions.push(question);
+    return this.answers.shift() ?? '';
+  }
   async confirm(): Promise<boolean> { return this.confirmations.shift() ?? false; }
   async select(): Promise<string | undefined> { return undefined; }
   asPermissionContext(): PiPermissionContext { return {} as PiPermissionContext; }
@@ -86,7 +90,39 @@ test('answers a v3 question then approves the next pause', async () => {
     { pauseId: 'q1', kind: 'answer', value: 'Use the public API' },
     { pauseId: 'a1', kind: 'approve', value: 'Final plan' },
   ]);
+  assert.deepEqual(terminal.questions, ['Answer [/done to finish]:']);
   assert.equal(terminal.output.at(-1), 'done');
+});
+
+test('translates /done into complete-interview for v3 questions', async () => {
+  const terminal = new FakeTerminal();
+  terminal.answers.push('/done');
+  const resumes: unknown[] = [];
+  const results: PipelineRuntimeResult[] = [
+    {
+      status: 'paused', runId: 'run-1',
+      pause: { id: 'q1', nodeId: 'plan', type: 'question', content: 'Anything else?', format: 'markdown' },
+      snapshot: snapshot('paused'),
+    },
+    {
+      status: 'completed', runId: 'run-1',
+      artifact: { name: 'plan', type: 'text', format: 'markdown', value: 'ready', producerNodeId: 'plan' },
+      snapshot: snapshot('completed'),
+    },
+  ];
+  const host = {
+    start: async () => results.shift()!,
+    resume: async (_runId: string, decision: unknown) => {
+      resumes.push(decision);
+      return results.shift()!;
+    },
+  };
+
+  const result = await runPipelineInteractive(host, terminal, command());
+
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(resumes, [{ pauseId: 'q1', kind: 'complete-interview' }]);
+  assert.deepEqual(terminal.questions, ['Answer [/done to finish]:']);
 });
 
 test('--yes auto-approves approvals but never promotions', async () => {

@@ -443,3 +443,412 @@ test("PipelineRuntime refuses unresolved node skills before sending prompts", as
   assert.equal(result.error.code, "skill_resolution_failed");
   assert.equal(executed, false);
 });
+
+test("PipelineRuntime pauses an interview question, records the answer, then produces a ready artifact for approval", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "interview",
+    title: "Interview",
+    nodes: [
+      {
+        id: "plan",
+        agent: "Codex",
+        prompt: "Plan {{userPrompt}}",
+        interaction: { protocol: "proposed-plan", repairAttempts: 0 },
+        output: { name: "plan", type: "acp.grill-decision/v1", format: "markdown" },
+      },
+      {
+        id: "approval",
+        type: "pause",
+        pause: "approval",
+        content: "{{inputs.plan}}",
+        format: "proposed-plan",
+        needs: ["plan"],
+        inputs: [{ name: "plan", from: "plan.plan", type: "acp.grill-decision/v1", format: "markdown" }],
+        output: { name: "approved", type: "acp.grill-decision/v1", format: "markdown" },
+      },
+    ],
+  }, agents).program!;
+  const prompts: string[] = [];
+  const runtime = new PipelineRuntime({
+    async execute({ prompt }) {
+      prompts.push(prompt);
+      if (prompts.length === 1) {
+        return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: proposedQuestion("Which API?") } };
+      }
+      return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: proposedReady("Use the public API.") } };
+    },
+  }, { runIdFactory: () => "run-interview" });
+
+  const first = await runtime.start(program, { inputs: { userPrompt: "ship" } });
+  assert.equal(first.status, "paused");
+  assert.equal(first.pause.type, "question");
+  assert.equal(first.pause.content, "Which API?");
+  assert.equal(first.snapshot.nodeStates.plan.status, "paused");
+  assert.equal(first.snapshot.artifacts["plan.plan"], undefined);
+
+  const approval = await runtime.resume(first.runId, {
+    pauseId: first.pause.id,
+    kind: "answer",
+    value: "Use the public API",
+  });
+
+  assert.equal(approval.status, "paused");
+  assert.equal(approval.pause.type, "approval");
+  assert.match(approval.pause.content, /Use the public API\./);
+  assert.match(prompts[1], /User:\nUse the public API/);
+  assert.equal(approval.snapshot.activeInterview, undefined);
+  assert.equal(approval.snapshot.artifacts["plan.plan"].value, proposedReady("Use the public API."));
+});
+
+test("PipelineRuntime completes an interview with complete-interview and rejects later question output", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "done",
+    title: "Done",
+    nodes: [
+      {
+        id: "plan",
+        agent: "Codex",
+        prompt: "Plan",
+        interaction: { protocol: "proposed-plan", repairAttempts: 0 },
+        output: { name: "plan", type: "acp.grill-decision/v1", format: "markdown" },
+      },
+    ],
+  }, agents).program!;
+  let call = 0;
+  const runtime = new PipelineRuntime({
+    async execute() {
+      call += 1;
+      return {
+        artifact: {
+          name: "plan",
+          type: "acp.grill-decision/v1",
+          format: "markdown",
+          value: call === 1 ? proposedQuestion("Anything else?") : proposedReady("Final."),
+        },
+      };
+    },
+  }, { runIdFactory: () => "run-done" });
+
+  const paused = await runtime.start(program);
+  assert.equal(paused.status, "paused");
+
+  const completed = await runtime.resume(paused.runId, {
+    pauseId: paused.pause.id,
+    kind: "complete-interview",
+  });
+
+  assert.equal(completed.status, "completed");
+  assert.equal(completed.artifact?.value, proposedReady("Final."));
+
+  const badRuntime = new PipelineRuntime({
+    async execute() {
+      return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: proposedQuestion("Nope?") } };
+    },
+  }, { runIdFactory: () => "run-bad-done" });
+  const badPaused = await badRuntime.start(program);
+  assert.equal(badPaused.status, "paused");
+  const failed = await badRuntime.resume(badPaused.runId, {
+    pauseId: badPaused.pause.id,
+    kind: "complete-interview",
+  });
+  assert.equal(failed.status, "failed");
+  assert.equal(failed.error.code, "malformed_interview_output");
+});
+
+test("PipelineRuntime restores a multi-turn interview from snapshot replay and rejects obsolete answers", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "restore-interview",
+    title: "Restore Interview",
+    nodes: [
+      {
+        id: "plan",
+        agent: "Codex",
+        prompt: "Plan {{userPrompt}}",
+        interaction: { protocol: "proposed-plan", repairAttempts: 0 },
+        output: { name: "plan", type: "acp.grill-decision/v1", format: "markdown" },
+      },
+    ],
+  }, agents).program!;
+  const store = new InMemoryPipelineRunStore();
+  const firstRuntime = new PipelineRuntime({
+    async execute() {
+      return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: proposedQuestion("First?") } };
+    },
+  }, { runIdFactory: () => "run-restore-interview", store });
+  const first = await firstRuntime.start(program, { inputs: { userPrompt: "ship" } });
+  assert.equal(first.status, "paused");
+  const firstPauseId = first.pause.id;
+
+  const prompts: string[] = [];
+  let call = 0;
+  const secondRuntime = new PipelineRuntime({
+    async execute({ prompt }) {
+      prompts.push(prompt);
+      call += 1;
+      return {
+        artifact: {
+          name: "plan",
+          type: "acp.grill-decision/v1",
+          format: "markdown",
+          value: call === 1 ? proposedQuestion("Second?") : proposedReady("Done."),
+        },
+      };
+    },
+  }, { store, programs: [program] });
+
+  const second = await secondRuntime.resume(first.runId, {
+    pauseId: firstPauseId,
+    kind: "answer",
+    value: "first answer",
+  });
+  assert.equal(second.status, "paused");
+  assert.notEqual(second.pause.id, firstPauseId);
+  assert.match(prompts[0], /Agent:\n<proposed_plan>/);
+  assert.match(prompts[0], /User:\nfirst answer/);
+
+  const obsolete = await secondRuntime.resume(first.runId, {
+    pauseId: firstPauseId,
+    kind: "answer",
+    value: "late",
+  });
+  assert.equal(obsolete.status, "failed");
+  assert.equal(obsolete.error.code, "invalid_resume");
+});
+
+test("PipelineRuntime repairs one malformed interview output before failing explicitly", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "repair",
+    title: "Repair",
+    nodes: [
+      {
+        id: "plan",
+        agent: "Codex",
+        prompt: "Plan",
+        interaction: { protocol: "proposed-plan", repairAttempts: 1 },
+        output: { name: "plan", type: "acp.grill-decision/v1", format: "markdown" },
+      },
+    ],
+  }, agents).program!;
+  let call = 0;
+  const prompts: string[] = [];
+  const runtime = new PipelineRuntime({
+    async execute({ prompt }) {
+      prompts.push(prompt);
+      call += 1;
+      return {
+        artifact: {
+          name: "plan",
+          type: "acp.grill-decision/v1",
+          format: "markdown",
+          value: call === 1 ? "not a plan" : proposedReady("Repaired."),
+        },
+      };
+    },
+  }, { runIdFactory: () => "run-repair" });
+
+  const result = await runtime.start(program);
+
+  assert.equal(result.status, "completed");
+  assert.match(prompts[1], /Protocol error:/);
+  assert.equal(result.artifact?.value, proposedReady("Repaired."));
+
+  const failing = new PipelineRuntime({
+    async execute() {
+      return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: "still bad" } };
+    },
+  }, { runIdFactory: () => "run-repair-fails" });
+  const failed = await failing.start(program);
+  assert.equal(failed.status, "failed");
+  assert.equal(failed.error.code, "malformed_interview_output");
+});
+
+test("PipelineRuntime gives each interview turn its own repair budget", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "repair-each-turn",
+    title: "Repair Each Turn",
+    nodes: [
+      {
+        id: "plan",
+        agent: "Codex",
+        prompt: "Plan",
+        interaction: { protocol: "proposed-plan", repairAttempts: 1 },
+        output: { name: "plan", type: "acp.grill-decision/v1", format: "markdown" },
+      },
+    ],
+  }, agents).program!;
+  const outputs = [
+    "bad first turn",
+    proposedQuestion("First?"),
+    "bad second turn",
+    proposedReady("Done."),
+  ];
+  const runtime = new PipelineRuntime({
+    async execute() {
+      return {
+        artifact: {
+          name: "plan",
+          type: "acp.grill-decision/v1",
+          format: "markdown",
+          value: outputs.shift(),
+        },
+      };
+    },
+  }, { runIdFactory: () => "run-repair-each-turn" });
+
+  const paused = await runtime.start(program);
+  assert.equal(paused.status, "paused");
+
+  const completed = await runtime.resume(paused.runId, {
+    pauseId: paused.pause.id,
+    kind: "answer",
+    value: "first answer",
+  });
+
+  assert.equal(completed.status, "completed");
+  assert.equal(completed.artifact?.value, proposedReady("Done."));
+});
+
+test("PipelineRuntime serializes interview nodes while ordinary agents can still run", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "ordered-interviews",
+    title: "Ordered Interviews",
+    nodes: [
+      {
+        id: "ordinary",
+        agent: "Codex",
+        prompt: "ordinary",
+        output: { name: "out", type: "note", format: "text" },
+      },
+      {
+        id: "firstInterview",
+        agent: "Codex",
+        prompt: "first",
+        interaction: { protocol: "proposed-plan", repairAttempts: 0 },
+        output: { name: "plan", type: "acp.grill-decision/v1", format: "markdown" },
+      },
+      {
+        id: "secondInterview",
+        agent: "Codex",
+        prompt: "second",
+        interaction: { protocol: "proposed-plan", repairAttempts: 0 },
+        output: { name: "plan", type: "acp.grill-decision/v1", format: "markdown" },
+      },
+    ],
+  }, agents).program!;
+  const started: string[] = [];
+  const runtime = new PipelineRuntime({
+    async execute({ node }) {
+      started.push(node.id);
+      if (node.id === "ordinary") {
+        return { artifact: { name: "out", type: "note", format: "text", value: "ok" } };
+      }
+      return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: proposedQuestion(`${node.id}?`) } };
+    },
+  }, { runIdFactory: () => "run-ordered-interviews" });
+
+  const result = await runtime.start(program);
+
+  assert.equal(result.status, "paused");
+  assert.equal(result.pause.nodeId, "firstInterview");
+  assert.deepEqual(started.sort(), ["firstInterview", "ordinary"]);
+  assert.equal(result.snapshot.nodeStates.secondInterview.status, "pending");
+  assert.equal(result.snapshot.nodeStates.ordinary.status, "completed");
+});
+
+test("PipelineRuntime keeps technical retries independent from interview repairs", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "retry-interview",
+    title: "Retry Interview",
+    nodes: [
+      {
+        id: "plan",
+        agent: "Codex",
+        prompt: "Plan",
+        retry: { maxAttempts: 2, backoffMs: 0 },
+        interaction: { protocol: "proposed-plan", repairAttempts: 1 },
+        output: { name: "plan", type: "acp.grill-decision/v1", format: "markdown" },
+      },
+    ],
+  }, agents).program!;
+  let call = 0;
+  const runtime = new PipelineRuntime({
+    async execute() {
+      call += 1;
+      if (call === 1) {
+        return { code: "temporary", message: "temporary", retryable: true };
+      }
+      if (call === 2) {
+        return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: "bad format" } };
+      }
+      return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: proposedReady("Ok.") } };
+    },
+  }, { runIdFactory: () => "run-retry-interview" });
+
+  const result = await runtime.start(program);
+
+  assert.equal(result.status, "completed");
+  assert.equal(call, 3);
+  assert.equal(result.snapshot.nodeStates.plan.attempts, 2);
+  assert.equal(result.snapshot.diagnostics.filter(item => item.code === "temporary").length, 1);
+});
+
+test("PipelineRuntime does not let an interview pause mask an ordinary node failure", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "interview-with-failure",
+    title: "Interview With Failure",
+    nodes: [
+      {
+        id: "ordinary",
+        agent: "Codex",
+        prompt: "ordinary",
+        output: { name: "out", type: "note", format: "text" },
+      },
+      {
+        id: "plan",
+        agent: "Codex",
+        prompt: "plan",
+        interaction: { protocol: "proposed-plan", repairAttempts: 0 },
+        output: { name: "plan", type: "acp.grill-decision/v1", format: "markdown" },
+      },
+    ],
+  }, agents).program!;
+  const runtime = new PipelineRuntime({
+    async execute({ node }) {
+      if (node.id === "ordinary") {
+        return { code: "ordinary_failed", message: "ordinary failed" };
+      }
+      return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: proposedQuestion("Question?") } };
+    },
+  }, { runIdFactory: () => "run-interview-with-failure" });
+
+  const result = await runtime.start(program);
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.error.code, "ordinary_failed");
+});
+
+function proposedQuestion(question: string): string {
+  return [
+    "<proposed_plan>",
+    "<interview_state>question</interview_state>",
+    `<clarification_question>${question}</clarification_question>`,
+    "</proposed_plan>",
+  ].join("\n");
+}
+
+function proposedReady(body: string): string {
+  return [
+    "<proposed_plan>",
+    "<interview_state>ready</interview_state>",
+    body,
+    "</proposed_plan>",
+  ].join("\n");
+}

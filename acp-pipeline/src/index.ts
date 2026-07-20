@@ -8,6 +8,7 @@ export * from './PipelineV3Catalog';
 export * from './PipelineRuntime';
 export * from './PipelineRuntimeAgentAdapter';
 export * from './PipelineRunStore';
+export * from './PipelineInterviewProtocol';
 export * from './MultiAgentArtifacts';
 export * from './PipelinePolicy';
 export * from './PipelineSkillResolution';

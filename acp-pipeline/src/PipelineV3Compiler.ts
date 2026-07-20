@@ -1,7 +1,9 @@
 import { normalizePipelinePolicy } from "./PipelinePolicy";
+import { getPipelineInterviewProtocol } from "./PipelineInterviewProtocol";
 import type {
   CompiledPipelineNode,
   CompiledPipelineProgram,
+  PipelineInteractionDefinition,
   PipelineCompileResult,
   PipelineNodeInputDefinition,
   PipelineRetryDefinition,
@@ -109,6 +111,9 @@ function readNodes(
     const skills = readStringArray(nodeValue.skills, "skills", id ? `node "${id}"` : label, errors);
 
     if (kind === "pause") {
+      if (nodeValue.interaction !== undefined) {
+        errors.push(`${id ? `node "${id}"` : label} interaction is only supported on agent nodes.`);
+      }
       const pause = nodeValue.pause;
       if (!isPauseType(pause)) {
         errors.push(`${id ? `node "${id}"` : label} pause must be "approval", "question", or "promotion".`);
@@ -142,6 +147,7 @@ function readNodes(
       errors.push(`node "${id}" references missing ACP agent "${agent}".`);
     }
     const output = readOutput(nodeValue.output, id ? `node "${id}"` : label, errors, true);
+    const interaction = readInteraction(nodeValue.interaction, id ? `node "${id}"` : label, errors);
     const prompt = readOptionalString(nodeValue.prompt, "prompt", id ? `node "${id}"` : label, errors);
     const promptFile = readOptionalString(nodeValue.promptFile, "promptFile", id ? `node "${id}"` : label, errors);
     if (!prompt && !promptFile) {
@@ -158,12 +164,35 @@ function readNodes(
         needs,
         inputs,
         output,
+        interaction,
         retry,
         policy: normalizePipelinePolicy(policy),
       }));
     }
   }
   return nodes;
+}
+
+function readInteraction(value: unknown, label: string, errors: string[]): PipelineInteractionDefinition | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    errors.push(`${label} interaction must be an object.`);
+    return undefined;
+  }
+  const protocol = readRequiredString(value, "protocol", `${label} interaction`, errors);
+  if (protocol && !getPipelineInterviewProtocol(protocol)) {
+    errors.push(`${label} interaction.protocol "${protocol}" is not registered.`);
+  }
+  const repairAttempts = value.repairAttempts ?? 1;
+  if (typeof repairAttempts !== "number" || !Number.isInteger(repairAttempts) || repairAttempts < 0) {
+    errors.push(`${label} interaction.repairAttempts must be an integer greater than or equal to 0.`);
+  }
+  if (!protocol || !getPipelineInterviewProtocol(protocol) || typeof repairAttempts !== "number" || !Number.isInteger(repairAttempts) || repairAttempts < 0) {
+    return undefined;
+  }
+  return { protocol, repairAttempts };
 }
 
 function validateGraph(nodes: CompiledPipelineNode[], errors: string[]): void {

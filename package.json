@@ -18,7 +18,9 @@
     "lint": "npm run lint -w acp-client",
     "compile-tests": "npm run compile-tests -w acp-client",
     "test:pi": "npm run test -w @acp-client/pi-extension",
+    "build:cli": "npm --prefix pipeline-cli run build",
     "test:cli": "npm --prefix pipeline-cli test",
+    "test:cli:pipeline": "npm run acp-cli -- run grill-spec-tickets-implement-review",
     "acp-cli": "npm --prefix pipeline-cli run build && node pipeline-cli/dist/src/cli.js",
     "vsx": "npm run vsx -w acp-client"
   },
