@@ -37,6 +37,9 @@ jobs:
       - name: Test Pi extension
         run: npm run test:pi
 
+      - name: Test pipeline CLI
+        run: npm run test:cli
+
       - name: Package VSIX
         run: npm run vsx
 
