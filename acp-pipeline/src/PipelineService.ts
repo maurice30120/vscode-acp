@@ -1,6 +1,10 @@
 import { EventEmitter } from 'node:events';
 
 import type { PipelineAgentRunner } from './PipelineAgentRunner';
+import {
+  publishPipelineArtifacts,
+  type PipelineArtifactPublisher,
+} from './PipelineArtifactPublisher';
 import { PipelineRuntime } from './PipelineRuntime';
 import { PipelineRuntimeAgentAdapter } from './PipelineRuntimeAgentAdapter';
 import type {
@@ -24,6 +28,7 @@ export interface PipelineServiceDependencies {
   runAgent?: PipelineAgentRunner;
   isAgentSandcastle?: (agentName: string, agentConfigs: Record<string, unknown>) => boolean;
   isRunAbortedError?: (error: unknown) => boolean;
+  artifactPublisher?: PipelineArtifactPublisher;
 }
 
 export class PipelineService extends EventEmitter {
@@ -180,9 +185,11 @@ export class PipelineService extends EventEmitter {
   private handleV3Result(sessionId: string, result: PipelineRuntimeResult): PipelineRuntimeResult {
     if (result.status === 'paused') {
       this.emitV3Pause(sessionId, result.pause);
+      this.publishV3Artifacts(sessionId, result);
       return result;
     }
     if (result.status === 'completed') {
+      this.publishV3Artifacts(sessionId, result);
       this.v3Runs.delete(sessionId);
       return result;
     }
@@ -194,6 +201,23 @@ export class PipelineService extends EventEmitter {
     this.v3Runs.delete(sessionId);
     this.v3RejectedRuns.delete(sessionId);
     throw new Error(result.error.message);
+  }
+
+  private publishV3Artifacts(
+    sessionId: string,
+    result: Extract<PipelineRuntimeResult, { status: 'paused' | 'completed' }>,
+  ): void {
+    const publisher = this.dependencies.artifactPublisher ?? publishPipelineArtifacts;
+    const publication = publisher(this.workspaceCwd(), result.snapshot);
+    if (!publication) {
+      return;
+    }
+    this.emit('status', {
+      sessionId,
+      status: result.status === 'completed' ? 'completed' : 'awaiting_approval',
+      message: `Pipeline artifacts written to ${publication.directory} (${publication.files.length} files).`,
+      stepId: result.status === 'paused' ? result.pause.nodeId : undefined,
+    });
   }
 
   private emitV3Pause(sessionId: string, pause: PipelinePauseSnapshot): void {
