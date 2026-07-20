@@ -1,0 +1,30 @@
+name: Pi Windows diagnostics
+
+on:
+  pull_request:
+
+jobs:
+  pi-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - run: npm ci --silent
+
+      - name: Capture Pi test diagnostics
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force diagnostics | Out-Null
+          npm run test:pi *> diagnostics/pi-windows.log
+          $LASTEXITCODE | Out-File diagnostics/pi-windows.exit -Encoding ascii
+          exit 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pi-windows-diagnostics
+          path: diagnostics
