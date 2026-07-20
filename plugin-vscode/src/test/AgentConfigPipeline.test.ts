@@ -86,7 +86,7 @@ suite('AgentConfig pipeline', () => {
 function writeAgentConfig(workspaceRoot: string, agents: Record<string, unknown>): void {
   const configPath = path.join(workspaceRoot, '.acp', 'acp-agents.json');
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
-  fs.writeFileSync(configPath, `${JSON.stringify(agents, null, 2)}\n`, 'utf8');
+  fs.writeFileSync(configPath, `${JSON.stringify({ agents }, null, 2)}\n`, 'utf8');
 }
 
 function writePipelineConfig(workspaceRoot: string, version: 2 | 3 = 3): void {

@@ -145,3 +145,36 @@ test('verbose mode logs ACP error code and data with the failing agent name', as
     '[acp-cli] Agent "Planner" failed: Internal error; code=-32603; data={"details":"provider rejected the request"}',
   ));
 });
+
+test('lists workspace pipelines with stable CLI metadata', () => {
+  const cwd = createWorkspace();
+  const host = new CliPipelineHost(cwd, {
+    terminal: new FakeTerminal(),
+    runAgent: async () => '',
+  });
+
+  assert.deepEqual(host.listPipelines(), [
+    {
+      id: 'question-flow',
+      title: 'Question Flow',
+      nodeCount: 2,
+    },
+  ]);
+});
+
+test('rejects resume and cancel calls for unknown runs', async () => {
+  const cwd = createWorkspace();
+  const host = new CliPipelineHost(cwd, {
+    terminal: new FakeTerminal(),
+    runAgent: async () => '',
+  });
+
+  await assert.rejects(
+    () => host.resume('missing-run', { pauseId: 'pause-1', kind: 'reject' }),
+    /Unknown active ACP pipeline run "missing-run"/,
+  );
+  await assert.rejects(
+    () => host.cancel('missing-run'),
+    /Unknown active ACP pipeline run "missing-run"/,
+  );
+});

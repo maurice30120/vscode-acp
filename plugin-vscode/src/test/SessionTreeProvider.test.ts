@@ -54,7 +54,7 @@ suite('SessionTreeProvider', () => {
       fs.mkdirSync(path.join(workspaceRoot, '.acp', 'pipelines'), { recursive: true });
       fs.writeFileSync(
         path.join(workspaceRoot, '.acp', 'acp-agents.json'),
-        JSON.stringify({ Vibe: { command: 'vibe-acp' } }),
+        JSON.stringify({ agents: { Vibe: { command: 'vibe-acp' } } }),
       );
       fs.writeFileSync(
         path.join(workspaceRoot, '.acp', 'pipelines', 'plan-execute-verify.yaml'),

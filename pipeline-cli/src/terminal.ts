@@ -1,5 +1,6 @@
 import { createInterface, type Interface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
+import type { Readable, Writable } from 'node:stream';
 
 import type { PiPermissionContext } from '@acp-client/pi-extension/host';
 
@@ -15,26 +16,34 @@ export interface CliTerminal {
 
 export class NodeCliTerminal implements CliTerminal {
   private readonly readline: Interface;
+  private readonly inputClosed = new AbortController();
 
-  constructor() {
-    this.readline = createInterface({ input, output });
+  constructor(
+    private readonly inputStream: Readable = input,
+    private readonly outputStream: Writable = output,
+    private readonly errorStream: Writable = process.stderr,
+  ) {
+    this.readline = createInterface({ input: inputStream, output: outputStream });
+    const abortInput = () => this.inputClosed.abort(new Error('Terminal input closed.'));
+    inputStream.once('end', abortInput);
+    inputStream.once('close', abortInput);
   }
 
   write(message: string): void {
-    output.write(`${message}\n`);
+    this.outputStream.write(`${message}\n`);
   }
 
   writeError(message: string): void {
-    process.stderr.write(`${message}\n`);
+    this.errorStream.write(`${message}\n`);
   }
 
   async ask(question: string): Promise<string> {
-    return (await this.readline.question(`${question} `)).trim();
+    return (await this.question(`${question} `)).trim();
   }
 
   async confirm(title: string, message?: string): Promise<boolean> {
     const label = message ? `${title}\n${message}\nConfirm? [y/N]` : `${title} [y/N]`;
-    const answer = (await this.readline.question(`${label} `)).trim().toLowerCase();
+    const answer = (await this.question(`${label} `)).trim().toLowerCase();
     return answer === 'y' || answer === 'yes' || answer === 'o' || answer === 'oui';
   }
 
@@ -66,5 +75,16 @@ export class NodeCliTerminal implements CliTerminal {
 
   close(): void {
     this.readline.close();
+  }
+
+  private async question(query: string): Promise<string> {
+    try {
+      return await this.readline.question(query, { signal: this.inputClosed.signal });
+    } catch (error: unknown) {
+      if (this.inputClosed.signal.aborted) {
+        throw new Error('Terminal input closed.');
+      }
+      throw error;
+    }
   }
 }

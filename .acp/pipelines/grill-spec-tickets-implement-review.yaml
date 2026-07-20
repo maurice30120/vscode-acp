@@ -222,7 +222,7 @@ nodes:
   - id: review
     # Agents disponibles :
     # agent: Codex CLI
-    # agent: Vibe
+    agent: Vibe
     # agent: Cursor CLI
     # agent: OpenCode
     # agent: Pi Agent
@@ -230,7 +230,7 @@ nodes:
     # agent: Cursor Sandcastle
     # agent: Pi Sandcastle
     # agent: Vibe Sandcastle
-    agent: Pi Agent
+    # agent: Pi Agent
     skills: [code-review]
     promptFile: ../agents/matt-plan-reviewer.md
     prompt: |

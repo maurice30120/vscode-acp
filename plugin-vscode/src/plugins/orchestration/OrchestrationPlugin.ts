@@ -54,7 +54,7 @@ export class OrchestrationPlugin implements FeaturePlugin<OrchestrationPluginCon
     disposables.push(runtime.activate());
     const refresh = () => sessionTreeProvider.invalidate();
 
-    for (const pattern of ['**/.acp/acp-agents.json', '**/.acp/pipelines/*.yaml', '**/.acp/pipelines/*.yml']) {
+    for (const pattern of ['**/.acp/acp-agents.json', '**/.acp/.sandcastle/config.json', '**/.acp/pipelines/*.yaml', '**/.acp/pipelines/*.yml']) {
       const watcher = vscode.workspace.createFileSystemWatcher(pattern);
       disposables.push(
         watcher,

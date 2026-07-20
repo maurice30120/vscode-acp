@@ -41,3 +41,36 @@ test('requires a pipeline and prompt', () => {
     /Usage: acp-cli run/,
   );
 });
+
+test('parses list json and verbose options without accepting --yes', () => {
+  assert.deepEqual(parseCliArgs(['list', '--json', '--verbose'], '/repo'), {
+    kind: 'list',
+    cwd: '/repo',
+    json: true,
+    verbose: true,
+  });
+
+  assert.throws(
+    () => parseCliArgs(['list', '--yes'], '/repo'),
+    /Usage: acp-cli list/,
+  );
+});
+
+test('keeps prompt-looking options after the positional delimiter', () => {
+  assert.deepEqual(parseCliArgs(['run', 'grill', '--', '--fix', 'pipeline-cli'], '/repo'), {
+    kind: 'run',
+    pipelineName: 'grill',
+    prompt: '--fix pipeline-cli',
+    cwd: '/repo',
+    json: false,
+    verbose: false,
+    yes: false,
+  });
+});
+
+test('requires a value for --cwd', () => {
+  assert.throws(
+    () => parseCliArgs(['run', '--cwd'], '/repo'),
+    /--cwd requires a path/,
+  );
+});

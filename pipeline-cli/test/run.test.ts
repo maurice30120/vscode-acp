@@ -158,3 +158,139 @@ test('--yes auto-approves approvals but never promotions', async () => {
     { pauseId: 'p1', kind: 'reject' },
   ]);
 });
+
+test('json mode prints the normalized final result without pause prompts', async () => {
+  const terminal = new FakeTerminal();
+  const host = {
+    start: async (): Promise<PipelineRuntimeResult> => ({
+      status: 'completed',
+      runId: 'run-json',
+      artifact: {
+        name: 'result',
+        type: 'json',
+        format: 'json',
+        value: { ok: true, tickets: 3 },
+        producerNodeId: 'finish',
+      },
+      snapshot: { ...snapshot('completed'), runId: 'run-json' },
+    }),
+    resume: async (): Promise<PipelineRuntimeResult> => {
+      throw new Error('resume should not be called');
+    },
+  };
+
+  const result = await runPipelineInteractive(host, terminal, command({ json: true }));
+
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(terminal.questions, []);
+  assert.deepEqual(terminal.errors, []);
+  assert.deepEqual(JSON.parse(terminal.output[0] ?? ''), {
+    status: 'completed',
+    runId: 'run-json',
+    artifact: {
+      name: 'result',
+      type: 'json',
+      format: 'json',
+      value: { ok: true, tickets: 3 },
+      producerNodeId: 'finish',
+    },
+  });
+});
+
+test('plain mode pretty prints object artifacts', async () => {
+  const terminal = new FakeTerminal();
+  const host = {
+    start: async (): Promise<PipelineRuntimeResult> => ({
+      status: 'completed',
+      runId: 'run-object',
+      artifact: {
+        name: 'result',
+        type: 'json',
+        format: 'json',
+        value: { issue: 'pipeline-cli', covered: true },
+        producerNodeId: 'finish',
+      },
+      snapshot: { ...snapshot('completed'), runId: 'run-object' },
+    }),
+    resume: async (): Promise<PipelineRuntimeResult> => {
+      throw new Error('resume should not be called');
+    },
+  };
+
+  const result = await runPipelineInteractive(host, terminal, command());
+
+  assert.equal(result.status, 'completed');
+  assert.equal(terminal.output[0], JSON.stringify({ issue: 'pipeline-cli', covered: true }, null, 2));
+});
+
+test('reports failed and cancelled final results on stderr', async () => {
+  const failedTerminal = new FakeTerminal();
+  const failedHost = {
+    start: async (): Promise<PipelineRuntimeResult> => ({
+      status: 'failed',
+      runId: 'run-failed',
+      error: { code: 'agent_failed', message: 'Agent timed out' },
+      snapshot: { ...snapshot('failed'), runId: 'run-failed' },
+    }),
+    resume: async (): Promise<PipelineRuntimeResult> => {
+      throw new Error('resume should not be called');
+    },
+  };
+
+  const failed = await runPipelineInteractive(failedHost, failedTerminal, command());
+
+  assert.equal(failed.status, 'failed');
+  assert.deepEqual(failedTerminal.errors, ['Pipeline failed [agent_failed]: Agent timed out']);
+
+  const cancelledTerminal = new FakeTerminal();
+  const cancelledHost = {
+    start: async (): Promise<PipelineRuntimeResult> => ({
+      status: 'cancelled',
+      runId: 'run-cancelled',
+      snapshot: { ...snapshot('cancelled'), runId: 'run-cancelled' },
+    }),
+    resume: async (): Promise<PipelineRuntimeResult> => {
+      throw new Error('resume should not be called');
+    },
+  };
+
+  const cancelled = await runPipelineInteractive(cancelledHost, cancelledTerminal, command());
+
+  assert.equal(cancelled.status, 'cancelled');
+  assert.deepEqual(cancelledTerminal.errors, ['Pipeline cancelled.']);
+});
+
+test('keeps asking until a question receives a non-empty answer', async () => {
+  const terminal = new FakeTerminal();
+  terminal.answers.push('', 'Use retries');
+  const decisions: unknown[] = [];
+  const results: PipelineRuntimeResult[] = [
+    {
+      status: 'paused', runId: 'run-1',
+      pause: { id: 'q1', nodeId: 'question', type: 'question', content: 'How?', format: 'markdown' },
+      snapshot: snapshot('paused'),
+    },
+    {
+      status: 'completed', runId: 'run-1',
+      artifact: { name: 'result', type: 'text', format: 'markdown', value: 'done', producerNodeId: 'finish' },
+      snapshot: snapshot('completed'),
+    },
+  ];
+  const host = {
+    start: async () => results.shift()!,
+    resume: async (_runId: string, decision: unknown) => {
+      decisions.push(decision);
+      return results.shift()!;
+    },
+  };
+
+  const result = await runPipelineInteractive(host, terminal, command());
+
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(terminal.questions, [
+    'Answer [/done to finish]:',
+    'Answer [/done to finish]:',
+  ]);
+  assert.deepEqual(terminal.errors, ['An answer is required to resume this pipeline question.']);
+  assert.deepEqual(decisions, [{ pauseId: 'q1', kind: 'answer', value: 'Use retries' }]);
+});

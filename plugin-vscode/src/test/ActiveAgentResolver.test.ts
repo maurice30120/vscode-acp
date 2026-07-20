@@ -17,7 +17,7 @@ suite('ActiveAgentResolver', () => {
     fs.mkdirSync(path.join(workspace, '.acp'), { recursive: true });
     fs.writeFileSync(
       path.join(workspace, '.acp', 'acp-agents.json'),
-      `${JSON.stringify(agents, null, 2)}\n`,
+      `${JSON.stringify({ agents }, null, 2)}\n`,
       'utf8',
     );
   }

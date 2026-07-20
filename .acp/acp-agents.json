@@ -2,7 +2,7 @@
   "agents": {
     "Codex CLI": {
       "command": "npx",
-      "args": ["@zed-industries/codex-acp@latest"],
+      "args": ["-y", "@zed-industries/codex-acp@0.16.0"],
       "env": {}
     },
     "Vibe": {
@@ -28,6 +28,9 @@
   },
   "pipeline": {
     "enabled": true,
-    "instructionsMaxBytes": 262144
+    "instructionsMaxBytes": 262144,
+    "timeouts": {
+      "initializeMs": 120000
+    }
   }
 }
