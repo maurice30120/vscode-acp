@@ -1,0 +1,30 @@
+{
+  "name": "@acp-client/pipeline-cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "acp-pipeline": "./dist/src/cli.js"
+  },
+  "main": "./dist/src/cli.js",
+  "types": "./dist/src/cli.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "npm --prefix .. run build -w @acp-client/pi-extension && npm --prefix .. exec -- tsc -p pipeline-cli/tsconfig.json --incremental false",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\""
+  },
+  "dependencies": {
+    "@acp-client/pi-extension": "file:../plugin-pi",
+    "@acp-client/pipeline": "file:../acp-pipeline"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}
