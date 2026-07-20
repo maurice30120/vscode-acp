@@ -17,6 +17,8 @@ export interface CliTerminal {
 export class NodeCliTerminal implements CliTerminal {
   private readonly readline: Interface;
   private readonly inputClosed = new AbortController();
+  private readonly abortInput = () => this.inputClosed.abort(new Error('Terminal input closed.'));
+  private closed = false;
 
   constructor(
     private readonly inputStream: Readable = input,
@@ -24,9 +26,8 @@ export class NodeCliTerminal implements CliTerminal {
     private readonly errorStream: Writable = process.stderr,
   ) {
     this.readline = createInterface({ input: inputStream, output: outputStream });
-    const abortInput = () => this.inputClosed.abort(new Error('Terminal input closed.'));
-    inputStream.once('end', abortInput);
-    inputStream.once('close', abortInput);
+    inputStream.once('end', this.abortInput);
+    inputStream.once('close', this.abortInput);
   }
 
   write(message: string): void {
@@ -74,7 +75,16 @@ export class NodeCliTerminal implements CliTerminal {
   }
 
   close(): void {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
+    this.inputStream.off('end', this.abortInput);
+    this.inputStream.off('close', this.abortInput);
     this.readline.close();
+    if (this.inputStream !== input) {
+      this.inputStream.destroy();
+    }
   }
 
   private async question(query: string): Promise<string> {

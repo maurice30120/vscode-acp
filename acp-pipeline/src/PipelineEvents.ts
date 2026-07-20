@@ -1,4 +1,5 @@
 import type { SessionNotification } from '@agentclientprotocol/sdk';
+import type { PipelinePauseFormat, PipelinePauseType } from './PipelineV3Types';
 
 export type PipelineStatus =
   | 'planning'
@@ -25,14 +26,18 @@ export interface PipelineStatusEvent {
 export interface PipelinePauseEvent {
   sessionId: string;
   pauseId: string;
-  pauseType: 'approval' | 'question' | 'promotion';
+  pauseType: PipelinePauseType;
   content: string;
-  format: 'text' | 'markdown' | 'json' | 'proposed-plan';
+  format: PipelinePauseFormat;
   stepId: string;
   role?: string;
   agentName?: string;
   implementerUsesSandcastle?: boolean;
   revised?: boolean;
+}
+
+export interface PipelinePlanReadyEvent extends Omit<PipelinePauseEvent, 'pauseId' | 'content' | 'format'> {
+  plan: string;
 }
 
 export interface PipelineSessionUpdateEvent {

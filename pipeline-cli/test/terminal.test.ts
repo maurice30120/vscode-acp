@@ -34,11 +34,10 @@ test('ask returns user input with whitespace trimmed', async () => {
   const errors = new MemoryWritable();
   const terminal = new NodeCliTerminal(input, output, errors);
 
-  // Simulate user typing "  hello world  " and pressing enter
+  const answerPromise = terminal.ask('Question:');
   input.write('  hello world  \n');
-  input.end();
 
-  const answer = await terminal.ask('Question:');
+  const answer = await answerPromise;
   assert.equal(answer, 'hello world');
   assert.ok(output.chunks.join('').startsWith('Question: '));
 
@@ -51,9 +50,10 @@ test('confirm with y returns true', async () => {
   const errors = new MemoryWritable();
   const terminal = new NodeCliTerminal(input, output, errors);
 
+  const resultPromise = terminal.confirm('Confirm?');
   input.write('y\n');
 
-  const result = await terminal.confirm('Confirm?');
+  const result = await resultPromise;
   assert.equal(result, true);
   assert.ok(output.chunks.join('').includes('Confirm? [y/N]'));
 
@@ -66,9 +66,10 @@ test('confirm with n returns false', async () => {
   const errors = new MemoryWritable();
   const terminal = new NodeCliTerminal(input, output, errors);
 
+  const resultPromise = terminal.confirm('Confirm?');
   input.write('n\n');
 
-  const result = await terminal.confirm('Confirm?');
+  const result = await resultPromise;
   assert.equal(result, false);
 
   terminal.close();
@@ -80,9 +81,10 @@ test('confirm with yes returns true', async () => {
   const errors = new MemoryWritable();
   const terminal = new NodeCliTerminal(input, output, errors);
 
+  const resultPromise = terminal.confirm('Confirm?');
   input.write('yes\n');
 
-  const result = await terminal.confirm('Confirm?');
+  const result = await resultPromise;
   assert.equal(result, true);
 
   terminal.close();
@@ -94,9 +96,10 @@ test('confirm with oui returns true', async () => {
   const errors = new MemoryWritable();
   const terminal = new NodeCliTerminal(input, output, errors);
 
+  const resultPromise = terminal.confirm('Confirm?');
   input.write('oui\n');
 
-  const result = await terminal.confirm('Confirm?');
+  const result = await resultPromise;
   assert.equal(result, true);
 
   terminal.close();
@@ -108,9 +111,10 @@ test('confirm with o returns true', async () => {
   const errors = new MemoryWritable();
   const terminal = new NodeCliTerminal(input, output, errors);
 
+  const resultPromise = terminal.confirm('Confirm?');
   input.write('o\n');
 
-  const result = await terminal.confirm('Confirm?');
+  const result = await resultPromise;
   assert.equal(result, true);
 
   terminal.close();
@@ -122,9 +126,10 @@ test('confirm with empty string returns false', async () => {
   const errors = new MemoryWritable();
   const terminal = new NodeCliTerminal(input, output, errors);
 
+  const resultPromise = terminal.confirm('Confirm?');
   input.write('\n');
 
-  const result = await terminal.confirm('Confirm?');
+  const result = await resultPromise;
   assert.equal(result, false);
 
   terminal.close();
@@ -136,9 +141,10 @@ test('confirm with message displays full message', async () => {
   const errors = new MemoryWritable();
   const terminal = new NodeCliTerminal(input, output, errors);
 
+  const resultPromise = terminal.confirm('Title', 'Message content');
   input.write('y\n');
 
-  const result = await terminal.confirm('Title', 'Message content');
+  const result = await resultPromise;
   assert.equal(result, true);
   assert.ok(output.chunks.join('').includes('Title'));
   assert.ok(output.chunks.join('').includes('Message content'));
