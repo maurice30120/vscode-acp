@@ -1,5 +1,5 @@
 {
-  "promotion": "ask",
+  "promotion": "autoApply",
   "agents": {
     "Codex Sandcastle": {
       "transport": "sandcastle",

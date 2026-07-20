@@ -4,7 +4,7 @@ title: Vibe Sandcastle Implement
 
 nodes:
   - id: implement
-    agent: Codex Sandcastle
+    agent: Vibe Sandcastle
     prompt: |
       Implement the user request in the current workspace now.
 

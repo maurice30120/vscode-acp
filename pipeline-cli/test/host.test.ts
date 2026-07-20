@@ -188,6 +188,50 @@ test('prints compact agent activity for CLI session updates without thought text
   assert.ok(!terminal.errors.some(line => line.includes('hidden reasoning')));
 });
 
+test('writes fresh JSONL logs for each pipeline run', async () => {
+  const cwd = createWorkspace();
+  const logsDir = path.join(cwd, '.acp', 'logs');
+  fs.mkdirSync(logsDir, { recursive: true });
+  fs.writeFileSync(path.join(logsDir, 'stale.jsonl'), '{}\n');
+
+  const host = new CliPipelineHost(cwd, {
+    terminal: new FakeTerminal(),
+    runIdFactory: () => 'run-log-test',
+    runAgent: async input => {
+      input.onSessionUpdate?.({
+        sessionId: 's1',
+        update: {
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text: 'Visible answer' },
+        },
+      } as any);
+      return { text: 'Which public API should be used?' };
+    },
+  });
+
+  const result = await host.start('question-flow', 'add a CLI');
+
+  assert.equal(result.status, 'paused');
+  const files = fs.readdirSync(logsDir).sort();
+  assert.equal(files.length, 2);
+  assert.ok(files.some(file => /question-flow-run-log-test\.jsonl$/.test(file)));
+  assert.ok(files.some(file => /question-flow-run-log-test-plan-Planner\.jsonl$/.test(file)));
+
+  const runLogFile = files.find(file => /question-flow-run-log-test\.jsonl$/.test(file));
+  const agentLogFile = files.find(file => /question-flow-run-log-test-plan-Planner\.jsonl$/.test(file));
+  const log = fs.readFileSync(path.join(logsDir, runLogFile ?? ''), 'utf8');
+  const agentLog = fs.readFileSync(path.join(logsDir, agentLogFile ?? ''), 'utf8');
+  assert.match(log, /"event":"run_started"/);
+  assert.match(log, /"event":"agent_started"/);
+  assert.match(log, /"event":"session_update"/);
+  assert.match(log, /Visible answer/);
+  assert.match(agentLog, /"nodeId":"plan"/);
+  assert.match(agentLog, /"agent":"Planner"/);
+  assert.match(agentLog, /"event":"agent_started"/);
+  assert.match(agentLog, /Visible answer/);
+  assert.doesNotMatch(log, /stale/);
+});
+
 test('lists workspace pipelines with stable CLI metadata', () => {
   const cwd = createWorkspace();
   const host = new CliPipelineHost(cwd, {

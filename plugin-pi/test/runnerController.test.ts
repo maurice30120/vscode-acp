@@ -179,6 +179,47 @@ test("EphemeralAcpRunner auto-applies Sandcastle workspace promotion", async () 
 	assert.deepEqual(calls, ["sandcastle/preview", "sandcastle/apply"]);
 });
 
+test("EphemeralAcpRunner lets node promotion policy override Sandcastle catalog promotion", async () => {
+	const workspace = createTempWorkspace();
+	const calls: string[] = [];
+	const runner = new EphemeralAcpRunner(workspace, {
+		getAgentConfigs: () => ({
+			Sandbox: {
+				transport: "sandcastle",
+				provider: "codex",
+				model: "gpt-5",
+			},
+		}),
+		getSandcastlePromotion: () => "ask",
+		requestSandcastlePromotion: async () => {
+			throw new Error("promotion UI should not be requested");
+		},
+		sandcastleConnector: async (input) => mockConnectedAgent(input, {
+			extMethod: async (method) => {
+				calls.push(method);
+				if (method === "sandcastle/preview") {
+					return sandcastlePreview(1);
+				}
+				if (method === "sandcastle/apply") {
+					return { success: true, filesChanged: 1 };
+				}
+				throw new Error(`unexpected method ${method}`);
+			},
+		}),
+	});
+
+	const result = await runner.runAgent({
+		workspaceCwd: workspace,
+		agentName: "Sandbox",
+		promptText: "prompt",
+		sideEffects: "workspace",
+		promotion: "auto-apply",
+	});
+
+	assert.equal(result.promotion, "applied");
+	assert.deepEqual(calls, ["sandcastle/preview", "sandcastle/apply"]);
+});
+
 test("EphemeralAcpRunner maps Sandcastle no changes to no_changes", async () => {
 	const workspace = createTempWorkspace();
 	const calls: string[] = [];

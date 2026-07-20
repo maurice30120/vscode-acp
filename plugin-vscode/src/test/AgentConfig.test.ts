@@ -109,7 +109,7 @@ suite('AgentConfig', () => {
       pipeline: { enabled: true },
     }));
     fs.writeFileSync(path.join(acpRoot, '.sandcastle', 'config.json'), JSON.stringify({
-      promotion: 'ask',
+      promotion: 'autoApply',
       agents: {
         'Vibe Sandcastle': {
           transport: 'sandcastle',

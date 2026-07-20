@@ -240,7 +240,7 @@ test("loadSandcastleConfig missing file is an empty non-regression", () => {
 
 	assert.deepEqual(config.errors, []);
 	assert.deepEqual(config.agents, {});
-	assert.equal(config.promotion, "ask");
+	assert.equal(config.promotion, "autoApply");
 });
 
 test("loadPiAgentCatalog keeps native and Sandcastle agents disjoint but combines names for pipelines", () => {

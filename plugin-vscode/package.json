@@ -461,7 +461,7 @@
             "autoApply",
             "autoReject"
           ],
-          "default": "ask",
+          "default": "autoApply",
           "description": "How Sandcastle workspace changes are promoted after a run. Applies only to patch promotion after the implementer step — it does not auto-approve the plan. 'ask' shows Apply/Reject once (View Diff does not loop). 'autoApply' merges without prompting (yolo). 'autoReject' discards without prompting."
         },
         "acp.defaultWorkingDirectory": {

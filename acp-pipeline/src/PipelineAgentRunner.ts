@@ -1,5 +1,6 @@
 import type { SessionNotification } from "@agentclientprotocol/sdk";
 
+import type { NormalizedPromotionPolicy } from "./PipelinePolicy";
 import type { PipelineStatus } from "./PipelineEvents";
 import type { PipelineStepRunResult } from "./PipelineStepCompletion";
 
@@ -22,6 +23,7 @@ export interface PipelineAgentRunInput {
 	signal?: AbortSignal;
 	sideEffects?: PipelineSideEffects;
 	permissions?: PipelinePermissions;
+	promotion?: NormalizedPromotionPolicy;
 	skills?: string[];
 }
 

@@ -334,7 +334,9 @@ export class EphemeralAcpRunner {
 		}
 
 		const preview = await this.previewSandcastleChanges(connected, sessionId);
-		const promotion = this.options.getSandcastlePromotion?.() ?? "ask";
+		const promotion = mapPipelinePromotionPolicy(input.promotion)
+			?? this.options.getSandcastlePromotion?.()
+			?? "ask";
 		const decision = decidePromotionPolicy(preview, promotion);
 
 		if (decision === "discard_no_changes") {
@@ -419,6 +421,21 @@ export class EphemeralAcpRunner {
 		}
 		return "cancelled";
 	}
+}
+
+function mapPipelinePromotionPolicy(
+	promotion: PipelineAgentRunInput["promotion"],
+): SandcastlePromotion | undefined {
+	if (promotion === "ask") {
+		return "ask";
+	}
+	if (promotion === "auto-apply") {
+		return "autoApply";
+	}
+	if (promotion === "auto-reject" || promotion === "discard") {
+		return "autoReject";
+	}
+	return undefined;
 }
 
 export type MinimalAcpConnection = Pick<

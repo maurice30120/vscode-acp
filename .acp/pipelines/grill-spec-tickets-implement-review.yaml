@@ -57,8 +57,8 @@ nodes:
 
   - id: spec
     # Agents disponibles :
-    # agent: Codex CLI
-    agent: Vibe
+    agent: Codex CLI
+    # agent: Vibe
     # agent: Cursor CLI
     # agent: OpenCode
     # agent: Pi Agent
@@ -94,8 +94,8 @@ nodes:
 
   - id: tasks
     # Agents disponibles :
-    # agent: Codex CLI
-    agent: Vibe
+    agent: Codex CLI
+    # agent: Vibe
     # agent: Cursor CLI
     # agent: OpenCode
     # agent: Pi Agent
@@ -177,7 +177,7 @@ nodes:
     # agent: Codex Sandcastle
     # agent: Cursor Sandcastle
     # agent: Pi Sandcastle
-    agent: Vibe 
+    agent: Vibe Sandcastle
 
     skills: [implement, tdd]
     promptFile: ../agents/matt-implementer.md
@@ -212,8 +212,8 @@ nodes:
     policy:
       filesystem: workspace-write
       terminal: workspace-write
-      network: disabled
-      promotion: ask
+      network: enabled
+      promotion: auto-apply
     output:
       name: result
       type: acp.implementation-result/v1
@@ -221,8 +221,8 @@ nodes:
 
   - id: review
     # Agents disponibles :
-    # agent: Codex CLI
-    agent: Vibe
+    agent: Codex CLI
+    # agent: Vibe
     # agent: Cursor CLI
     # agent: OpenCode
     # agent: Pi Agent

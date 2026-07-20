@@ -184,7 +184,7 @@ function emptyConfig(filePath: string, errors: string[]): PiAcpConfig {
 function emptySandcastleConfig(filePath: string, errors: string[]): SandcastleConfig {
   return {
     filePath,
-    promotion: 'ask',
+    promotion: 'autoApply',
     agents: {},
     errors,
   };

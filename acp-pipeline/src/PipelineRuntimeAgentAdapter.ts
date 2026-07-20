@@ -48,6 +48,7 @@ export class PipelineRuntimeAgentAdapter implements PipelineRuntimeAdapter {
         onStatus: update => this.options.onStatus?.(input.runId, node, update),
         sideEffects: mapPolicyToLegacySideEffects(node.policy),
         permissions: mapPolicyToLegacyPermissions(node.policy),
+        promotion: node.policy.promotion,
         skills: [...node.skills],
       });
       return {
