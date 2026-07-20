@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import {
   PipelineService,
+  type PipelineAgentRunner,
   type PipelineDefinition,
   type PipelinePlanReadyEvent,
   type PipelineSessionUpdateEvent,
@@ -10,14 +11,14 @@ import {
 import {
   EphemeralAcpRunner,
   RunAbortedError,
-  getPipelineDefinitionForAgent,
-  getPipelineDefinitions,
-  loadPiAgentCatalog,
+  loadWorkspacePipelineDefinitions,
   type Logger,
   type PiPermissionContext,
 } from '@acp-client/pi-extension/host';
 
+import { composeExplicitSkills } from './explicitSkills.js';
 import type { CliTerminal } from './terminal.js';
+import { loadWorkspaceAgentCatalog } from './workspaceCatalog.js';
 
 export interface CliPipelineSnapshot {
   sessionId: string;
@@ -40,10 +41,17 @@ export interface CliPipelineHostOptions {
   verbose?: boolean;
 }
 
+/**
+ * Terminal host for the shared pipeline engine.
+ *
+ * The host reads only the current workspace configuration. Agent names are
+ * never supplied by the CLI command: each primitive selects its own agent and
+ * this host launches the corresponding ACP or Sandcastle process.
+ */
 export class CliPipelineHost implements CliPipelineHostLike {
   private readonly service: PipelineService;
   private readonly runner: EphemeralAcpRunner;
-  private readonly catalog: ReturnType<typeof loadPiAgentCatalog>;
+  private readonly definitions: PipelineDefinition[];
   private pendingPlan: PipelinePlanReadyEvent | null = null;
   private activeSessionId: string | null = null;
 
@@ -67,23 +75,22 @@ export class CliPipelineHost implements CliPipelineHostLike {
       },
     };
 
-    this.catalog = loadPiAgentCatalog(workspaceCwd);
-    for (const error of this.catalog.errors) {
+    const catalog = loadWorkspaceAgentCatalog(workspaceCwd);
+    for (const error of catalog.errors) {
       logger.error(error);
     }
 
+    this.definitions = loadWorkspacePipelineDefinitions(
+      workspaceCwd,
+      catalog.agents,
+      logger,
+    );
+
     this.runner = new EphemeralAcpRunner(workspaceCwd, {
-      getAgentConfigs: () => this.catalog.agents,
-      getSandcastlePromotion: () => this.catalog.sandcastle.promotion,
+      getAgentConfigs: () => catalog.agents,
+      getSandcastlePromotion: () => 'ask',
       getPermissionContext: () => this.createPermissionContext(),
-      requestSandcastlePromotion: async (request: {
-        agentName: string;
-        preview: {
-          filesChanged: number;
-          branch: string;
-          baseRef: string;
-        };
-      }) => {
+      requestSandcastlePromotion: async request => {
         const approved = await options.terminal.confirm(
           [
             `Apply Sandcastle changes from ${request.agentName}?`,
@@ -92,21 +99,31 @@ export class CliPipelineHost implements CliPipelineHostLike {
         );
         return approved ? 'approve' : 'reject';
       },
-      timeouts: this.catalog.native.pipeline.timeouts,
       logger,
+    });
+
+    const runAgent: PipelineAgentRunner = async input => this.runner.run({
+      ...input,
+      promptText: composeExplicitSkills(
+        this.workspaceCwd,
+        input.skills,
+        input.promptText,
+      ),
+      // The CLI has already resolved all explicitly selected skills, including
+      // disable-model-invocation skills such as grill-me.
+      skills: [],
     });
 
     this.service = new PipelineService(
       () => this.workspaceCwd,
       {
-        getPipelineDefinitions: () => getPipelineDefinitions(this.workspaceCwd, logger),
-        getPipelineDefinitionForAgent: (agentName: string) =>
-          getPipelineDefinitionForAgent(this.workspaceCwd, agentName, logger),
-        getAgentConfigs: () => this.catalog.agents,
-        isAgentSandcastle: (agentName: string, agentConfigs: Record<string, unknown>) =>
+        getPipelineDefinitions: () => this.definitions,
+        getPipelineDefinitionForAgent: pipelineName => this.findPipeline(pipelineName),
+        getAgentConfigs: () => catalog.agents,
+        isAgentSandcastle: (agentName, agentConfigs) =>
           (agentConfigs[agentName] as { transport?: string } | undefined)?.transport === 'sandcastle',
-        runAgent: this.runner.run,
-        isRunAbortedError: (error: unknown) => error instanceof RunAbortedError,
+        runAgent,
+        isRunAbortedError: error => error instanceof RunAbortedError,
       },
     );
 
@@ -133,17 +150,22 @@ export class CliPipelineHost implements CliPipelineHostLike {
   }
 
   listPipelines(): PipelineDefinition[] {
-    return getPipelineDefinitions(this.workspaceCwd);
+    return [...this.definitions];
   }
 
   async start(pipelineName: string, prompt: string): Promise<CliPipelineSnapshot> {
     if (this.activeSessionId) {
       throw new Error('A pipeline session is already active.');
     }
+    const pipeline = this.findPipeline(pipelineName);
+    if (!pipeline) {
+      throw new Error(`Unknown ACP pipeline "${pipelineName}" in .acp/pipelines.`);
+    }
+
     const sessionId = randomUUID();
     this.activeSessionId = sessionId;
     this.pendingPlan = null;
-    const output = await this.service.createPlan(sessionId, prompt, pipelineName);
+    const output = await this.service.createPlan(sessionId, prompt, pipeline.id);
     return this.snapshot(sessionId, output);
   }
 
@@ -180,6 +202,11 @@ export class CliPipelineHost implements CliPipelineHostLike {
 
   dispose(): Promise<void> {
     return this.service.dispose();
+  }
+
+  private findPipeline(name: string): PipelineDefinition | null {
+    return this.definitions.find(definition =>
+      definition.id === name || definition.title === name) ?? null;
   }
 
   private snapshot(sessionId: string, output: string): CliPipelineSnapshot {
