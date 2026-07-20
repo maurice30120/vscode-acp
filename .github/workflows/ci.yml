@@ -69,3 +69,10 @@ jobs:
             exit 1
           fi
           tail -n 40 acp-cli-test.log
+
+      - name: Upload ACP CLI log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acp-cli-test-${{ matrix.os }}
+          path: acp-cli-test.log
