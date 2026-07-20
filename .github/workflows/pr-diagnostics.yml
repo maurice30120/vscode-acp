@@ -1,0 +1,35 @@
+name: PR diagnostics
+
+on:
+  pull_request:
+
+jobs:
+  vscode-pretest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - run: npm ci --silent
+
+      - name: Capture VS Code pretest diagnostics
+        shell: bash
+        run: |
+          mkdir -p diagnostics
+          set +e
+          npm run compile-tests -w acp-client > diagnostics/compile-tests.log 2>&1
+          echo $? > diagnostics/compile-tests.exit
+          npm run compile -w acp-client > diagnostics/compile.log 2>&1
+          echo $? > diagnostics/compile.exit
+          npm run lint -w acp-client > diagnostics/lint.log 2>&1
+          echo $? > diagnostics/lint.exit
+          set -e
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vscode-pretest-diagnostics
+          path: diagnostics
