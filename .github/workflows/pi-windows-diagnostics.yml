@@ -2,6 +2,9 @@ name: Pi Windows diagnostics
 
 on:
   pull_request:
+  push:
+    branches:
+      - agent/harmonize-pipeline-artifact-publishing
 
 jobs:
   pi-windows:
