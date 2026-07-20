@@ -74,3 +74,78 @@ test('requires a value for --cwd', () => {
     /--cwd requires a path/,
   );
 });
+
+test('--help returns help command', () => {
+  const result = parseCliArgs(['--help'], '/repo');
+  assert.deepEqual(result, { kind: 'help' });
+});
+
+test('-h returns help command', () => {
+  const result = parseCliArgs(['-h'], '/repo');
+  assert.deepEqual(result, { kind: 'help' });
+});
+
+test('empty argv returns help command', () => {
+  const result = parseCliArgs([], '/repo');
+  assert.deepEqual(result, { kind: 'help' });
+});
+
+test('unknown command throws error with help text', () => {
+  assert.throws(
+    () => parseCliArgs(['unknown-command'], '/repo'),
+    /Unknown command "unknown-command"/,
+  );
+});
+
+test('unknown option throws error', () => {
+  assert.throws(
+    () => parseCliArgs(['list', '--unknown'], '/repo'),
+    /Unknown option "--unknown"/,
+  );
+});
+
+test('run requires both pipeline name and prompt', () => {
+  assert.throws(
+    () => parseCliArgs(['run'], '/repo'),
+    /Usage: acp-cli run/,
+  );
+  assert.throws(
+    () => parseCliArgs(['run', 'pipeline'], '/repo'),
+    /Usage: acp-cli run/,
+  );
+});
+
+test('list with all valid options', () => {
+  const result = parseCliArgs(['list', '--cwd', 'demo', '--json', '--verbose'], '/repo');
+  assert.deepEqual(result, {
+    kind: 'list',
+    cwd: path.resolve('/repo', 'demo'),
+    json: true,
+    verbose: true,
+  });
+});
+
+test('run with all valid options', () => {
+  const result = parseCliArgs(['run', 'pipeline', 'prompt', '--cwd', 'demo', '--json', '--verbose', '--yes'], '/repo');
+  assert.deepEqual(result, {
+    kind: 'run',
+    pipelineName: 'pipeline',
+    prompt: 'prompt',
+    cwd: path.resolve('/repo', 'demo'),
+    json: true,
+    verbose: true,
+    yes: true,
+  });
+});
+
+test('run with -y short option', () => {
+  const result = parseCliArgs(['run', 'pipeline', 'prompt', '-y'], '/repo');
+  assert.equal(result.kind, 'run');
+  assert.equal((result as any).yes, true);
+});
+
+test('positional delimiter stops option parsing', () => {
+  const result = parseCliArgs(['run', 'pipeline', '--', '--fix', 'something'], '/repo');
+  assert.equal(result.kind, 'run');
+  assert.equal((result as any).prompt, '--fix something');
+});

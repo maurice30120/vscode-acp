@@ -26,6 +26,7 @@
       "transport": "sandcastle",
       "provider": "vibe",
       "model": "mistral-large-latest",
+      "maxIterations": 20,
       "env": {
         "VIBE_HOME": ".sandcastle/vibe-home"
       }

@@ -177,7 +177,7 @@ nodes:
     # agent: Codex Sandcastle
     # agent: Cursor Sandcastle
     # agent: Pi Sandcastle
-    agent: Vibe Sandcastle
+    agent: Vibe 
 
     skills: [implement, tdd]
     promptFile: ../agents/matt-implementer.md

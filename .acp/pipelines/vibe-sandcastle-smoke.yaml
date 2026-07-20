@@ -1,0 +1,32 @@
+version: 3
+id: vibe-sandcastle-smoke
+title: Vibe Sandcastle Smoke
+
+nodes:
+  - id: sandbox_write
+    agent: Vibe Sandcastle
+    prompt: |
+      This is a sandboxing smoke test.
+
+      Create or update exactly one file in the workspace:
+      `.scratch/sandcastle-smoke/vibe-sandbox.txt`
+
+      The file must contain:
+      - the line `provider=Vibe Sandcastle`
+      - the line `sandboxing=smoke-test`
+      - a short note derived from the user request
+
+      Do not change any other files. After editing, report the file path and
+      summarize the diff.
+
+      User request:
+      {{userPrompt}}
+    policy:
+      filesystem: workspace-write
+      terminal: workspace-write
+      network: enabled
+      promotion: auto-apply
+    output:
+      name: result
+      type: acp.sandbox-smoke-result/v1
+      format: markdown

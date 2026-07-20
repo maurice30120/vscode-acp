@@ -5,8 +5,9 @@ import type { PipelineRuntimeResult } from '@acp-client/pipeline';
 import type { PiPermissionContext } from '@acp-client/pi-extension/host';
 
 import type { CliRunCommand } from '../src/args.js';
-import { runPipelineInteractive } from '../src/run.js';
+import { formatPipelineList, runPipelineInteractive } from '../src/run.js';
 import type { CliTerminal } from '../src/terminal.js';
+import type { CliPipelineListEntry } from '../src/host.js';
 
 class FakeTerminal implements CliTerminal {
   readonly output: string[] = [];
@@ -313,4 +314,42 @@ test('keeps asking until a question receives a non-empty answer', async () => {
   ]);
   assert.deepEqual(terminal.errors, ['An answer is required to resume this pipeline question.']);
   assert.deepEqual(decisions, [{ pauseId: 'q1', kind: 'answer', value: 'Use retries' }]);
+});
+
+// formatPipelineList tests
+test('formatPipelineList with non-empty list in text mode produces stable format', () => {
+  const entries: CliPipelineListEntry[] = [
+    { id: 'pipeline-1', title: 'Pipeline One', nodeCount: 3 },
+    { id: 'pipeline-2', title: 'Pipeline Two', nodeCount: 5 },
+  ];
+  const result = formatPipelineList(entries, false);
+  assert.equal(result, '- pipeline-1 — Pipeline One (3 nodes)\n- pipeline-2 — Pipeline Two (5 nodes)');
+});
+
+test('formatPipelineList with non-empty list in JSON mode produces valid JSON', () => {
+  const entries: CliPipelineListEntry[] = [
+    { id: 'pipeline-1', title: 'Pipeline One', nodeCount: 3 },
+    { id: 'pipeline-2', title: 'Pipeline Two', nodeCount: 5 },
+  ];
+  const result = formatPipelineList(entries, true);
+  const parsed = JSON.parse(result);
+  assert.deepEqual(parsed, entries);
+});
+
+test('formatPipelineList with empty list in text mode shows clear message', () => {
+  const result = formatPipelineList([], false);
+  assert.equal(result, 'No valid ACP version 3 pipelines found in .acp/pipelines.');
+});
+
+test('formatPipelineList with empty list in JSON mode returns empty array', () => {
+  const result = formatPipelineList([], true);
+  assert.equal(result, '[]');
+});
+
+test('formatPipelineList with single pipeline in text mode', () => {
+  const entries: CliPipelineListEntry[] = [
+    { id: 'single', title: 'Single Pipeline', nodeCount: 1 },
+  ];
+  const result = formatPipelineList(entries, false);
+  assert.equal(result, '- single — Single Pipeline (1 nodes)');
 });

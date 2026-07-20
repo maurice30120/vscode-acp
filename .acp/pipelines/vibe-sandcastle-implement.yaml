@@ -1,0 +1,39 @@
+version: 3
+id: vibe-sandcastle-implement
+title: Vibe Sandcastle Implement
+
+nodes:
+  - id: implement
+    agent: Codex Sandcastle
+    prompt: |
+      Implement the user request in the current workspace now.
+
+      You may inspect the codebase, edit files, install dependencies, and run
+      validation commands as needed.
+
+      Hard requirements:
+      - Do not answer with a plan only.
+      - Do not say "I will start" and then stop.
+      - Run the necessary inspection commands.
+      - Edit the workspace files needed to satisfy the request.
+      - Run the relevant validation commands after editing.
+      - If no code change is needed, prove it with specific existing tests and
+        file references.
+
+      Keep the implementation scoped to the request. Before finishing, inspect
+      the diff and report:
+      - changed files
+      - validation commands run
+      - remaining risks or blockers, if any
+
+      User request:
+      {{userPrompt}}
+    policy:
+      filesystem: workspace-write
+      terminal: workspace-write
+      network: enabled
+      promotion: auto-apply
+    output:
+      name: result
+      type: acp.implementation-result/v1
+      format: markdown
