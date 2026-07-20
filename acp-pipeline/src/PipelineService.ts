@@ -123,6 +123,26 @@ export class PipelineService extends EventEmitter {
       new PipelineRuntimeAgentAdapter({
         workspaceCwd: this.workspaceCwd,
         runAgent: this.dependencies.runAgent,
+        onSessionUpdate: (runId, node, update) => {
+          this.emit('session-update', {
+            sessionId: runId,
+            phase: node.id,
+            update,
+            stepId: node.id,
+            role: node.id,
+            agentName: node.agent,
+          });
+        },
+        onStatus: (runId, node, update) => {
+          this.emit('status', {
+            sessionId: runId,
+            status: update.status,
+            message: update.message,
+            stepId: node.id,
+            role: node.id,
+            agentName: node.agent,
+          });
+        },
       }),
       {
         runIdFactory: () => sessionId,

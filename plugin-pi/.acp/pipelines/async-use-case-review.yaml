@@ -1,13 +1,10 @@
-version: 2
+version: 3
 id: async-use-case-review
 title: Async Use Case Review
 
-primitives:
-  cadrage:
+nodes:
+  - id: cadrage
     agent: Codex CLI
-    output: markdown
-    sideEffects: none
-    permissions: ask
     prompt: |
       Resume la demande utilisateur en trois points courts :
       - objectif
@@ -16,12 +13,18 @@ primitives:
 
       Demande utilisateur :
       {{userPrompt}}
+    policy:
+      filesystem: read-only
+      terminal: none
+      network: disabled
+      promotion: discard
+    output:
+      name: summary
+      type: acp.analysis/v1
+      format: markdown
 
-  analyse_produit:
+  - id: analyse_produit
     agent: Codex CLI
-    output: markdown
-    sideEffects: none
-    permissions: ask
     prompt: |
       Analyse le use case cote produit.
       Ne modifie aucun fichier.
@@ -35,13 +38,26 @@ primitives:
       {{userPrompt}}
 
       Cadrage :
-      {{steps.cadrage.output}}
+      {{inputs.cadrage}}
+    needs:
+      - cadrage
+    inputs:
+      - name: cadrage
+        from: cadrage.summary
+        type: acp.analysis/v1
+        format: markdown
+    policy:
+      filesystem: read-only
+      terminal: none
+      network: disabled
+      promotion: discard
+    output:
+      name: analysis
+      type: acp.analysis/v1
+      format: markdown
 
-  analyse_technique:
+  - id: analyse_technique
     agent: Codex CLI
-    output: markdown
-    sideEffects: none
-    permissions: ask
     prompt: |
       Analyse le use case cote technique.
       Ne modifie aucun fichier.
@@ -55,13 +71,26 @@ primitives:
       {{userPrompt}}
 
       Cadrage :
-      {{steps.cadrage.output}}
+      {{inputs.cadrage}}
+    needs:
+      - cadrage
+    inputs:
+      - name: cadrage
+        from: cadrage.summary
+        type: acp.analysis/v1
+        format: markdown
+    policy:
+      filesystem: read-only
+      terminal: none
+      network: disabled
+      promotion: discard
+    output:
+      name: analysis
+      type: acp.analysis/v1
+      format: markdown
 
-  synthese:
+  - id: synthese
     agent: Codex CLI
-    output: markdown
-    sideEffects: none
-    permissions: ask
     prompt: |
       Produit une synthese actionnable a partir des analyses lancees en parallele.
 
@@ -74,22 +103,28 @@ primitives:
       {{userPrompt}}
 
       Analyse produit :
-      {{steps.investigation.branches.produit.output}}
+      {{inputs.produit}}
 
       Analyse technique :
-      {{steps.investigation.branches.technique.output}}
-
-steps:
-  - id: cadrage
-    use: cadrage
-
-  - id: investigation
-    type: parallel
-    branches:
-      - id: produit
-        use: analyse_produit
-      - id: technique
-        use: analyse_technique
-
-  - id: synthese
-    use: synthese
+      {{inputs.technique}}
+    needs:
+      - analyse_produit
+      - analyse_technique
+    inputs:
+      - name: produit
+        from: analyse_produit.analysis
+        type: acp.analysis/v1
+        format: markdown
+      - name: technique
+        from: analyse_technique.analysis
+        type: acp.analysis/v1
+        format: markdown
+    policy:
+      filesystem: read-only
+      terminal: none
+      network: disabled
+      promotion: discard
+    output:
+      name: synthesis
+      type: acp.analysis/v1
+      format: markdown

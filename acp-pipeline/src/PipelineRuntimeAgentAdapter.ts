@@ -1,9 +1,13 @@
+import type { SessionNotification } from "@agentclientprotocol/sdk";
+
 import {
   mapPolicyToLegacyPermissions,
   mapPolicyToLegacySideEffects,
 } from "./PipelinePolicy";
 import type { PipelineAgentRunner } from "./PipelineExecutor";
+import type { PipelineStepStatusUpdate } from "./PipelineTypes";
 import type {
+  CompiledPipelineNode,
   PipelineNodeExecutionInput,
   PipelineNodeExecutionResult,
   PipelineRuntimeAdapter,
@@ -13,6 +17,8 @@ import { resolvePipelineStepText } from "./PipelineStepCompletion";
 export interface PipelineRuntimeAgentAdapterOptions {
   workspaceCwd: () => string;
   runAgent: PipelineAgentRunner;
+  onSessionUpdate?: (runId: string, node: CompiledPipelineNode, update: SessionNotification) => void;
+  onStatus?: (runId: string, node: CompiledPipelineNode, update: PipelineStepStatusUpdate) => void;
 }
 
 export class PipelineRuntimeAgentAdapter implements PipelineRuntimeAdapter {
@@ -39,6 +45,8 @@ export class PipelineRuntimeAgentAdapter implements PipelineRuntimeAdapter {
         agentName: node.agent,
         promptText: input.prompt,
         signal: input.signal,
+        onSessionUpdate: update => this.options.onSessionUpdate?.(input.runId, node, update),
+        onStatus: update => this.options.onStatus?.(input.runId, node, update),
         sideEffects: mapPolicyToLegacySideEffects(node.policy),
         permissions: mapPolicyToLegacyPermissions(node.policy),
         skills: [...node.skills],

@@ -4,6 +4,7 @@ import {
   getPipelineDefinitionForAgent,
   getPipelineAgentNames,
   getPipelineDefinitions,
+  getPipelineProgramForAgent,
   type PipelineDefinition,
 } from './PipelineCatalog';
 import { resolveWorkspaceIdentity } from '../core/WorkspaceIdentity';
@@ -56,6 +57,16 @@ export function resolveAgent(
       name: pipeline.title,
       runnable: true,
       pipeline,
+      errors: [],
+    };
+  }
+
+  const program = getPipelineProgramForAgent(normalized, workspaceCwd, configs);
+  if (program) {
+    return {
+      kind: 'pipeline',
+      name: program.title,
+      runnable: true,
       errors: [],
     };
   }

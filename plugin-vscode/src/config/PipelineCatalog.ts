@@ -60,7 +60,14 @@ export function getPipelineAgentNames(
   workspaceCwd: string = resolveWorkspaceIdentity().cwd,
   agentConfigs: Record<string, unknown> = readAgentConfigs(),
 ): string[] {
-  return getPipelineDefinitions(workspaceCwd, agentConfigs).map(definition => definition.title);
+  const names = new Set<string>();
+  for (const program of getPipelinePrograms(workspaceCwd, agentConfigs)) {
+    names.add(program.title);
+  }
+  for (const definition of getPipelineDefinitions(workspaceCwd, agentConfigs)) {
+    names.add(definition.title);
+  }
+  return [...names];
 }
 
 export function getPipelineDefinitionForAgent(
@@ -75,6 +82,20 @@ export function getPipelineDefinitionForAgent(
   const normalizedName = agentName.replace(/ \(invalid\)$/, '');
   return loadWorkspacePipelineDefinitions(workspaceCwd, agentConfigs)
     .find(definition => definition.title === normalizedName || definition.id === normalizedName) ?? null;
+}
+
+export function getPipelineProgramForAgent(
+  agentName: string,
+  workspaceCwd: string = resolveWorkspaceIdentity().cwd,
+  agentConfigs: Record<string, unknown> = readAgentConfigs(),
+): CompiledPipelineProgram | null {
+  if (!isPipelineEnabled()) {
+    return null;
+  }
+
+  const normalizedName = agentName.replace(/ \(invalid\)$/, '');
+  return loadWorkspacePipelinePrograms(workspaceCwd, agentConfigs).programs
+    .find(program => program.title === normalizedName || program.id === normalizedName) ?? null;
 }
 
 function mergePipelineDefinitions(

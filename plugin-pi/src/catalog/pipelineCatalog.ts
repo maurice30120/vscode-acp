@@ -66,6 +66,18 @@ export function getPipelinePrograms(
 	}).programs;
 }
 
+export function getPipelineProgramForAgent(
+	workspaceCwd: string,
+	agentName: string,
+	logger?: Logger,
+): CompiledPipelineProgram | null {
+	return (
+		getPipelinePrograms(workspaceCwd, logger).find(
+			(program) => program.id === agentName || program.title === agentName,
+		) ?? null
+	);
+}
+
 export function getPipelineDefinitionForAgent(
 	workspaceCwd: string,
 	agentName: string,

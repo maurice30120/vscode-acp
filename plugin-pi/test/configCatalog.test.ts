@@ -11,6 +11,8 @@ import {
 import {
 	getPipelineDefinitionForAgent,
 	getPipelineDefinitions,
+	getPipelineProgramForAgent,
+	getPipelinePrograms,
 	loadPipelineDefinitionsFromRoot,
 	loadPipelineProgramsFromRoot,
 	loadWorkspacePipelineDefinitions,
@@ -376,13 +378,13 @@ test("validates pipeline agent references against Pi config", () => {
 	assert.match(invalid.errors.join("\n"), /Missing Agent/);
 });
 
-test("getPipelineDefinitions loads embedded pipelines for an empty workspace", () => {
+test("getPipelinePrograms loads embedded v3 pipelines for an empty workspace", () => {
 	const workspace = createTempWorkspace();
 
-	const definitions = getPipelineDefinitions(workspace);
+	const programs = getPipelinePrograms(workspace);
 
 	assert.deepEqual(
-		definitions.map((definition) => definition.id),
+		programs.map((program) => program.id),
 		[
 			"async-use-case-review",
 			"grill-skeleton-tdd",
@@ -480,14 +482,15 @@ test("getPipelineDefinitionForAgent resolves by id or title", () => {
 	const workspace = createTempWorkspace();
 
 	assert.equal(
-		getPipelineDefinitionForAgent(workspace, "plan-execute-verify")?.title,
+		getPipelineProgramForAgent(workspace, "plan-execute-verify")?.title,
 		"Plan Execute Verify",
 	);
 	assert.equal(
-		getPipelineDefinitionForAgent(workspace, "Plan Execute Verify")?.id,
+		getPipelineProgramForAgent(workspace, "Plan Execute Verify")?.id,
 		"plan-execute-verify",
 	);
 	assert.equal(getPipelineDefinitionForAgent(workspace, "missing"), null);
+	assert.equal(getPipelineProgramForAgent(workspace, "missing"), null);
 });
 
 test("workspace fixture loader ignores .acp/teams/*.yaml", () => {

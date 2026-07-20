@@ -1,16 +1,13 @@
-version: 2
+version: 3
 id: grill-spec-tickets-implement-review
 title: Grill → Spec → Tickets → Implement → Review
 
-primitives:
-  planner:
+nodes:
+  - id: plan
     agent: Pi Agent
     skills:
       - grill-me
       - grilling
-    output: proposed_plan
-    sideEffects: none
-    permissions: allowAll
     promptFile: .acp/agents/interactive-planner.md
     prompt: |
       The upstream sources are `.agents/skills/grill-me/SKILL.md` and
@@ -26,126 +23,225 @@ primitives:
 
       User request:
       {{userPrompt}}
+    policy:
+      filesystem: read-only
+      terminal: none
+      network: disabled
+      promotion: discard
+    output:
+      name: plan
+      type: acp.grill-decision/v1
+      format: markdown
 
-  spec_writer:
+  - id: plan_approval
+    type: pause
+    pause: approval
+    content: "{{inputs.plan}}"
+    format: proposed-plan
+    needs:
+      - plan
+    inputs:
+      - name: plan
+        from: plan.plan
+        type: acp.grill-decision/v1
+        format: markdown
+    output:
+      name: approved
+      type: acp.grill-decision/v1
+      format: markdown
+
+  - id: spec
     agent: Pi Agent
     skills:
       - to-spec
-    output: markdown
-    sideEffects: none
-    permissions: allowAll
     promptFile: .acp/agents/matt-spec-writer.md
     prompt: |
       Original request:
       {{userPrompt}}
 
       Approved plan:
-      {{steps.plan_approval.output}}
+      {{inputs.approvedPlan}}
 
       Synthesize the approved conversation into the complete specification now.
+    needs:
+      - plan_approval
+    inputs:
+      - name: approvedPlan
+        from: plan_approval.approved
+        type: acp.grill-decision/v1
+        format: markdown
+    policy:
+      filesystem: read-only
+      terminal: none
+      network: disabled
+      promotion: discard
+    output:
+      name: specification
+      type: acp.specification/v1
+      format: markdown
 
-  task_planner:
+  - id: tasks
     agent: Pi Agent
     skills:
       - to-tickets
-    output: markdown
-    sideEffects: none
-    permissions: allowAll
     promptFile: .acp/agents/matt-ticket-planner.md
     prompt: |
       Original request:
       {{userPrompt}}
 
       Approved plan:
-      {{steps.plan_approval.output}}
+      {{inputs.approvedPlan}}
 
       Specification:
-      {{steps.spec.output}}
+      {{inputs.specification}}
 
       Produce the ordered tracer-bullet task plan now.
+    needs:
+      - spec
+    inputs:
+      - name: approvedPlan
+        from: plan_approval.approved
+        type: acp.grill-decision/v1
+        format: markdown
+      - name: specification
+        from: spec.specification
+        type: acp.specification/v1
+        format: markdown
+    policy:
+      filesystem: read-only
+      terminal: none
+      network: disabled
+      promotion: discard
+    output:
+      name: tickets
+      type: acp.ticket-graph/v1
+      format: markdown
 
-  implementer:
+  - id: delivery_approval
+    type: pause
+    pause: approval
+    content: |
+      <proposed_plan>
+      <interview_state>ready</interview_state>
+
+      ## Specification
+
+      {{inputs.specification}}
+
+      ## Task plan
+
+      {{inputs.tickets}}
+      </proposed_plan>
+    format: proposed-plan
+    needs:
+      - tasks
+    inputs:
+      - name: specification
+        from: spec.specification
+        type: acp.specification/v1
+        format: markdown
+      - name: tickets
+        from: tasks.tickets
+        type: acp.ticket-graph/v1
+        format: markdown
+    output:
+      name: approved
+      type: acp.ticket-graph/v1
+      format: markdown
+
+  - id: implementation
     agent: Vibe Sandcastle
     skills:
       - implement
       - tdd
-    output: markdown
-    sideEffects: workspace
-    permissions: allowAll
     promptFile: .acp/agents/matt-implementer.md
     prompt: |
       Original request:
       {{userPrompt}}
 
       Approved plan:
-      {{steps.plan_approval.output}}
+      {{inputs.approvedPlan}}
 
       Approved specification:
-      {{steps.spec.output}}
+      {{inputs.specification}}
 
       Approved task plan:
-      {{steps.tasks.output}}
+      {{inputs.approvedTickets}}
 
       Implement the complete approved task plan in dependency order.
+    needs:
+      - delivery_approval
+    inputs:
+      - name: approvedPlan
+        from: plan_approval.approved
+        type: acp.grill-decision/v1
+        format: markdown
+      - name: specification
+        from: spec.specification
+        type: acp.specification/v1
+        format: markdown
+      - name: approvedTickets
+        from: delivery_approval.approved
+        type: acp.ticket-graph/v1
+        format: markdown
+    policy:
+      filesystem: workspace-write
+      terminal: workspace-write
+      network: disabled
+      promotion: ask
+    output:
+      name: result
+      type: acp.implementation-result/v1
+      format: markdown
 
-  reviewer:
+  - id: review
     agent: Pi Agent
     skills:
       - code-review
-    output: markdown
-    sideEffects: none
-    permissions: allowAll
     promptFile: .acp/agents/matt-plan-reviewer.md
     prompt: |
       Original request:
       {{userPrompt}}
 
       Approved plan:
-      {{steps.plan_approval.output}}
+      {{inputs.approvedPlan}}
 
       Approved specification:
-      {{steps.spec.output}}
+      {{inputs.specification}}
 
       Approved task plan:
-      {{steps.tasks.output}}
+      {{inputs.approvedTickets}}
 
       Implementation report:
-      {{steps.implementation.output}}
+      {{inputs.implementation}}
 
       Review the actual workspace diff against the plan, specification, tasks,
       repository standards, and test results.
-
-steps:
-  - id: plan
-    use: planner
-
-  - id: plan_approval
-    type: approval
-    input: "{{steps.plan.output}}"
-
-  - id: spec
-    use: spec_writer
-
-  - id: tasks
-    use: task_planner
-
-  - id: delivery_approval
-    type: approval
-    input: |
-      <proposed_plan>
-      <interview_state>ready</interview_state>
-
-      ## Specification
-
-      {{steps.spec.output}}
-
-      ## Task plan
-
-      {{steps.tasks.output}}
-      </proposed_plan>
-
-  - id: implementation
-    use: implementer
-
-  - id: review
-    use: reviewer
+    needs:
+      - implementation
+    inputs:
+      - name: approvedPlan
+        from: plan_approval.approved
+        type: acp.grill-decision/v1
+        format: markdown
+      - name: specification
+        from: spec.specification
+        type: acp.specification/v1
+        format: markdown
+      - name: approvedTickets
+        from: delivery_approval.approved
+        type: acp.ticket-graph/v1
+        format: markdown
+      - name: implementation
+        from: implementation.result
+        type: acp.implementation-result/v1
+        format: markdown
+    policy:
+      filesystem: read-only
+      terminal: none
+      network: disabled
+      promotion: discard
+    output:
+      name: report
+      type: acp.verification-report/v1
+      format: markdown

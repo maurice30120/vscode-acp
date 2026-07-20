@@ -9,6 +9,7 @@ import {
 import {
   getPipelineDefinitionForAgent,
   getPipelineDefinitions,
+  getPipelineProgramForAgent,
   getPipelinePrograms,
 } from '../../config/PipelineCatalog';
 import { isPipelineEnabled } from '../../config/PipelineConfig';
@@ -43,6 +44,8 @@ export class OrchestrationPlugin implements FeaturePlugin<OrchestrationPluginCon
       getPipelineDefinitionForAgent: agentName =>
         getPipelineDefinitionForAgent(agentName, context.workspaceCwd(), readAgentConfigs()),
       getPipelinePrograms: () => getPipelinePrograms(context.workspaceCwd(), readAgentConfigs()),
+      getPipelineProgramForAgent: agentName =>
+        getPipelineProgramForAgent(agentName, context.workspaceCwd(), readAgentConfigs()),
       getAgentConfigs: readAgentConfigs,
       runAgent: input => ephemeralRunner.run(input),
       isAgentSandcastle: (agentName, agentConfigs) => {

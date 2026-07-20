@@ -41,15 +41,15 @@ test("PipelineRuntimeAgentAdapter runs v3 nodes through a PipelineAgentRunner", 
 
   assert.equal(result.status, "completed");
   assert.equal(result.artifact?.value, "done");
-  assert.deepEqual(calls, [{
-    workspaceCwd: "/workspace",
-    agentName: "Vibe Sandcastle",
-    promptText: "Implement the change",
-    signal: calls[0].signal,
-    sideEffects: "workspace",
-    permissions: "ask",
-    skills: ["implement", "tdd"],
-  }]);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].workspaceCwd, "/workspace");
+  assert.equal(calls[0].agentName, "Vibe Sandcastle");
+  assert.equal(calls[0].promptText, "Implement the change");
+  assert.equal(calls[0].sideEffects, "workspace");
+  assert.equal(calls[0].permissions, "ask");
+  assert.deepEqual(calls[0].skills, ["implement", "tdd"]);
+  assert.equal(typeof calls[0].onSessionUpdate, "function");
+  assert.equal(typeof calls[0].onStatus, "function");
 });
 
 test("PipelineRuntimeAgentAdapter converts runner failures to node diagnostics", async () => {

@@ -1,13 +1,10 @@
-version: 2
+version: 3
 id: plan-execute-verify
 title: Plan Execute Verify
 
-primitives:
-  planner:
+nodes:
+  - id: plan
     agent: Pi Agent
-    output: proposed_plan
-    sideEffects: none
-    permissions: allowAll
     promptFile: ../agents/planner.md
     prompt: |
       Create a decision-complete implementation plan only.
@@ -17,12 +14,35 @@ primitives:
 
       User request:
       {{userPrompt}}
+    policy:
+      filesystem: read-only
+      terminal: none
+      network: disabled
+      promotion: discard
+    output:
+      name: plan
+      type: acp.proposed-plan/v1
+      format: markdown
 
-  implementer:
+  - id: approval
+    type: pause
+    pause: approval
+    content: "{{inputs.plan}}"
+    format: proposed-plan
+    needs:
+      - plan
+    inputs:
+      - name: plan
+        from: plan.plan
+        type: acp.proposed-plan/v1
+        format: markdown
+    output:
+      name: approved
+      type: acp.approval/v1
+      format: markdown
+
+  - id: implement
     agent: Vibe Sandcastle
-    output: markdown
-    sideEffects: workspace
-    permissions: allowAll
     promptFile: ../agents/implementer.md
     prompt: |
       Implement the approved plan in the current workspace.
@@ -34,13 +54,26 @@ primitives:
       {{userPrompt}}
 
       Approved plan:
-      {{steps.approval.output}}
+      {{inputs.approvedPlan}}
+    needs:
+      - approval
+    inputs:
+      - name: approvedPlan
+        from: approval.approved
+        type: acp.approval/v1
+        format: markdown
+    policy:
+      filesystem: workspace-write
+      terminal: workspace-write
+      network: disabled
+      promotion: ask
+    output:
+      name: result
+      type: acp.implementation-result/v1
+      format: markdown
 
-  verifier:
+  - id: verify
     agent: Vibe
-    output: markdown
-    sideEffects: none
-    permissions: allowAll
     promptFile: ../agents/reviewer.md
     prompt: |
       Verify whether the approved plan was completed.
@@ -50,21 +83,27 @@ primitives:
       {{userPrompt}}
 
       Approved plan:
-      {{steps.approval.output}}
+      {{inputs.approvedPlan}}
 
       Implementation output:
-      {{steps.implement.output}}
-
-steps:
-  - id: plan
-    use: planner
-
-  - id: approval
-    type: approval
-    input: "{{steps.plan.output}}"
-
-  - id: implement
-    use: implementer
-
-  - id: verify
-    use: verifier
+      {{inputs.implementation}}
+    needs:
+      - implement
+    inputs:
+      - name: approvedPlan
+        from: approval.approved
+        type: acp.approval/v1
+        format: markdown
+      - name: implementation
+        from: implement.result
+        type: acp.implementation-result/v1
+        format: markdown
+    policy:
+      filesystem: read-only
+      terminal: none
+      network: disabled
+      promotion: discard
+    output:
+      name: report
+      type: acp.verification-report/v1
+      format: markdown

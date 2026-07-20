@@ -1,19 +1,21 @@
-version: 2
+version: 3
 id: vibe
 title: Vibe
 
-primitives:
-  implement:
+nodes:
+  - id: implement
     agent: Vibe
-    output: markdown
-    sideEffects: none
-    permissions: ask
     prompt: |
       Implement the user's request in the current workspace.
 
       User request:
       {{userPrompt}}
-
-steps:
-  - id: implement
-    use: implement
+    policy:
+      filesystem: read-only
+      terminal: none
+      network: disabled
+      promotion: discard
+    output:
+      name: result
+      type: acp.implementation-result/v1
+      format: markdown
