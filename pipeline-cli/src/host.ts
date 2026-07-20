@@ -11,7 +11,7 @@ import {
 import {
   EphemeralAcpRunner,
   RunAbortedError,
-  loadWorkspacePipelineDefinitions,
+  loadPipelineDefinitionsFromRoot,
   type Logger,
   type PiPermissionContext,
 } from '@acp-client/pi-extension/host';
@@ -19,6 +19,8 @@ import {
 import { composeExplicitSkills } from './explicitSkills.js';
 import type { CliTerminal } from './terminal.js';
 import { loadWorkspaceAgentCatalog } from './workspaceCatalog.js';
+
+const DEFAULT_INSTRUCTIONS_MAX_BYTES = 256 * 1024;
 
 export interface CliPipelineSnapshot {
   sessionId: string;
@@ -80,11 +82,13 @@ export class CliPipelineHost implements CliPipelineHostLike {
       logger.error(error);
     }
 
-    this.definitions = loadWorkspacePipelineDefinitions(
+    this.definitions = loadPipelineDefinitionsFromRoot({
       workspaceCwd,
-      catalog.agents,
+      configRoot: workspaceCwd,
+      agentConfigs: catalog.agents,
+      instructionsMaxBytes: DEFAULT_INSTRUCTIONS_MAX_BYTES,
       logger,
-    );
+    });
 
     this.runner = new EphemeralAcpRunner(workspaceCwd, {
       getAgentConfigs: () => catalog.agents,
