@@ -16,7 +16,7 @@ jobs:
 
       - run: npm ci --silent
 
-      - name: Capture VS Code pretest diagnostics
+      - name: Capture VS Code diagnostics
         shell: bash
         run: |
           mkdir -p diagnostics
@@ -27,9 +27,14 @@ jobs:
           echo $? > diagnostics/compile.exit
           npm run lint -w acp-client > diagnostics/lint.log 2>&1
           echo $? > diagnostics/lint.exit
+          (
+            cd plugin-vscode
+            xvfb-run -a npx vscode-test
+          ) > diagnostics/vscode-test.log 2>&1
+          echo $? > diagnostics/vscode-test.exit
           set -e
 
       - uses: actions/upload-artifact@v4
         with:
-          name: vscode-pretest-diagnostics
+          name: vscode-diagnostics
           path: diagnostics
