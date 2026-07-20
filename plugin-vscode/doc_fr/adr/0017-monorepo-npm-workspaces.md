@@ -88,7 +88,6 @@ Commandes spécifiques par workspace :
 | Compiler uniquement le plugin Pi | `npm run build -w @acp-client/pi-extension` |
 | Installer et tester le plugin Pi dans Pi | `npm run pi -w @acp-client/pi-extension` |
 | Générer le VSIX depuis le workspace extension | `npm run vsx -w acp-client` |
-| Régénérer le starter de workspace embarqué | `npm run sync:workspace-starter -w acp-client` |
 | Tester la promotion Sandcastle Codex | `npm run sandcastle:smoke:codex -w acp-client` |
 | Tester la promotion Sandcastle Cursor | `npm run sandcastle:smoke:cursor -w acp-client` |
 | Régénérer les typings VS Code proposés | `npm run vscode:dts -w acp-client` |
@@ -120,6 +119,5 @@ Commandes spécifiques par workspace :
 
 - [ADR-0005 : Pipeline A2A ACP](0005-a2a-acp-pipeline.md)
 - [ADR-0015 : Bootstrap du runtime d'extension et seam des sessions virtuelles](0015-runtime-extension-et-sessions-virtuelles.md)
-- [ADR-0016 : Starter de workspace embarqué](0016-workspace-starter.md)
 - [ADR-0018 : Pipeline v2 comme catalogue canonique d'orchestration](0018-pipeline-v2-catalogue-canonique.md)
 - [ADR-0019 : Résolution partagée de `promptFile` pour les pipelines](0019-promptfile-pipeline-partage.md)

@@ -9,9 +9,6 @@ webview/**
 out/**
 node_modules/**
 .gitignore
-!resources/workspace-starter/.acp/.gitignore
-!resources/workspace-starter/.acp/**/.gitignore
-!resources/workspace-starter/.sandcastle/.gitignore
 .gitattributes
 *.map
 *.ts

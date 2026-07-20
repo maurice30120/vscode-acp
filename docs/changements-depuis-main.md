@@ -111,7 +111,6 @@ Extension VS Code principale. Migration massive depuis `src/` racine vers `plugi
   - Sandcastle : bridge ACP, run éphémère, promotion Apply/Reject.
   - Skills : injection catalogue `<available_skills>` au 1er message, invocation `/skill`.
   - Inline edit / `editorInsets` (ADR-0009) — expérimental.
-  - Workspace bootstrap (`acp.workspaceBootstrap.enabled`).
   - Terminal ACP optionnel (`acp.terminal.visible`).
 - **Tests** — ~40+ fichiers de test ajoutés (`SessionTreeProvider`, `PermissionHandler`, `extension.test`, etc.).
 
@@ -119,7 +118,7 @@ Extension VS Code principale. Migration massive depuis `src/` racine vers `plugi
 
 Extension autonome pour l’hôte Pi.
 
-- **Configuration embarquée** — `.pi/.acp/acp-agents.json`, `.pi/.acp/pipelines/*.yaml`, `.pi/.acp/.sandcastle/config.json`.
+- **Configuration workspace** — `.acp/acp-agents.json`, `.acp/pipelines/*.yaml`, `.acp/.sandcastle/config.json`, lus depuis la racine du projet ouvert.
 - **Commandes `/pipeline`** — `list`, `run`, `approve`, `reject`, `cancel`.
 - **Outil `run_pipeline`** — enregistré pour invocation par le modèle Pi.
 - **Runtime ACP** — `EphemeralAcpRunner` (connect → authenticate → prompt → collecte texte, abort/cancel), proxy fichiers/terminal/permissions, handler auth.
@@ -174,22 +173,14 @@ Extension autonome pour l’hôte Pi.
 - **Invocation explicite** — `/skill-name` développe le contenu du `SKILL.md` dans le prompt.
 - **Symlink Cursor** — si `.cursor/skills` est absent, création d’un lien vers `.agents/skills` pour la découverte native Cursor CLI.
 
-### 7. Workspace bootstrap / workspace-starter
-
-- **Provisionnement non destructif** à l’activation de l’extension.
-- Fournit `.acp/` (pipelines, agents), `.agents/skills/`, `.sandcastle/` si manquants.
-- Paramètres : `acp.workspaceBootstrap.enabled`, `autoOnActivation`, `includePipelineArchive`.
-- Commande manuelle : `ACP: Initialize Workspace Templates` (`acp.bootstrapWorkspace`).
-- Synchronisation du starter via `npm run sync:workspace-starter` avant packaging.
-
-### 8. Sécurité & permissions
+### 7. Sécurité & permissions
 
 - Queue des requêtes de permission pour éviter les conflits QuickPick concurrents.
 - Timeout 30 s sur les appels au registre d’agents (`AbortController`).
 - Validation de chemins `promptFile` (refus de traversal hors workspace).
 - `acp.autoApprovePermissions` : `ask` ou `allowAll`.
 
-### 9. Tests
+### 8. Tests
 
 - Tests unitaires natifs (`node:test`) dans `plugin-pi`.
 - Tests VS Code (`@vscode/test-cli`) dans `plugin-vscode`.
