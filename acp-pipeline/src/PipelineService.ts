@@ -185,11 +185,11 @@ export class PipelineService extends EventEmitter {
   private handleV3Result(sessionId: string, result: PipelineRuntimeResult): PipelineRuntimeResult {
     if (result.status === 'paused') {
       this.emitV3Pause(sessionId, result.pause);
-      this.publishV3Artifacts(sessionId, result);
+      this.publishV3Artifacts(result);
       return result;
     }
     if (result.status === 'completed') {
-      this.publishV3Artifacts(sessionId, result);
+      this.publishV3Artifacts(result);
       this.v3Runs.delete(sessionId);
       return result;
     }
@@ -204,20 +204,10 @@ export class PipelineService extends EventEmitter {
   }
 
   private publishV3Artifacts(
-    sessionId: string,
     result: Extract<PipelineRuntimeResult, { status: 'paused' | 'completed' }>,
   ): void {
     const publisher = this.dependencies.artifactPublisher ?? publishPipelineArtifacts;
-    const publication = publisher(this.workspaceCwd(), result.snapshot);
-    if (!publication) {
-      return;
-    }
-    this.emit('status', {
-      sessionId,
-      status: result.status === 'completed' ? 'completed' : 'awaiting_approval',
-      message: `Pipeline artifacts written to ${publication.directory} (${publication.files.length} files).`,
-      stepId: result.status === 'paused' ? result.pause.nodeId : undefined,
-    });
+    publisher(this.workspaceCwd(), result.snapshot);
   }
 
   private emitV3Pause(sessionId: string, pause: PipelinePauseSnapshot): void {
