@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
 
 jobs:
   build:
@@ -37,7 +36,7 @@ jobs:
       - name: Test Pi extension
         run: npm run test:pi
 
-      - name: Test pipeline CLI
+      - name: Test ACP CLI
         run: npm run test:cli
 
       - name: Package VSIX
