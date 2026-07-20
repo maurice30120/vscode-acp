@@ -2,7 +2,11 @@ import * as assert from "node:assert/strict";
 import { setImmediate } from "node:timers/promises";
 import { test } from "node:test";
 
-import { PipelineService, type PipelineAgentRunner } from "@acp-client/pipeline";
+import {
+	PipelineService,
+	compilePipelineV3Definition,
+	type PipelineAgentRunner,
+} from "@acp-client/pipeline";
 import type { SessionNotification } from "@agentclientprotocol/sdk";
 
 import { EphemeralAcpRunner } from "../src/acp/ephemeralRunner.js";
@@ -21,8 +25,10 @@ import { PipelineController } from "../src/runtime/pipelineController.js";
 import { registerRunPipelineTool } from "../src/runtime/tool.js";
 import {
 	createTempWorkspace,
+	writeFile,
 	writeDefaultConfig,
 	writeDemoPipeline,
+	writePlanExecuteVerifyPipeline,
 	writeSkill,
 } from "./helpers.js";
 
@@ -167,6 +173,47 @@ test("EphemeralAcpRunner auto-applies Sandcastle workspace promotion", async () 
 		agentName: "Sandbox",
 		promptText: "prompt",
 		sideEffects: "workspace",
+	});
+
+	assert.equal(result.promotion, "applied");
+	assert.deepEqual(calls, ["sandcastle/preview", "sandcastle/apply"]);
+});
+
+test("EphemeralAcpRunner lets node promotion policy override Sandcastle catalog promotion", async () => {
+	const workspace = createTempWorkspace();
+	const calls: string[] = [];
+	const runner = new EphemeralAcpRunner(workspace, {
+		getAgentConfigs: () => ({
+			Sandbox: {
+				transport: "sandcastle",
+				provider: "codex",
+				model: "gpt-5",
+			},
+		}),
+		getSandcastlePromotion: () => "ask",
+		requestSandcastlePromotion: async () => {
+			throw new Error("promotion UI should not be requested");
+		},
+		sandcastleConnector: async (input) => mockConnectedAgent(input, {
+			extMethod: async (method) => {
+				calls.push(method);
+				if (method === "sandcastle/preview") {
+					return sandcastlePreview(1);
+				}
+				if (method === "sandcastle/apply") {
+					return { success: true, filesChanged: 1 };
+				}
+				throw new Error(`unexpected method ${method}`);
+			},
+		}),
+	});
+
+	const result = await runner.runAgent({
+		workspaceCwd: workspace,
+		agentName: "Sandbox",
+		promptText: "prompt",
+		sideEffects: "workspace",
+		promotion: "auto-apply",
 	});
 
 	assert.equal(result.promotion, "applied");
@@ -692,7 +739,7 @@ test("EphemeralAcpRunner ignores and does not forward updates from other session
 });
 
 test("/pipeline list reports configured pipelines", async () => {
-	const workspace = createTempWorkspace();
+	const workspace = createConfiguredPipelineWorkspace();
 
 	const notifications: string[] = [];
 	const controller = new PipelineController(
@@ -713,7 +760,7 @@ test("/pipeline list reports configured pipelines", async () => {
 });
 
 test("/pipeline run then approve executes planner and implementer", async () => {
-	const workspace = createTempWorkspace();
+	const workspace = createConfiguredPipelineWorkspace();
 
 	const notifications: string[] = [];
 	const messages: Array<{ content: unknown; details?: unknown }> = [];
@@ -748,41 +795,49 @@ test("/pipeline run then approve executes planner and implementer", async () => 
 	assert.ok(messages.some((message) => String(message.content).includes("implementation done")));
 });
 
-test("PipelineService plan_ready message mentions Sandcastle for a Sandcastle implementer", async () => {
+test("PipelineService emits approval pause status for a v3 Sandcastle implementer pipeline", async () => {
 	const workspace = createTempWorkspace();
 	const statuses: string[] = [];
-	const definition = {
-		version: 2 as const,
+	const program = compilePipelineV3Definition({
+		version: 3 as const,
 		id: "sandcastle-plan",
 		title: "Sandcastle Plan",
-		primitives: {
-			planner: {
-				agent: "Planner",
-				prompt: "Plan {{userPrompt}}",
-				output: "proposed_plan" as const,
-				sideEffects: "none" as const,
+		nodes: [
+			{
+				id: "approval",
+				type: "pause" as const,
+				pause: "approval" as const,
+				content: "<proposed_plan>Use Sandcastle.</proposed_plan>",
+				output: { name: "approved", type: "acp.approval/v1", format: "markdown" as const },
 			},
-			implementer: {
+			{
+				id: "implement",
 				agent: "Codex Sandcastle",
-				prompt: "Implement {{steps.approval.output}}",
-				output: "markdown" as const,
-				sideEffects: "workspace" as const,
+				prompt: "Implement {{inputs.plan}}",
+				needs: ["approval"],
+				inputs: [{ name: "plan", from: "approval.approved", type: "acp.approval/v1", format: "markdown" as const }],
+				policy: {
+					filesystem: "workspace-write" as const,
+					terminal: "workspace-write" as const,
+					promotion: "ask" as const,
+				},
+				output: { name: "result", type: "acp.implementation-result/v1", format: "markdown" as const },
 			},
-		},
-		steps: [
-			{ id: "plan", use: "planner" },
-			{ id: "approval", type: "approval" as const, input: "{{steps.plan.output}}" },
-			{ id: "implement", use: "implementer" },
 		],
-	};
+	}, {
+		"Codex Sandcastle": {
+			transport: "sandcastle",
+			provider: "codex",
+			model: "gpt-5",
+		},
+	}).program!;
 	const service = new PipelineService(
 		() => workspace,
 		{
-			getPipelineDefinitions: () => [definition],
-			getPipelineDefinitionForAgent: agentName =>
-				agentName === definition.id ? definition : null,
+			getPipelinePrograms: () => [program],
+			getPipelineProgramForAgent: agentName =>
+				agentName === program.id ? program : null,
 			getAgentConfigs: () => ({
-				Planner: { command: "planner" },
 				"Codex Sandcastle": {
 					transport: "sandcastle",
 					provider: "codex",
@@ -791,7 +846,7 @@ test("PipelineService plan_ready message mentions Sandcastle for a Sandcastle im
 			}),
 			isAgentSandcastle: (agentName, configs) =>
 				(configs[agentName] as { transport?: string } | undefined)?.transport === "sandcastle",
-			runAgent: async () => "<proposed_plan>Use Sandcastle.</proposed_plan>",
+			runAgent: async () => "implementation done",
 		},
 	);
 	service.on("status", event => {
@@ -802,7 +857,7 @@ test("PipelineService plan_ready message mentions Sandcastle for a Sandcastle im
 
 	await service.createPlan("session-1", "add feature", "sandcastle-plan");
 
-	assert.deepEqual(statuses, ["Plan ready — approve before Sandcastle implementation."]);
+	assert.ok(statuses.includes("Pipeline paused for approval."));
 	await service.dispose();
 });
 
@@ -829,7 +884,7 @@ test("/pipeline verbose toggles runtime verbose mode", async () => {
 });
 
 test("PipelineController activity relays agent message chunks", async () => {
-	const workspace = createTempWorkspace();
+	const workspace = createConfiguredPipelineWorkspace();
 
 	const messages: Array<{ content: unknown; details?: { kind?: string } }> = [];
 	const runner: PipelineAgentRunner = async (input) => {
@@ -862,7 +917,7 @@ test("PipelineController activity relays agent message chunks", async () => {
 });
 
 test("PipelineController groups adjacent agent message chunks", async () => {
-	const workspace = createTempWorkspace();
+	const workspace = createConfiguredPipelineWorkspace();
 
 	const messages: Array<{ content: unknown; details?: { kind?: string } }> = [];
 	const runner: PipelineAgentRunner = async (input) => {
@@ -894,7 +949,7 @@ test("PipelineController groups adjacent agent message chunks", async () => {
 });
 
 test("PipelineController activity relays agent thought chunks", async () => {
-	const workspace = createTempWorkspace();
+	const workspace = createConfiguredPipelineWorkspace();
 
 	const messages: Array<{ content: unknown; details?: { kind?: string } }> = [];
 	const runner: PipelineAgentRunner = async (input) => {
@@ -924,7 +979,7 @@ test("PipelineController activity relays agent thought chunks", async () => {
 });
 
 test("PipelineController verbose activity still reports non-text session updates", async () => {
-	const workspace = createTempWorkspace();
+	const workspace = createConfiguredPipelineWorkspace();
 
 	const messages: Array<{ content: unknown; details?: { kind?: string } }> = [];
 	const runner: PipelineAgentRunner = async (input) => {
@@ -966,7 +1021,7 @@ test("PipelineController verbose activity still reports non-text session updates
 });
 
 test("PipelineController keeps heartbeat internal during long-running activity", async () => {
-	const workspace = createTempWorkspace();
+	const workspace = createConfiguredPipelineWorkspace();
 
 	const messages: Array<{ content: unknown; details?: { kind?: string } }> = [];
 	const runner: PipelineAgentRunner = async () => {
@@ -993,7 +1048,7 @@ test("PipelineController keeps heartbeat internal during long-running activity",
 });
 
 test("PipelineController status reports agent update counters without duplicating chunk text", async () => {
-	const workspace = createTempWorkspace();
+	const workspace = createConfiguredPipelineWorkspace();
 
 	const messages: Array<{
 		content: unknown;
@@ -1343,7 +1398,7 @@ test("extension keeps one PipelineController per cwd across session_start events
 	}
 });
 
-test("EphemeralAcpRunner prefixes the prompt with the filtered skills catalog", async () => {
+test("EphemeralAcpRunner prefixes the prompt with explicit pipeline skills", async () => {
 	const workspace = createTempWorkspace();
 	writeSkill(workspace, "tdd", {
 		name: "tdd",
@@ -1379,50 +1434,36 @@ test("EphemeralAcpRunner prefixes the prompt with the filtered skills catalog", 
 		skills: ["tdd"],
 	});
 
-	assert.ok(sentPrompt.includes("<available_skills>"), sentPrompt);
-	assert.ok(sentPrompt.includes("name: tdd"), sentPrompt);
+	assert.ok(sentPrompt.includes('<skill name="tdd">'), sentPrompt);
+	assert.ok(sentPrompt.includes("Test-driven development."), sentPrompt);
 	assert.ok(sentPrompt.endsWith("Do the work."), sentPrompt);
 });
 
-test("EphemeralAcpRunner skips skills injection when agents.<name>.skills is false", async () => {
+test("EphemeralAcpRunner rejects declared skills when agents.<name>.skills is false", async () => {
 	const workspace = createTempWorkspace();
 	writeSkill(workspace, "tdd", {
 		name: "tdd",
 		description: "Test-driven development.",
 	});
-	let sentPrompt = "";
 
 	const runner = new EphemeralAcpRunner(workspace, {
 		getAgentConfigs: () => ({
 			"Codex CLI": { command: "codex", skills: false },
 		}),
-		connector: async () => ({
-			agentId: "agent_1",
-			connInfo: {
-				initResponse: {},
-				client: undefined,
-				connection: {
-					newSession: async () => ({ sessionId: "s1" }),
-					prompt: async (request: { prompt: Array<{ text: string }> }) => {
-						sentPrompt = request.prompt[0].text;
-						return { stopReason: "end_turn" };
-					},
-					cancel: async () => {},
-					authenticate: async () => ({}),
-				},
-			} as any,
-			dispose: () => {},
+		connector: async () => {
+			throw new Error("connector should not run");
+		},
+	});
+
+	await assert.rejects(
+		runner.runAgent({
+			workspaceCwd: workspace,
+			agentName: "Codex CLI",
+			promptText: "Do the work.",
+			skills: ["tdd"],
 		}),
-	});
-
-	await runner.runAgent({
-		workspaceCwd: workspace,
-		agentName: "Codex CLI",
-		promptText: "Do the work.",
-		skills: ["tdd"],
-	});
-
-	assert.equal(sentPrompt, "Do the work.");
+		/skills disabled/,
+	);
 });
 
 test("EphemeralAcpRunner skips skills injection when skills is omitted", async () => {
@@ -1575,4 +1616,48 @@ function commandContext(workspace: string, notifications: string[]) {
 		switchSession: async () => ({ cancelled: false }),
 		reload: async () => {},
 	} as any;
+}
+
+function createConfiguredPipelineWorkspace(): string {
+	const workspace = createTempWorkspace();
+	writeDefaultConfig(workspace);
+	writeFile(
+		workspace,
+		".acp/acp-agents.json",
+		JSON.stringify(
+			{
+				agents: {
+					"Codex CLI": { command: "codex", args: [], env: {} },
+					"Pi Agent": { command: "pi-acp", args: [], env: {} },
+					Vibe: { command: "vibe", args: [], env: {} },
+				},
+				pipeline: {
+					enabled: true,
+					instructionsMaxBytes: 262144,
+				},
+			},
+			null,
+			2,
+		),
+	);
+	writeFile(
+		workspace,
+		".acp/.sandcastle/config.json",
+		JSON.stringify(
+			{
+				promotion: "ask",
+				agents: {
+					"Vibe Sandcastle": {
+						transport: "sandcastle",
+						provider: "vibe",
+						model: "mistral-large-latest",
+					},
+				},
+			},
+			null,
+			2,
+		),
+	);
+	writePlanExecuteVerifyPipeline(workspace);
+	return workspace;
 }

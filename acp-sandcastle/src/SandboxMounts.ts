@@ -7,6 +7,15 @@ import { docker } from '@ai-hero/sandcastle/sandboxes/docker';
 
 import { prepareVibeHome } from './VibeHome.js';
 
+type BindMountCreateOptions = {
+  worktreePath: string;
+  mounts: Array<{ hostPath: string; sandboxPath: string; readonly?: boolean }>;
+};
+
+type RuntimeBindMountProvider = CreateSandboxOptions['sandbox'] & {
+  create(options: BindMountCreateOptions): unknown;
+};
+
 export interface SandboxMount {
   hostPath: string;
   sandboxPath: string;
@@ -114,11 +123,28 @@ export function createDockerSandboxProvider(
   cwd: string,
   branch?: string,
 ): CreateSandboxOptions['sandbox'] {
-  return docker({
+  const provider = docker({
     imageName: config.imageName,
     cpus: config.cpus ?? 2,
     mounts: buildSandboxMounts(config, cwd, branch),
-  });
+  }) as RuntimeBindMountProvider;
+  const wrapped = {
+    ...provider,
+    create(options: BindMountCreateOptions) {
+      return provider.create({
+        ...options,
+        mounts: [
+          ...options.mounts,
+          {
+            hostPath: options.worktreePath,
+            sandboxPath: '/home/agent/workspace',
+            readonly: false,
+          },
+        ],
+      });
+    },
+  };
+  return wrapped as CreateSandboxOptions['sandbox'];
 }
 
 function resolveGitCommonDir(repoDir: string): string | undefined {

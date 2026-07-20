@@ -1,0 +1,197 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+
+import { compilePipelineV3Definition } from "./PipelineV3Compiler";
+import type { CompiledPipelineProgram } from "./PipelineV3Types";
+
+export interface PipelineV3CatalogSource {
+  filePath: string;
+  definition: unknown;
+}
+
+export interface PipelineV3CatalogOptions {
+  workspaceCwd: string;
+  configRoot?: string;
+  maxPromptFileBytes: number;
+  agentConfigs?: Record<string, unknown>;
+}
+
+export interface PipelineV3CatalogError {
+  filePath: string;
+  errors: string[];
+}
+
+export interface PipelineV3CatalogResult {
+  programs: CompiledPipelineProgram[];
+  errors: PipelineV3CatalogError[];
+}
+
+export function compilePipelineV3Catalog(
+  sources: PipelineV3CatalogSource[],
+  options: PipelineV3CatalogOptions,
+): PipelineV3CatalogResult {
+  const programs: CompiledPipelineProgram[] = [];
+  const errors: PipelineV3CatalogError[] = [];
+
+  for (const source of [...sources].sort(compareSources)) {
+    const versionError = rejectUnsupportedVersion(source.definition);
+    if (versionError) {
+      errors.push({ filePath: source.filePath, errors: [versionError] });
+      continue;
+    }
+
+    const resolved = resolvePipelineV3PromptFiles(source.definition, {
+      workspaceCwd: options.workspaceCwd,
+      configRoot: options.configRoot,
+      maxBytes: options.maxPromptFileBytes,
+      pipelineFilePath: source.filePath,
+    });
+    if (resolved.errors.length > 0) {
+      errors.push({
+        filePath: source.filePath,
+        errors: resolved.errors.map(error => `node "${error.nodeId}": ${error.error}`),
+      });
+      continue;
+    }
+
+    const compiled = compilePipelineV3Definition(
+      resolved.definition,
+      options.agentConfigs ?? {},
+    );
+    if (!compiled.program) {
+      errors.push({ filePath: source.filePath, errors: compiled.errors });
+      continue;
+    }
+    programs.push(compiled.program);
+  }
+
+  return { programs, errors };
+}
+
+export interface PipelineV3PromptFileResolveOptions {
+  workspaceCwd: string;
+  configRoot?: string;
+  maxBytes: number;
+  pipelineFilePath: string;
+}
+
+export interface PipelineV3PromptFileResolveError {
+  nodeId: string;
+  error: string;
+}
+
+export function resolvePipelineV3PromptFiles(
+  definition: unknown,
+  options: PipelineV3PromptFileResolveOptions,
+): { definition: unknown; errors: PipelineV3PromptFileResolveError[] } {
+  if (!isRecord(definition) || !Array.isArray(definition.nodes)) {
+    return { definition, errors: [] };
+  }
+
+  const errors: PipelineV3PromptFileResolveError[] = [];
+  const nodes = definition.nodes.map((node, index) => {
+    if (!isRecord(node) || typeof node.promptFile !== "string") {
+      return node;
+    }
+
+    const nodeId = typeof node.id === "string" && node.id.trim() ? node.id : String(index + 1);
+    const outcome = readPromptFile(node.promptFile, options);
+    if ("error" in outcome) {
+      errors.push({ nodeId, error: outcome.error });
+      return node;
+    }
+
+    const inlinePrompt = typeof node.prompt === "string" ? node.prompt : "";
+    const { promptFile: _promptFile, ...rest } = node;
+    return {
+      ...rest,
+      prompt: inlinePrompt.length > 0
+        ? `${outcome.content}\n\n${inlinePrompt}`
+        : outcome.content,
+    };
+  });
+
+  return {
+    definition: { ...definition, nodes },
+    errors,
+  };
+}
+
+function rejectUnsupportedVersion(definition: unknown): string | null {
+  if (!isRecord(definition)) {
+    return null;
+  }
+  if (definition.version !== undefined && definition.version !== 3) {
+    return `Unsupported ACP pipeline version ${String(definition.version)}; only version 3 is supported.`;
+  }
+  if ("primitives" in definition || "steps" in definition) {
+    return 'Unsupported ACP pipeline structure; use version 3 "nodes" instead of v2 "primitives" or "steps".';
+  }
+  return null;
+}
+
+function readPromptFile(
+  relativePath: string,
+  options: PipelineV3PromptFileResolveOptions,
+): { content: string } | { error: string } {
+  const safePath = resolveSafePath(relativePath, options);
+  if ("error" in safePath) {
+    return safePath;
+  }
+
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(safePath.absolutePath);
+  } catch {
+    return { error: `promptFile not found: ${relativePath}` };
+  }
+
+  if (!stat.isFile()) {
+    return { error: `promptFile path is not a file: ${relativePath}` };
+  }
+  if (stat.size > options.maxBytes) {
+    return { error: `promptFile exceeds max size (${options.maxBytes} bytes): ${relativePath}` };
+  }
+
+  try {
+    return { content: fs.readFileSync(safePath.absolutePath, "utf8") };
+  } catch (e: unknown) {
+    const message = e instanceof Error && e.message ? e.message : String(e);
+    return { error: `Failed to read promptFile: ${message}` };
+  }
+}
+
+function resolveSafePath(
+  relativePath: string,
+  options: PipelineV3PromptFileResolveOptions,
+): { absolutePath: string } | { error: string } {
+  if (path.isAbsolute(relativePath)) {
+    return { error: "promptFile path must be relative to the pipeline YAML file." };
+  }
+
+  const normalizedRelative = path.normalize(relativePath);
+  if (path.isAbsolute(normalizedRelative)) {
+    return { error: "promptFile path must be relative." };
+  }
+
+  const configRoot = path.resolve(options.configRoot ?? options.workspaceCwd);
+  const acpRoot = path.join(configRoot, ".acp");
+  const pipelineDir = path.dirname(options.pipelineFilePath);
+  const normalizedForPrefix = relativePath.replaceAll("\\", "/");
+  const baseDir = normalizedForPrefix.startsWith(".acp/") ? configRoot : pipelineDir;
+  const candidate = path.resolve(baseDir, normalizedRelative);
+  const relativeToAcpRoot = path.relative(acpRoot, candidate);
+
+  if (relativeToAcpRoot.startsWith("..") || path.isAbsolute(relativeToAcpRoot)) {
+    return { error: "promptFile path must stay within the ACP config root." };
+  }
+  return { absolutePath: candidate };
+}
+
+function compareSources(a: PipelineV3CatalogSource, b: PipelineV3CatalogSource): number {
+  return a.filePath < b.filePath ? -1 : a.filePath > b.filePath ? 1 : 0;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

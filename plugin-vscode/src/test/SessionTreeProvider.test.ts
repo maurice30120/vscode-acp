@@ -54,7 +54,7 @@ suite('SessionTreeProvider', () => {
       fs.mkdirSync(path.join(workspaceRoot, '.acp', 'pipelines'), { recursive: true });
       fs.writeFileSync(
         path.join(workspaceRoot, '.acp', 'acp-agents.json'),
-        JSON.stringify({ Vibe: { command: 'vibe-acp' } }),
+        JSON.stringify({ agents: { Vibe: { command: 'vibe-acp' } } }),
       );
       fs.writeFileSync(
         path.join(workspaceRoot, '.acp', 'pipelines', 'plan-execute-verify.yaml'),
@@ -93,18 +93,19 @@ suite('SessionTreeProvider', () => {
   });
 
   test('returns local sessions when load/resume is available without list', async () => {
+    const repo = path.resolve('/repo');
     const sm = new FakeSessionManager();
     sm.cachedCaps.set('agent-a', { list: false, load: true, resume: false });
 
     const historyStore = {
       list: (agentName: string, cwd?: string | { cwd: string }) => {
         const cwdValue = typeof cwd === 'string' ? cwd : cwd?.cwd;
-        if (agentName === 'agent-a' && cwdValue === '/repo') {
+        if (agentName === 'agent-a' && cwdValue === repo) {
           return [
             {
               agentName: 'agent-a',
               sessionId: 's-local',
-              cwd: '/repo',
+              cwd: repo,
               firstPrompt: 'Prompt',
               createdAt: '2026-01-01T00:00:00.000Z',
               lastActiveAt: '2026-01-01T00:00:00.000Z',
@@ -121,7 +122,7 @@ suite('SessionTreeProvider', () => {
     const provider = new SessionTreeProvider(
       sm as any,
       historyStore as any,
-      () => '/repo',
+      () => repo,
     );
 
     const children = await provider.getChildren(new AgentTreeItem('agent-a', false, 1));

@@ -1,0 +1,31 @@
+{
+  "name": "@acp-client/cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Run workspace ACP v3 pipelines from a terminal.",
+  "type": "module",
+  "bin": {
+    "acp-cli": "./dist/src/cli.js"
+  },
+  "main": "./dist/src/cli.js",
+  "types": "./dist/src/cli.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "npm --prefix .. run build -w @acp-client/pi-extension && npm --prefix .. exec -- tsc -p tsconfig.json --incremental false",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\""
+  },
+  "dependencies": {
+    "@acp-client/pi-extension": "file:../plugin-pi",
+    "@acp-client/pipeline": "file:../acp-pipeline"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

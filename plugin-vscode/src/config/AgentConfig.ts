@@ -41,6 +41,7 @@ export interface SandcastleAgentConfigEntry {
 export type AgentConfigEntry = AcpAgentConfigEntry | SandcastleAgentConfigEntry;
 
 export const AGENT_CONFIG_RELATIVE_PATH = path.join('.acp', 'acp-agents.json');
+export const SANDCASTLE_CONFIG_RELATIVE_PATH = path.join('.acp', '.sandcastle', 'config.json');
 
 export function isSandcastleAgentConfig(
   config: AgentConfigEntry,
@@ -49,7 +50,7 @@ export function isSandcastleAgentConfig(
 }
 
 /**
- * Read agent configurations from .acp/acp-agents.json.
+ * Read native and Sandcastle agent configurations from the canonical workspace-root files.
  * Returns a map of agent name → config.
  */
 export function getAgentConfigs(
@@ -61,7 +62,20 @@ export function getAgentConfigs(
   }
 
   try {
-    return parseAgentConfigJson(fs.readFileSync(filePath, 'utf8'), filePath);
+    const nativeAgents = parseAgentConfigJson(fs.readFileSync(filePath, 'utf8'), filePath);
+    const sandcastlePath = path.join(workspaceCwd, SANDCASTLE_CONFIG_RELATIVE_PATH);
+    if (!fs.existsSync(sandcastlePath)) {
+      return nativeAgents;
+    }
+    const sandcastleAgents = parseSandcastleConfigJson(fs.readFileSync(sandcastlePath, 'utf8'), sandcastlePath);
+    for (const name of Object.keys(sandcastleAgents)) {
+      if (nativeAgents[name]) {
+        delete nativeAgents[name];
+        delete sandcastleAgents[name];
+        log(`Ignoring duplicate ACP agent "${name}" declared in both canonical config files.`);
+      }
+    }
+    return { ...nativeAgents, ...sandcastleAgents };
   } catch (error) {
     log(`Ignoring unreadable ACP agent config ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
     return {};
@@ -89,8 +103,13 @@ export function parseAgentConfigJson(
     return {};
   }
 
+  if (!isPlainObject(parsed.agents)) {
+    log(`Ignoring invalid ACP agent config ${filePath}: agents must be an object.`);
+    return {};
+  }
+  const entries = parsed.agents;
   const agents: Record<string, AgentConfigEntry> = {};
-  for (const [name, value] of Object.entries(parsed)) {
+  for (const [name, value] of Object.entries(entries)) {
     const entry = normalizeAgentConfigEntry(name, value, filePath);
     if (entry) {
       agents[name] = entry;
@@ -100,13 +119,48 @@ export function parseAgentConfigJson(
   return agents;
 }
 
+export function parseSandcastleConfigJson(
+  text: string,
+  filePath = SANDCASTLE_CONFIG_RELATIVE_PATH,
+): Record<string, AgentConfigEntry> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    log(`Ignoring invalid Sandcastle config ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+    return {};
+  }
+  if (!isPlainObject(parsed) || !isPlainObject(parsed.agents)) {
+    log(`Ignoring invalid Sandcastle config ${filePath}: agents must be an object.`);
+    return {};
+  }
+  const agents: Record<string, AgentConfigEntry> = {};
+  for (const [name, value] of Object.entries(parsed.agents)) {
+    const entry = normalizeAgentConfigEntry(name, value, filePath);
+    if (entry && isSandcastleAgentConfig(entry)) {
+      agents[name] = entry;
+    }
+  }
+  return agents;
+}
+
 export async function writeAgentConfigs(
   agents: Record<string, AgentConfigEntry>,
   workspaceCwd: string = resolveWorkspaceIdentity().cwd,
 ): Promise<void> {
   const filePath = getAgentConfigPath(workspaceCwd);
+  const nativeAgents: Record<string, AgentConfigEntry> = {};
+  const sandcastleAgents: Record<string, AgentConfigEntry> = {};
+  for (const [name, entry] of Object.entries(agents)) {
+    (isSandcastleAgentConfig(entry) ? sandcastleAgents : nativeAgents)[name] = entry;
+  }
+  const sandcastlePath = path.join(workspaceCwd, SANDCASTLE_CONFIG_RELATIVE_PATH);
+  const nativeEnvelope = readJsonObject(filePath);
+  const sandcastleEnvelope = readJsonObject(sandcastlePath);
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.promises.writeFile(filePath, `${JSON.stringify(agents, null, 2)}\n`, 'utf8');
+  await fs.promises.mkdir(path.dirname(sandcastlePath), { recursive: true });
+  await fs.promises.writeFile(filePath, `${JSON.stringify({ ...nativeEnvelope, agents: nativeAgents }, null, 2)}\n`, 'utf8');
+  await fs.promises.writeFile(sandcastlePath, `${JSON.stringify({ ...sandcastleEnvelope, agents: sandcastleAgents }, null, 2)}\n`, 'utf8');
 }
 
 export async function upsertAgentConfig(
@@ -196,4 +250,13 @@ function normalizeAgentConfigEntry(
 
 function isPlainObject(value: unknown): value is Record<string, any> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readJsonObject(filePath: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return isPlainObject(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
 }

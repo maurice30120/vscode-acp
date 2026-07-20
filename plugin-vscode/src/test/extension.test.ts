@@ -110,7 +110,6 @@ suite('Extension Test Suite', () => {
       'acp.addAgent',
       'acp.removeAgent',
       'acp.showLog',
-      'acp.bootstrapWorkspace',
       'acp.showTraffic',
       'acp.openDebugSnapshot',
       'acp.browseRegistry',

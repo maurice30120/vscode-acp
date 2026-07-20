@@ -645,7 +645,7 @@ suite('EditorContext', () => {
       tabs: [],
     }] as any;
 
-    assert.strictEqual(getActiveTabFilePath(tabGroups), filePath);
+    assert.strictEqual(getActiveTabFilePath(tabGroups), vscode.Uri.file(filePath).fsPath);
   });
 
   test('captureEditorContextFromOpenDocument builds context from an open document', () => {
@@ -664,7 +664,7 @@ suite('EditorContext', () => {
   });
 
   test('getEditorContextSnapshot uses last known context when editor focus is lost', () => {
-    const filePath = workspacePath('src', 'remembered.ts');
+    const filePath = vscode.Uri.file(workspacePath('src', 'remembered.ts')).fsPath;
     rememberLastKnownEditorContext({
       filePath,
       cursorLine: 12,

@@ -2,6 +2,7 @@ import * as assert from 'assert';
 
 import {
   appReducer,
+  buildWebviewPersistedBundle,
   createInitialState,
   emptyPersistedState,
   emptyOrchestrationSlice,
@@ -173,6 +174,56 @@ suite('WebviewAppState', () => {
 
     assert.strictEqual(state.orchestration.activeRole, 'implementer');
     assert.strictEqual(selectOrchestrationView(state).hasTimeline, true);
+    assert.strictEqual(selectOrchestrationView(state).activity, null);
+  });
+
+  test('pipeline activity is local and is not persisted or restored', () => {
+    let state = createInitialState({
+      shared: {
+        version: 1,
+        updatedAt: 100,
+        chatHistory: [],
+        sessionState: null,
+        hasActiveSession: false,
+        promptText: '',
+        inputAreaHeight: 140,
+        isProcessing: false,
+        currentTurn: null,
+        collapsedTools: {},
+      },
+      orchestration: {
+        version: 1,
+        updatedAt: 100,
+        timeline: [],
+        activeRole: 'implementer',
+        activeAgentName: 'builder',
+        plan: null,
+        roleOutputs: [],
+        activity: {
+          role: 'implementer',
+          agentName: 'builder',
+          text: 'must not restore',
+        },
+      },
+    });
+
+    assert.strictEqual(state.pipelineActivity, null);
+    state = appReducer(state, {
+      type: 'updatePipelineActivity',
+      role: 'implementer',
+      agentName: 'builder',
+    });
+    assert.deepStrictEqual(selectOrchestrationView(state).activity, {
+      role: 'implementer',
+      agentName: 'builder',
+    });
+
+    const bundle = buildWebviewPersistedBundle(state, 2, 200, 2, 200);
+    assert.strictEqual('activity' in bundle.orchestration, false);
+    assert.strictEqual(JSON.stringify(bundle).includes('must not restore'), false);
+
+    const cleared = appReducer(state, { type: 'clearPipelineActivity' });
+    assert.strictEqual(cleared.pipelineActivity, null);
   });
 
   test('createInitialState migrates legacy pipeline fields from shared snapshot', () => {

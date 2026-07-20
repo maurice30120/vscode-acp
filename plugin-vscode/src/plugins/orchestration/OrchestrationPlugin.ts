@@ -7,8 +7,8 @@ import {
   type AgentConfigEntry,
 } from '../../config/AgentConfig';
 import {
-  getPipelineDefinitionForAgent,
-  getPipelineDefinitions,
+  getPipelineProgramForAgent,
+  getPipelinePrograms,
 } from '../../config/PipelineCatalog';
 import { isPipelineEnabled } from '../../config/PipelineConfig';
 import type { SessionManager } from '../../core/SessionManager';
@@ -38,9 +38,9 @@ export class OrchestrationPlugin implements FeaturePlugin<OrchestrationPluginCon
     const ephemeralRunner = new DefaultEphemeralAgentRunner(sandcastlePromotion);
     const readAgentConfigs = () => getAgentConfigs(context.workspaceCwd());
     const pipelineService = new PipelineService(context.workspaceCwd, {
-      getPipelineDefinitions: () => getPipelineDefinitions(context.workspaceCwd(), readAgentConfigs()),
-      getPipelineDefinitionForAgent: agentName =>
-        getPipelineDefinitionForAgent(agentName, context.workspaceCwd(), readAgentConfigs()),
+      getPipelinePrograms: () => getPipelinePrograms(context.workspaceCwd(), readAgentConfigs()),
+      getPipelineProgramForAgent: agentName =>
+        getPipelineProgramForAgent(agentName, context.workspaceCwd(), readAgentConfigs()),
       getAgentConfigs: readAgentConfigs,
       runAgent: input => ephemeralRunner.run(input),
       isAgentSandcastle: (agentName, agentConfigs) => {
@@ -54,7 +54,7 @@ export class OrchestrationPlugin implements FeaturePlugin<OrchestrationPluginCon
     disposables.push(runtime.activate());
     const refresh = () => sessionTreeProvider.invalidate();
 
-    for (const pattern of ['**/.acp/acp-agents.json', '**/.acp/pipelines/*.yaml', '**/.acp/pipelines/*.yml']) {
+    for (const pattern of ['**/.acp/acp-agents.json', '**/.acp/.sandcastle/config.json', '**/.acp/pipelines/*.yaml', '**/.acp/pipelines/*.yml']) {
       const watcher = vscode.workspace.createFileSystemWatcher(pattern);
       disposables.push(
         watcher,

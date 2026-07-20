@@ -1,6 +1,8 @@
 *
 !.gitignore
 !acp-agents.json
+!.sandcastle/
+!.sandcastle/config.json
 !agents/
 !pipelines/
 !agents/.gitignore

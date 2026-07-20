@@ -29,10 +29,15 @@ suite('SandcastlePromotion', () => {
 
   test('resolves the active Sandcastle session once for promotion actions', async () => {
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'sandcastle-promotion-'));
-    fs.mkdirSync(path.join(workspace, '.acp'), { recursive: true });
+    fs.mkdirSync(path.join(workspace, '.acp', '.sandcastle'), { recursive: true });
     fs.writeFileSync(
       path.join(workspace, '.acp', 'acp-agents.json'),
-      JSON.stringify({ Sandbox: { transport: 'sandcastle', provider: 'codex', model: 'gpt-5' } }),
+      JSON.stringify({ agents: {} }),
+      'utf8',
+    );
+    fs.writeFileSync(
+      path.join(workspace, '.acp', '.sandcastle', 'config.json'),
+      JSON.stringify({ agents: { Sandbox: { transport: 'sandcastle', provider: 'codex', model: 'gpt-5' } } }),
       'utf8',
     );
     vscode.workspace.getConfiguration = () => ({

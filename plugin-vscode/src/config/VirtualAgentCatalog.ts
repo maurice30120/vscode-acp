@@ -1,10 +1,9 @@
 import type { AgentConfigEntry } from './AgentConfig';
+import type { CompiledPipelineProgram } from '@acp-client/pipeline';
 import { getAgentConfigs } from './AgentConfig';
 import {
-  getPipelineDefinitionForAgent,
   getPipelineAgentNames,
-  getPipelineDefinitions,
-  type PipelineDefinition,
+  getPipelineProgramForAgent,
 } from './PipelineCatalog';
 import { resolveWorkspaceIdentity } from '../core/WorkspaceIdentity';
 
@@ -14,7 +13,7 @@ export interface AgentResolution {
   kind: AgentResolutionKind;
   name: string;
   runnable: boolean;
-  pipeline?: PipelineDefinition;
+  pipeline?: CompiledPipelineProgram;
   errors: string[];
 }
 
@@ -49,13 +48,12 @@ export function resolveAgent(
     };
   }
 
-  const pipeline = getPipelineDefinitionForAgent(normalized, workspaceCwd, configs);
-  if (pipeline) {
+  const program = getPipelineProgramForAgent(normalized, workspaceCwd, configs);
+  if (program) {
     return {
       kind: 'pipeline',
-      name: pipeline.title,
+      name: program.title,
       runnable: true,
-      pipeline,
       errors: [],
     };
   }
@@ -105,9 +103,18 @@ export function listSelectableAgentNames(
   return [...configured, ...virtualNames];
 }
 
-export function getPipelineDefinitionsForWorkspace(
+export function getPipelineProgramsForWorkspace(
   workspaceCwd: string = resolveWorkspaceIdentity().cwd,
   agentConfigs?: Record<string, AgentConfigEntry>,
-): PipelineDefinition[] {
-  return getPipelineDefinitions(workspaceCwd, readAgentConfigs(agentConfigs, workspaceCwd));
+): CompiledPipelineProgram[] {
+  return getPipelineProgramList(workspaceCwd, readAgentConfigs(agentConfigs, workspaceCwd));
+}
+
+function getPipelineProgramList(
+  workspaceCwd: string,
+  agentConfigs: Record<string, AgentConfigEntry>,
+): CompiledPipelineProgram[] {
+  return getPipelineAgentNames(workspaceCwd, agentConfigs)
+    .map(name => getPipelineProgramForAgent(name, workspaceCwd, agentConfigs))
+    .filter((program): program is CompiledPipelineProgram => program !== null);
 }

@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, unlinkSync } from 'node:fs';
 import { Readable, Writable } from 'node:stream';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const provider = process.argv[2];
 const action = process.argv[3];
@@ -14,7 +15,8 @@ if (!['codex', 'cursor'].includes(provider) || !['apply', 'reject'].includes(act
   throw new Error('Usage: node scripts/sandcastle-smoke.mjs codex|cursor apply|reject');
 }
 
-const root = process.cwd();
+const extensionRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const root = path.resolve(extensionRoot, '..');
 const model = provider === 'codex' ? 'gpt-5.4' : 'composer-2';
 const sentinelRelative = `.sandcastle-smoke-${provider}.txt`;
 const sentinelPath = path.join(root, sentinelRelative);
@@ -23,7 +25,7 @@ if (existsSync(sentinelPath)) {
 }
 
 const bridge = spawn(process.execPath, [
-  path.join(root, 'dist', 'sandcastle-acp-bridge.js'),
+  path.join(extensionRoot, 'dist', 'sandcastle-acp-bridge.js'),
   '--provider', provider,
   '--model', model,
 ], {

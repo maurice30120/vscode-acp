@@ -487,7 +487,7 @@ function normalizeV2Entry(entry: PersistedSessionEntry): PersistedSessionEntry {
   const identity = workspaceIdentityFromCwd(entry.cwd || process.cwd());
   return {
     ...entry,
-    workspaceKey: entry.workspaceKey || identity.key,
+    workspaceKey: identity.key,
     cwd: entry.cwd || identity.cwd,
     status: isPersistedStatus(entry.status) ? entry.status : 'available',
   };

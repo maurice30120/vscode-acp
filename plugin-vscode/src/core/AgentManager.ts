@@ -9,6 +9,7 @@ import {
   type AgentConfigEntry,
 } from '../config/AgentConfig';
 import { loadSandcastleEnv } from '../sandcastle/SandcastleEnv';
+import { isCodexAcpCommand, normalizeCodexModelsCacheForLegacyCli } from './codexModelsCacheCompat';
 
 /**
  * Escape a single argument for safe inclusion in a shell command string.
@@ -86,6 +87,9 @@ export class AgentManager extends EventEmitter {
       ? `Sandcastle ${config.provider} (${config.model})`
       : `${config.command} ${(config.args || []).join(' ')}`;
     log(`Spawning agent "${name}" (${id}): ${launchDescription}`);
+    if (!isSandcastleAgentConfig(config) && isCodexAcpCommand(config.command, config.args || [])) {
+      normalizeCodexModelsCacheForLegacyCli();
+    }
 
     const child = (() => {
       if (isSandcastleAgentConfig(config)) {

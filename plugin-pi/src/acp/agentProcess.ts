@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { EventEmitter } from 'node:events';
 
 import type { Logger } from '../types.js';
+import { isCodexAcpCommand, normalizeCodexModelsCacheForLegacyCli } from './codexModelsCacheCompat.js';
 
 export interface ProcessAgentConfig {
   command: string;
@@ -36,6 +37,9 @@ export class AgentProcessManager extends EventEmitter {
   spawnAgent(name: string, config: ProcessAgentConfig, cwd?: string): AgentInstance {
     const id = `agent_${this.nextId++}`;
     this.logger?.log(`Spawning ACP agent "${name}" (${id}): ${config.command} ${(config.args ?? []).join(' ')}`);
+    if (isCodexAcpCommand(config.command, config.args ?? [])) {
+      normalizeCodexModelsCacheForLegacyCli(this.logger);
+    }
 
     const child = process.platform === 'win32'
       ? spawn(config.command, config.args ?? [], {
@@ -78,11 +82,12 @@ export class AgentProcessManager extends EventEmitter {
 
     try {
       instance.process.kill('SIGTERM');
-      setTimeout(() => {
+      const forceKillTimer = setTimeout(() => {
         if (instance.process.exitCode === null) {
           instance.process.kill('SIGKILL');
         }
       }, 5000);
+      forceKillTimer.unref?.();
     } catch (e: unknown) {
       this.logger?.error(`Failed to kill agent ${agentId}`, e);
     }

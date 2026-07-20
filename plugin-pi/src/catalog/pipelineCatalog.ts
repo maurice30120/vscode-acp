@@ -3,24 +3,21 @@ import * as path from "node:path";
 
 import * as yaml from "js-yaml";
 import {
-	validatePipelineDefinition,
-	type PipelineDefinition,
-	type PipelineValidationResult,
+	compilePipelineV3Catalog,
+	type CompiledPipelineProgram,
+	type PipelineV3CatalogResult,
 } from "@acp-client/pipeline";
 
 import { loadPiAcpConfig, loadPiAgentCatalog } from "./config.js";
-import { getPiPluginRoot } from "./pluginRoot.js";
-import { resolvePipelinePromptFiles } from "./promptFileResolver.js";
 import type { Logger, PiAgentConfigEntry } from "../types.js";
 
 const PIPELINE_DIR = path.join(".acp", "pipelines");
 
-export function getPipelineDefinitions(
+export function getPipelinePrograms(
 	workspaceCwd: string,
 	logger?: Logger,
-): PipelineDefinition[] {
-	const pluginRoot = getPiPluginRoot();
-	const catalog = loadPiAgentCatalog(workspaceCwd, pluginRoot);
+): CompiledPipelineProgram[] {
+	const catalog = loadPiAgentCatalog(workspaceCwd);
 	const config = catalog.native;
 	if (!config.pipeline.enabled) {
 		return [];
@@ -30,34 +27,33 @@ export function getPipelineDefinitions(
 		logger?.error(error);
 	}
 
-	return loadPipelineDefinitionsFromRoot({
+	return loadPipelineProgramsFromRoot({
 		workspaceCwd,
-		configRoot: pluginRoot,
+		configRoot: workspaceCwd,
 		agentConfigs: catalog.agents,
 		instructionsMaxBytes: config.pipeline.instructionsMaxBytes,
 		logger,
-	});
+	}).programs;
 }
 
-export function getPipelineDefinitionForAgent(
+export function getPipelineProgramForAgent(
 	workspaceCwd: string,
 	agentName: string,
 	logger?: Logger,
-): PipelineDefinition | null {
+): CompiledPipelineProgram | null {
 	return (
-		getPipelineDefinitions(workspaceCwd, logger).find(
-			(definition) =>
-				definition.id === agentName || definition.title === agentName,
+		getPipelinePrograms(workspaceCwd, logger).find(
+			(program) => program.id === agentName || program.title === agentName,
 		) ?? null
 	);
 }
 
-export function loadWorkspacePipelineDefinitions(
+export function loadWorkspacePipelinePrograms(
 	workspaceCwd: string,
 	agentConfigs: Record<string, PiAgentConfigEntry>,
 	logger?: Logger,
-): PipelineDefinition[] {
-	return loadPipelineDefinitionsFromRoot({
+): PipelineV3CatalogResult {
+	return loadPipelineProgramsFromRoot({
 		workspaceCwd,
 		configRoot: workspaceCwd,
 		agentConfigs,
@@ -66,7 +62,7 @@ export function loadWorkspacePipelineDefinitions(
 	});
 }
 
-export interface PipelineDefinitionsFromRootOptions {
+export interface PipelineProgramsFromRootOptions {
 	workspaceCwd: string;
 	configRoot: string;
 	agentConfigs: Record<string, PiAgentConfigEntry>;
@@ -74,13 +70,13 @@ export interface PipelineDefinitionsFromRootOptions {
 	logger?: Logger;
 }
 
-export function loadPipelineDefinitionsFromRoot(
-	options: PipelineDefinitionsFromRootOptions,
-): PipelineDefinition[] {
+export function loadPipelineProgramsFromRoot(
+	options: PipelineProgramsFromRootOptions,
+): PipelineV3CatalogResult {
 	const maxBytes = options.instructionsMaxBytes ?? 256 * 1024;
 	const dir = path.join(options.configRoot, PIPELINE_DIR);
 	if (!fs.existsSync(dir)) {
-		return [];
+		return { programs: [], errors: [] };
 	}
 
 	let entries: string[];
@@ -88,67 +84,48 @@ export function loadPipelineDefinitionsFromRoot(
 		entries = fs.readdirSync(dir);
 	} catch (e: unknown) {
 		options.logger?.error(`Failed to read ACP pipeline directory ${dir}`, e);
-		return [];
+		return {
+			programs: [],
+			errors: [{
+				filePath: dir,
+				errors: [`Failed to read ACP pipeline directory: ${e instanceof Error ? e.message : String(e)}`],
+			}],
+		};
 	}
 
-	const definitions: PipelineDefinition[] = [];
+	const sources = [];
+	const errors = [];
 	for (const entry of entries.sort()) {
 		if (!entry.endsWith(".yaml") && !entry.endsWith(".yml")) {
 			continue;
 		}
 		const filePath = path.join(dir, entry);
 		try {
-			const text = fs.readFileSync(filePath, "utf8");
-			const result = parsePipelineYaml(text, filePath, options.agentConfigs);
-			if (!result.definition) {
-				options.logger?.error(
-					`Ignoring invalid ACP pipeline ${filePath}: ${result.errors.join("; ")}`,
-				);
-				continue;
-			}
-
-			const resolved = resolvePipelinePromptFiles(
-				result.definition.primitives,
-				{
-					workspaceCwd: options.workspaceCwd,
-					configRoot: options.configRoot,
-					maxBytes,
-					pipelineFilePath: filePath,
-				},
-			);
-			if (resolved.errors.length > 0) {
-				const messages = resolved.errors.map(
-					(item) => `primitive "${item.primitiveId}": ${item.error}`,
-				);
-				options.logger?.error(
-					`Ignoring invalid ACP pipeline ${filePath}: ${messages.join("; ")}`,
-				);
-				continue;
-			}
-
-			definitions.push({
-				...result.definition,
-				primitives: resolved.primitives,
+			sources.push({
+				filePath,
+				definition: parseYamlDocument(fs.readFileSync(filePath, "utf8")),
 			});
 		} catch (e: unknown) {
-			options.logger?.error(`Ignoring unreadable ACP pipeline ${filePath}`, e);
+			const message = e instanceof Error && e.message ? e.message : String(e);
+			errors.push({ filePath, errors: [`YAML parse error: ${message}`] });
 		}
 	}
-	return definitions;
+
+	const result = compilePipelineV3Catalog(sources, {
+		workspaceCwd: options.workspaceCwd,
+		configRoot: options.configRoot,
+		maxPromptFileBytes: maxBytes,
+		agentConfigs: options.agentConfigs,
+	});
+	const combined = { programs: result.programs, errors: [...errors, ...result.errors] };
+	for (const error of combined.errors) {
+		options.logger?.error(
+			`Ignoring invalid ACP pipeline ${error.filePath}: ${error.errors.join("; ")}`,
+		);
+	}
+	return combined;
 }
 
-export function parsePipelineYaml(
-	text: string,
-	filePath: string,
-	agentConfigs: Record<string, PiAgentConfigEntry>,
-): PipelineValidationResult {
-	let parsed: unknown;
-	try {
-		parsed = yaml.load(text);
-	} catch (e: unknown) {
-		const message = e instanceof Error && e.message ? e.message : String(e);
-		return { errors: [`YAML parse error: ${message}`] };
-	}
-
-	return validatePipelineDefinition(parsed, filePath, agentConfigs);
+function parseYamlDocument(text: string): unknown {
+	return yaml.load(text);
 }

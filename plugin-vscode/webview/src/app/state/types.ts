@@ -16,6 +16,7 @@ import type {
   ToolCallStatus,
 } from '../../chatTypes';
 import type { OrchestrationSlice } from '../OrchestrationProjector';
+import type { PipelineActivityItem } from '../OrchestrationProjector';
 
 export type AppState = {
   persisted: PersistedWebviewState;
@@ -33,6 +34,7 @@ export type AppState = {
   renderedMarkdown: Record<number, string>;
   currentTurn: CurrentTurn | null;
   collapsedTools: Record<string, boolean>;
+  pipelineActivity: PipelineActivityItem | null;
   isLoadingSession: boolean;
 };
 
@@ -78,6 +80,8 @@ export type AppAction =
   | { type: 'revertPipelinePlanApproval' }
   | { type: 'updatePipelineTimeline'; timeline: PipelineTimelineStep[] }
   | { type: 'setActivePipelineRole'; role: PipelinePhase | null; agentName?: string | null }
+  | { type: 'updatePipelineActivity'; role: PipelinePhase; agentName?: string }
+  | { type: 'clearPipelineActivity' }
   | { type: 'appendPipelineRoleOutput'; role: PipelinePhase; agentName?: string; text: string; title: string }
   | { type: 'finalizeTeamRoleTurn' }
   | { type: 'loadSessionStart' }
@@ -145,6 +149,8 @@ export type PipelineAction = Extract<
   | { type: 'revertPipelinePlanApproval' }
   | { type: 'updatePipelineTimeline' }
   | { type: 'setActivePipelineRole' }
+  | { type: 'updatePipelineActivity' }
+  | { type: 'clearPipelineActivity' }
   | { type: 'appendPipelineRoleOutput' }
   | { type: 'resetPipelineTimeline' }
   | { type: 'finalizeTeamRoleTurn' }

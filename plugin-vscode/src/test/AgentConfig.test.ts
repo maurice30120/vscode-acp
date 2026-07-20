@@ -101,6 +101,30 @@ suite('AgentConfig', () => {
     assert.strictEqual(config.provider, 'vibe');
   });
 
+  test('loads the same workspace-root native and Sandcastle files as Pi', () => {
+    const acpRoot = path.join(workspaceRoot, '.acp');
+    fs.mkdirSync(path.join(acpRoot, '.sandcastle'), { recursive: true });
+    fs.writeFileSync(path.join(acpRoot, 'acp-agents.json'), JSON.stringify({
+      agents: { 'Pi Agent': { command: 'pi-acp' } },
+      pipeline: { enabled: true },
+    }));
+    fs.writeFileSync(path.join(acpRoot, '.sandcastle', 'config.json'), JSON.stringify({
+      promotion: 'autoApply',
+      agents: {
+        'Vibe Sandcastle': {
+          transport: 'sandcastle',
+          provider: 'vibe',
+          model: 'mistral-large-latest',
+        },
+      },
+    }));
+
+    assert.deepStrictEqual(Object.keys(getAgentConfigs(workspaceRoot)).sort(), [
+      'Pi Agent',
+      'Vibe Sandcastle',
+    ]);
+  });
+
   test('ignores invalid JSON instead of throwing', () => {
     const configPath = path.join(workspaceRoot, '.acp', 'acp-agents.json');
     fs.mkdirSync(path.dirname(configPath), { recursive: true });
@@ -124,9 +148,39 @@ suite('AgentConfig', () => {
     });
   });
 
+  test('agent writes preserve pipeline and Sandcastle policies', async () => {
+    const acpRoot = path.join(workspaceRoot, '.acp');
+    fs.mkdirSync(path.join(acpRoot, '.sandcastle'), { recursive: true });
+    fs.writeFileSync(path.join(acpRoot, 'acp-agents.json'), JSON.stringify({
+      agents: {},
+      pipeline: { enabled: false, instructionsMaxBytes: 1234 },
+    }));
+    fs.writeFileSync(path.join(acpRoot, '.sandcastle', 'config.json'), JSON.stringify({
+      promotion: 'autoReject',
+      agents: {},
+    }));
+
+    await upsertAgentConfig('Native', { command: 'native-acp' }, workspaceRoot);
+
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(acpRoot, 'acp-agents.json'), 'utf8')).pipeline, {
+      enabled: false,
+      instructionsMaxBytes: 1234,
+    });
+    assert.strictEqual(
+      JSON.parse(fs.readFileSync(path.join(acpRoot, '.sandcastle', 'config.json'), 'utf8')).promotion,
+      'autoReject',
+    );
+  });
+
   function writeConfig(agents: Record<string, unknown>): void {
+    const nativeAgents = Object.fromEntries(Object.entries(agents).filter(([, value]) =>
+      !(typeof value === 'object' && value !== null && 'transport' in value && value.transport === 'sandcastle')));
+    const sandcastleAgents = Object.fromEntries(Object.entries(agents).filter(([, value]) =>
+      typeof value === 'object' && value !== null && 'transport' in value && value.transport === 'sandcastle'));
     const configPath = path.join(workspaceRoot, '.acp', 'acp-agents.json');
-    fs.mkdirSync(path.dirname(configPath), { recursive: true });
-    fs.writeFileSync(configPath, `${JSON.stringify(agents, null, 2)}\n`, 'utf8');
+    const sandcastlePath = path.join(workspaceRoot, '.acp', '.sandcastle', 'config.json');
+    fs.mkdirSync(path.dirname(sandcastlePath), { recursive: true });
+    fs.writeFileSync(configPath, `${JSON.stringify({ agents: nativeAgents }, null, 2)}\n`, 'utf8');
+    fs.writeFileSync(sandcastlePath, `${JSON.stringify({ agents: sandcastleAgents }, null, 2)}\n`, 'utf8');
   }
 });

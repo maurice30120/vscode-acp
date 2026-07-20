@@ -8,7 +8,6 @@ import {
   resolveAgent,
 } from '../config/VirtualAgentCatalog';
 import { SessionBackedActiveAgentResolver } from '../inlineChat/agent/ActiveAgentResolver';
-import { repoRoot } from './repoRoot';
 
 suite('ActiveAgentResolver', () => {
   let originalGetConfiguration: typeof vscode.workspace.getConfiguration;
@@ -18,9 +17,27 @@ suite('ActiveAgentResolver', () => {
     fs.mkdirSync(path.join(workspace, '.acp'), { recursive: true });
     fs.writeFileSync(
       path.join(workspace, '.acp', 'acp-agents.json'),
-      `${JSON.stringify(agents, null, 2)}\n`,
+      `${JSON.stringify({ agents }, null, 2)}\n`,
       'utf8',
     );
+  }
+
+  function writePipeline(workspace = workspaceRoot): void {
+    const pipelinePath = path.join(workspace, '.acp', 'pipelines', 'plan-execute-verify.yaml');
+    fs.mkdirSync(path.dirname(pipelinePath), { recursive: true });
+    fs.writeFileSync(pipelinePath, `
+version: 3
+id: plan-execute-verify
+title: Plan Execute Verify
+nodes:
+  - id: plan
+    agent: Codex
+    prompt: Plan the request.
+    output:
+      name: plan
+      type: acp.plan/v1
+      format: markdown
+`, 'utf8');
   }
 
   setup(() => {
@@ -30,6 +47,13 @@ suite('ActiveAgentResolver', () => {
       Vibe: { command: 'echo' },
     });
     originalGetConfiguration = vscode.workspace.getConfiguration;
+    vscode.workspace.getConfiguration = function(_section) {
+      return {
+        get: (key: string, defaultValue?: unknown) => key === 'pipeline.enabled'
+          ? true
+          : defaultValue,
+      } as any;
+    };
   });
 
   teardown(() => {
@@ -57,7 +81,7 @@ suite('ActiveAgentResolver', () => {
   });
 
   test('active virtual agent session falls back to first configured agent', () => {
-    const workspaceRoot = repoRoot();
+    writePipeline();
 
     const resolver = new SessionBackedActiveAgentResolver(
       () => workspaceRoot,

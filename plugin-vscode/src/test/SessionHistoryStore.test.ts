@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import * as path from 'path';
 
 import {
   SessionHistoryStore,
@@ -106,8 +107,8 @@ suite('SessionHistoryStore', () => {
     const entry = store.get('A', 's-new');
     assert.ok(entry);
     assert.strictEqual(entry?.agentName, 'A');
-    assert.strictEqual(entry?.cwd, '/repo');
-    assert.strictEqual(entry?.workspaceKey.endsWith('/repo'), true);
+    assert.strictEqual(entry?.cwd, path.resolve('/repo'));
+    assert.strictEqual(store.list('A', path.resolve('/repo')).length, 1);
     assert.strictEqual(entry?.status, 'available');
     assert.strictEqual(events, 1);
   });
@@ -365,13 +366,15 @@ suite('SessionHistoryStore', () => {
   });
 
   test('enforces cap per agent and workspace', () => {
+    const repoOne = path.resolve('/repo-one');
+    const repoTwo = path.resolve('/repo-two');
     const memento = new FakeMemento(undefined, {
       version: 2,
       entries: [
         {
-          workspaceKey: '/repo-one',
+          workspaceKey: repoOne,
           agentName: 'A',
-          cwd: '/repo-one',
+          cwd: repoOne,
           sessionId: 'one-old',
           createdAt: '2026-01-01T00:00:00.000Z',
           lastActiveAt: '2026-01-01T00:00:00.000Z',
@@ -381,11 +384,11 @@ suite('SessionHistoryStore', () => {
     });
     const store = new SessionHistoryStore(memento as any, 1);
 
-    store.upsertNew('A', '/repo-one', 'one-new');
-    store.upsertNew('A', '/repo-two', 'two-only');
+    store.upsertNew('A', repoOne, 'one-new');
+    store.upsertNew('A', repoTwo, 'two-only');
 
-    assert.deepStrictEqual(store.list('A', '/repo-one').map(e => e.sessionId), ['one-new']);
-    assert.deepStrictEqual(store.list('A', '/repo-two').map(e => e.sessionId), ['two-only']);
+    assert.deepStrictEqual(store.list('A', repoOne).map(e => e.sessionId), ['one-new']);
+    assert.deepStrictEqual(store.list('A', repoTwo).map(e => e.sessionId), ['two-only']);
   });
 
   test('markStatus hides missing sessions without deleting them', () => {

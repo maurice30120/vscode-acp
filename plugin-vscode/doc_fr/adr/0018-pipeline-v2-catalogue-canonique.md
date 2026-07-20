@@ -46,5 +46,4 @@ Les workspaces qui utilisaient encore `.acp/teams/*.yaml` doivent migrer vers un
 
 - [ADR-0005 : Pipeline A2A ACP](0005-a2a-acp-pipeline.md)
 - [ADR-0015 : Bootstrap du runtime d'extension et seam des sessions virtuelles](0015-runtime-extension-et-sessions-virtuelles.md)
-- [ADR-0016 : Starter de workspace embarqué](0016-workspace-starter.md)
 - [ADR-0017 : Monorepo npm workspaces](0017-monorepo-npm-workspaces.md)

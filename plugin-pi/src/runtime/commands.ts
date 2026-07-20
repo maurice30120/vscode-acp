@@ -1,12 +1,13 @@
 import type { ExtensionAPI, ExtensionCommandContext } from '@earendil-works/pi-coding-agent';
 
+import './interactivePlanning.js';
 import type { PipelineController } from './pipelineController.js';
 
 export function registerPipelineCommand(pi: ExtensionAPI, controller: PipelineController): void {
   pi.registerCommand('pipeline', {
-    description: 'List, run, approve, reject, or cancel ACP pipelines',
+    description: 'List, run, answer, approve, reject, or cancel ACP pipelines',
     getArgumentCompletions: (prefix) => {
-      const words = ['list', 'run', 'approve', 'reject', 'cancel', 'verbose', 'on', 'off', 'status'];
+      const words = ['list', 'run', 'answer', 'done', 'approve', 'reject', 'cancel', 'verbose', 'on', 'off', 'status'];
       const matches = words.filter(word => word.startsWith(prefix.trim()));
       return matches.map(value => ({ value, label: value }));
     },
@@ -45,14 +46,42 @@ export async function handlePipelineCommand(
         return;
       }
       const result = await controller.runPipeline(parsed.pipelineName, parsed.prompt, ctx);
-      if (result.awaitingApproval) {
+      if (controller.isAwaitingAnswer?.() ?? false) {
+        ctx.ui.notify('Planner interview started. Use /pipeline answer <response> to answer the current question.', 'info');
+      } else if (result.awaitingApproval) {
         ctx.ui.notify('Pipeline plan ready. Use /pipeline approve or /pipeline reject.', 'info');
       } else {
         ctx.ui.notify('Pipeline completed.', 'info');
       }
       return;
     }
+    case 'answer': {
+      if (!rest.trim()) {
+        ctx.ui.notify('Usage: /pipeline answer <response>', 'warning');
+        return;
+      }
+      const result = await controller.answer(rest, ctx);
+      if (result.awaitingAnswer) {
+        ctx.ui.notify('Answer recorded. The planner has another question; use /pipeline answer again.', 'info');
+      } else {
+        ctx.ui.notify('Planner interview completed. Review the final plan, then use /pipeline approve or /pipeline reject.', 'info');
+      }
+      return;
+    }
+    case 'done': {
+      const result = await controller.answer('/done', ctx);
+      if (result.awaitingAnswer) {
+        ctx.ui.notify('The planner still has a question; answer it or run /pipeline done again.', 'info');
+      } else {
+        ctx.ui.notify('Planner interview completed. Review the final plan, then use /pipeline approve or /pipeline reject.', 'info');
+      }
+      return;
+    }
     case 'approve': {
+      if (controller.isAwaitingAnswer?.() ?? false) {
+        ctx.ui.notify('The planner interview is not complete. Use /pipeline answer <response> first.', 'warning');
+        return;
+      }
       await controller.approve(ctx, rest);
       ctx.ui.notify('Pipeline plan approved.', 'info');
       return;
@@ -90,7 +119,7 @@ export async function handlePipelineCommand(
       }
     }
     default:
-      ctx.ui.notify('Usage: /pipeline list|run|approve|reject|cancel|verbose', 'warning');
+      ctx.ui.notify('Usage: /pipeline list|run|answer|done|approve|reject|cancel|verbose|status', 'warning');
   }
 }
 

@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 
 import {
   PipelineService,
-  type PipelineDefinition,
   type PipelineAgentRunner,
   type PipelinePlanReadyEvent,
   type PipelineSessionUpdateEvent,
@@ -15,8 +14,8 @@ import { EphemeralAcpRunner } from '../acp/ephemeralRunner.js';
 import { RunAbortedError } from '../acp/runAbortedError.js';
 import { loadPiAgentCatalog } from '../catalog/config.js';
 import {
-  getPipelineDefinitionForAgent,
-  getPipelineDefinitions,
+  getPipelineProgramForAgent,
+  getPipelinePrograms,
 } from '../catalog/pipelineCatalog.js';
 import type { Logger, PiPermissionContext } from '../types.js';
 
@@ -32,6 +31,11 @@ export interface PipelineRunCommandResult {
   plan?: string;
   output?: string;
   awaitingApproval: boolean;
+}
+
+export interface PipelineListEntry {
+  id: string;
+  title: string;
 }
 
 export class PipelineController {
@@ -76,9 +80,9 @@ export class PipelineController {
     this.service = new PipelineService(
       () => this.workspaceCwd,
       {
-        getPipelineDefinitions: () => getPipelineDefinitions(this.workspaceCwd, this.options.logger),
-        getPipelineDefinitionForAgent: agentName =>
-          getPipelineDefinitionForAgent(this.workspaceCwd, agentName, this.options.logger),
+        getPipelinePrograms: () => getPipelinePrograms(this.workspaceCwd, this.options.logger),
+        getPipelineProgramForAgent: agentName =>
+          getPipelineProgramForAgent(this.workspaceCwd, agentName, this.options.logger),
         getAgentConfigs: () => loadPiAgentCatalog(this.workspaceCwd).agents,
         isAgentSandcastle: (agentName, agentConfigs) =>
           (agentConfigs[agentName] as { transport?: string } | undefined)?.transport === 'sandcastle',
@@ -110,8 +114,9 @@ export class PipelineController {
     });
   }
 
-  listPipelines(): PipelineDefinition[] {
-    return getPipelineDefinitions(this.workspaceCwd, this.options.logger);
+  listPipelines(): PipelineListEntry[] {
+    return getPipelinePrograms(this.workspaceCwd, this.options.logger)
+      .map(program => ({ id: program.id, title: program.title }));
   }
 
   formatPipelineList(): string {

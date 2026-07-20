@@ -113,6 +113,7 @@ export function createInitialState(persistedValue: unknown): AppState {
     renderedMarkdown: {},
     currentTurn: shared?.currentTurn ?? null,
     collapsedTools: shared?.collapsedTools ?? {},
+    pipelineActivity: null,
     isLoadingSession: false,
   };
 }
@@ -132,6 +133,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       placeholderOverride: null,
       renderedMarkdown: {},
       currentTurn: null,
+      pipelineActivity: null,
       isLoadingSession: false,
       promptText: '',
     };

@@ -225,6 +225,7 @@ export function routeHostMessage(
         normalizeSessionUpdate(message.update),
         normalizePipelinePhase(message.phase ?? message.role),
         (message as { agentId?: AgentID }).agentId,
+        typeof message.agentName === 'string' ? message.agentName : undefined,
       ));
       actions.push(...mapSessionOrchestrationMetaToActions(
         normalizePipelinePhase(message.role ?? message.phase),

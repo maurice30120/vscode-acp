@@ -13,6 +13,10 @@ import type { PipelineTimelineStepStatus } from '../../../src/ui/PipelineTypes';
 export type OrchestrationSlice = OrchestrationState;
 export type PipelinePlanState = OrchestrationPlanState;
 export type PipelineRoleOutputItem = OrchestrationRoleOutputState;
+export type PipelineActivityItem = {
+  role: PipelinePhase;
+  agentName?: string;
+};
 
 export type OrchestrationViewModel = {
   timeline: PipelineTimelineStep[];
@@ -20,6 +24,7 @@ export type OrchestrationViewModel = {
   activeAgentName: string | null;
   plan: PipelinePlanState | null;
   roleOutputs: PipelineRoleOutputItem[];
+  activity: PipelineActivityItem | null;
   hasTimeline: boolean;
   hasPendingPlan: boolean;
 };
@@ -39,13 +44,20 @@ export function projectOrchestrationView(slice: OrchestrationSlice): Orchestrati
     activeAgentName: slice.activeAgentName,
     plan: slice.plan,
     roleOutputs: slice.roleOutputs,
+    activity: null,
     hasTimeline: slice.timeline.length > 0,
     hasPendingPlan: slice.plan?.status === 'pending',
   };
 }
 
-export function selectOrchestrationView(state: { orchestration: OrchestrationSlice }): OrchestrationViewModel {
-  return projectOrchestrationView(state.orchestration);
+export function selectOrchestrationView(state: {
+  orchestration: OrchestrationSlice;
+  pipelineActivity?: PipelineActivityItem | null;
+}): OrchestrationViewModel {
+  return {
+    ...projectOrchestrationView(state.orchestration),
+    activity: state.pipelineActivity ?? null,
+  };
 }
 
 export function createDefaultTeamTimeline(includeTester = false): PipelineTimelineStep[] {

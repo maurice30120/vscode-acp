@@ -887,7 +887,7 @@ suite('SessionManager', () => {
     assert.strictEqual((manager as any).sessionState.getAgentSession('Plan Execute Verify'), result.sessionId);
     assert.strictEqual(manager.isVirtualSession(result.sessionId), true);
     assert.strictEqual(upsertCalls.length, 1);
-    assert.deepStrictEqual(upsertCalls[0], ['Plan Execute Verify', '/test', result.sessionId]);
+    assert.deepStrictEqual(upsertCalls[0], ['Plan Execute Verify', path.resolve('/test'), result.sessionId]);
   });
 
   test('connectToAgent routes pipeline agent through catalog resolution when runtime predicate misses', async () => {
@@ -896,18 +896,17 @@ suite('SessionManager', () => {
       const pipelineDir = path.join(workspaceRoot, '.acp', 'pipelines');
       fs.mkdirSync(pipelineDir, { recursive: true });
       fs.writeFileSync(path.join(pipelineDir, 'plan-execute-verify.yaml'), `
-version: 2
+version: 3
 id: plan-execute-verify
 title: Plan Execute Verify
-primitives:
-  planner:
-    agent: Agent A
-    output: proposed_plan
-    sideEffects: none
-    prompt: Plan.
-steps:
+nodes:
   - id: plan
-    use: planner
+    agent: Agent A
+    prompt: Plan.
+    output:
+      name: plan
+      type: acp.plan/v1
+      format: markdown
 `, 'utf8');
 
       const manager = createManager(workspaceRoot).manager;

@@ -162,6 +162,121 @@ suite('HostMessageRouter', () => {
     });
   });
 
+  test('non-planner pipeline thought chunk maps to local activity without thought text', () => {
+    const result = routeHostMessage(
+      {
+        type: 'sessionUpdate',
+        role: 'implementer',
+        agentName: 'builder',
+        update: {
+          sessionUpdate: 'agent_thought_chunk',
+          content: {
+            type: 'text',
+            text: 'I am checking the modified files before deciding the next command.',
+          },
+        },
+      },
+      {
+        getState: () => createInitialState(emptyPersistedState()),
+        refs: {
+          sharedVersion: 0,
+          sharedUpdatedAt: 0,
+          orchestrationVersion: 0,
+          orchestrationUpdatedAt: 0,
+          fileSearchRequestId: 0,
+          turnCounter: 0,
+        },
+      },
+    );
+
+    assert.deepStrictEqual(result.actions, [
+      {
+        type: 'updatePipelineActivity',
+        role: 'implementer',
+        agentName: 'builder',
+      },
+      {
+        type: 'setActivePipelineRole',
+        role: 'implementer',
+        agentName: 'builder',
+      },
+    ]);
+    assert.strictEqual(JSON.stringify(result.actions).includes('checking the modified files'), false);
+  });
+
+  test('non-planner pipeline output clears activity and preserves assistant output', () => {
+    const result = routeHostMessage(
+      {
+        type: 'sessionUpdate',
+        role: 'reviewer',
+        agentName: 'review-bot',
+        update: {
+          sessionUpdate: 'agent_message_chunk',
+          messageId: 'message-7',
+          content: { type: 'text', text: 'Review complete.', messageId: 'message-7' },
+        },
+      },
+      {
+        getState: () => createInitialState(emptyPersistedState()),
+        refs: {
+          sharedVersion: 0,
+          sharedUpdatedAt: 0,
+          orchestrationVersion: 0,
+          orchestrationUpdatedAt: 0,
+          fileSearchRequestId: 0,
+          turnCounter: 0,
+        },
+      },
+    );
+
+    assert.deepStrictEqual(result.actions, [
+      { type: 'clearPipelineActivity' },
+      {
+        type: 'appendAssistantChunk',
+        text: 'Review complete.',
+        messageId: 'message-7',
+        agentId: undefined,
+      },
+      {
+        type: 'setActivePipelineRole',
+        role: 'reviewer',
+        agentName: 'review-bot',
+      },
+    ]);
+  });
+
+  test('planner thought chunk keeps existing thought handling', () => {
+    const result = routeHostMessage(
+      {
+        type: 'sessionUpdate',
+        role: 'planner',
+        agentName: 'planner-bot',
+        update: {
+          sessionUpdate: 'agent_thought_chunk',
+          content: { type: 'text', text: 'Planner private draft.' },
+        },
+      },
+      {
+        getState: () => createInitialState(emptyPersistedState()),
+        refs: {
+          sharedVersion: 0,
+          sharedUpdatedAt: 0,
+          orchestrationVersion: 0,
+          orchestrationUpdatedAt: 0,
+          fileSearchRequestId: 0,
+          turnCounter: 0,
+        },
+      },
+    );
+
+    assert.deepStrictEqual(result.actions[0], {
+      type: 'appendThoughtChunk',
+      text: 'Planner private draft.',
+      messageId: undefined,
+      agentId: undefined,
+    });
+  });
+
   test('sandcastle_status updates current turn without appending chat history', () => {
     let state = createInitialState(emptyPersistedState());
     state = appReducer(state, { type: 'promptStart', turnId: 'turn-1' });

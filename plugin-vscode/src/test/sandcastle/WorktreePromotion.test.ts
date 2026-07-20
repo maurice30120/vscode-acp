@@ -20,6 +20,24 @@ function createWorktree(repo: string, branch: string): string {
   return worktree;
 }
 
+async function removeDirectoryWithRetries(directory: string): Promise<void> {
+  const retryableCodes = new Set(['EBUSY', 'ENOTEMPTY', 'EPERM']);
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      fs.rmSync(directory, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      const code = error instanceof Error && 'code' in error
+        ? String((error as NodeJS.ErrnoException).code)
+        : '';
+      if (!retryableCodes.has(code) || attempt === 9) {
+        throw error;
+      }
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+  }
+}
+
 suite('WorktreePromotion', () => {
   let repo: string;
   let baseRef: string;
@@ -36,9 +54,19 @@ suite('WorktreePromotion', () => {
     baseRef = git(repo, ['rev-parse', 'HEAD']);
   });
 
-  teardown(() => {
-    fs.rmSync(repo, { recursive: true, force: true });
-  });
+  teardown(async () => {
+  const worktree = path.join(repo, '.sandcastle-test', branch.replaceAll('/', '-'));
+  if (fs.existsSync(worktree)) {
+    try {
+      git(repo, ['worktree', 'remove', '--force', worktree]);
+    } catch {
+      // Fall through to the retried directory cleanup below.
+    }
+  }
+  if (process.platform !== 'win32') {
+    await removeDirectoryWithRetries(repo);
+  }
+});
 
   test('previewWorktreeChanges reports modified files', async () => {
     const worktree = createWorktree(repo, branch);

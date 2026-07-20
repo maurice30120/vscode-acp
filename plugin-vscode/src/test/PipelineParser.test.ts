@@ -13,13 +13,17 @@ suite('PipelineParser', () => {
       fs.mkdirSync(pipelineDir, { recursive: true });
       fs.writeFileSync(
         path.join(pipelineDir, 'plan-execute-verify.yaml'),
-        'version: 2\nid: plan-execute-verify\ntitle: Plan Execute Verify\nsteps:\n  - id: plan\n    agent: Vibe\n',
+        'version: 3\nid: plan-execute-verify\ntitle: Plan Execute Verify\nnodes:\n  - id: plan\n    agent: Vibe\n    prompt: Plan this.\n    output:\n      name: plan\n      type: acp.plan/v1\n      format: markdown\n',
       );
 
       const pipelines = await PipelineParser.parseAllPipelines(workspaceRoot);
 
       assert.strictEqual(pipelines.length, 1);
       assert.strictEqual(pipelines[0].title, 'Plan Execute Verify');
+      assert.strictEqual(pipelines[0].version, 3);
+      assert.strictEqual(pipelines[0].agent, 'Vibe');
+      assert.strictEqual(pipelines[0].steps[0].id, 'plan');
+      assert.strictEqual(pipelines[0].steps[0].output, 'plan');
     } finally {
       fs.rmSync(workspaceRoot, { recursive: true, force: true });
     }

@@ -137,11 +137,6 @@
         "title": "ACP: Show Log"
       },
       {
-        "command": "acp.bootstrapWorkspace",
-        "title": "ACP: Initialize Workspace Templates",
-        "icon": "$(folder-library)"
-      },
-      {
         "command": "acp.showTraffic",
         "title": "ACP: Show Protocol Traffic"
       },
@@ -466,7 +461,7 @@
             "autoApply",
             "autoReject"
           ],
-          "default": "ask",
+          "default": "autoApply",
           "description": "How Sandcastle workspace changes are promoted after a run. Applies only to patch promotion after the implementer step — it does not auto-approve the plan. 'ask' shows Apply/Reject once (View Diff does not loop). 'autoApply' merges without prompting (yolo). 'autoReject' discards without prompting."
         },
         "acp.defaultWorkingDirectory": {
@@ -519,21 +514,6 @@
             "Vibe Sandcastle"
           ],
           "description": "ACP agent names that receive skills catalog injection and Sandcastle skill mounts."
-        },
-        "acp.workspaceBootstrap.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Provision workspace templates (.acp, .agents, .sandcastle scaffold) for missing files on activation."
-        },
-        "acp.workspaceBootstrap.autoOnActivation": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically initialize workspace templates when the extension activates."
-        },
-        "acp.workspaceBootstrap.includePipelineArchive": {
-          "type": "boolean",
-          "default": false,
-          "description": "Include archived pipelines from .acp/pipelines/save/ when bootstrapping the workspace."
         }
       }
     }
@@ -543,15 +523,14 @@
     "clean": "node scripts/clean.mjs",
     "compile": "npm run build -w @acp-client/pipeline && npm run build -w @acp-client/sandcastle && webpack",
     "watch": "npm run build -w @acp-client/pipeline && npm run build -w @acp-client/sandcastle && webpack --watch",
-    "package": "npm run sync:workspace-starter && npm run build -w @acp-client/pipeline && npm run build -w @acp-client/sandcastle && webpack --mode production --devtool hidden-source-map",
-    "sync:workspace-starter": "node scripts/sync-workspace-starter.mjs",
+    "package": "npm run build -w @acp-client/pipeline && npm run build -w @acp-client/sandcastle && webpack --mode production --devtool hidden-source-map",
     "vsx": "vsce package --no-dependencies",
     "clean-tests": "node scripts/clean.mjs out",
     "compile-tests": "npm run clean-tests && npm run build -w @acp-client/pipeline && npm run build -w @acp-client/sandcastle && tsc -p tsconfig.compile-tests.json --incremental false",
     "lint": "cd .. && eslint -c plugin-vscode/eslint.config.mjs \"plugin-vscode/src/**/*.ts\" \"acp-pipeline/src/**/*.ts\" \"acp-sandcastle/src/**/*.ts\" \"plugin-pi/src/**/*.ts\" --max-warnings 0",
     "sandcastle:smoke:codex": "npm run compile && node scripts/sandcastle-smoke.mjs codex apply",
     "sandcastle:smoke:cursor": "npm run compile && node scripts/sandcastle-smoke.mjs cursor reject",
-    "pretest": "npm run sync:workspace-starter && npm run compile-tests && npm run compile && npm run lint",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "test": "vscode-test",
     "vscode:dts": "vscode-dts dev"
   },

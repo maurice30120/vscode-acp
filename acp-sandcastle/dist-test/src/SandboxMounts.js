@@ -76,11 +76,28 @@ export function buildSandboxMounts(config, cwd, branch) {
     return mounts;
 }
 export function createDockerSandboxProvider(config, cwd, branch) {
-    return docker({
+    const provider = docker({
         imageName: config.imageName,
         cpus: config.cpus ?? 2,
         mounts: buildSandboxMounts(config, cwd, branch),
     });
+    const wrapped = {
+        ...provider,
+        create(options) {
+            return provider.create({
+                ...options,
+                mounts: [
+                    ...options.mounts,
+                    {
+                        hostPath: options.worktreePath,
+                        sandboxPath: '/home/agent/workspace',
+                        readonly: false,
+                    },
+                ],
+            });
+        },
+    };
+    return wrapped;
 }
 function resolveGitCommonDir(repoDir) {
     try {

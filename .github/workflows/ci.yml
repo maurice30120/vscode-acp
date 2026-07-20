@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
 
 jobs:
   build:
@@ -23,17 +22,44 @@ jobs:
 
       - run: npm ci
 
-      - run: xvfb-run -a npm test
+      - name: Test shared packages
+        run: npm run test:common
+
+      - name: Test VS Code extension
+        run: xvfb-run -a npm run test:vscode
         if: runner.os == 'Linux'
 
-      - run: npm test
+      - name: Test VS Code extension
+        run: npm run test:vscode
         if: runner.os != 'Linux'
 
+      - name: Test Pi extension
+        run: npm run test:pi
+
       - name: Package VSIX
-        run: npx vsce package
+        run: npm run vsx
 
       - name: Upload VSIX
         uses: actions/upload-artifact@v4
         with:
           name: vsix-${{ matrix.os }}
           path: "*.vsix"
+
+  cli:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - run: npm ci --silent
+
+      - name: Test ACP CLI
+        run: npm run test:cli

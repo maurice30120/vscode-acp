@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 
+import './interactivePlanning.js';
 import type { PipelineController } from './pipelineController.js';
 
 const RUN_PIPELINE_PARAMS = Type.Object({
@@ -21,9 +22,11 @@ export function registerRunPipelineTool(pi: ExtensionAPI, controller: PipelineCo
     parameters: RUN_PIPELINE_PARAMS,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const result = await controller.runPipeline(params.pipelineName ?? '', params.prompt, ctx);
-      const text = result.awaitingApproval
-        ? `Pipeline plan is ready and awaiting user approval.\n\n${result.plan ?? ''}`
-        : `Pipeline completed.\n\n${result.output ?? ''}`;
+      const text = (controller.isAwaitingAnswer?.() ?? false)
+        ? `Planner interview is waiting for your answer. Use /pipeline answer <response>.\n\n${result.plan ?? ''}`
+        : result.awaitingApproval
+          ? `Pipeline plan is ready and awaiting user approval.\n\n${result.plan ?? ''}`
+          : `Pipeline completed.\n\n${result.output ?? ''}`;
       return {
         content: [{ type: 'text', text }],
         details: result,
