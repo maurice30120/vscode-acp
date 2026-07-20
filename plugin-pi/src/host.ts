@@ -1,7 +1,7 @@
 export { EphemeralAcpRunner } from './acp/ephemeralRunner.js';
 export { RunAbortedError } from './acp/runAbortedError.js';
 export {
-  loadWorkspacePipelineDefinitions,
+  loadPipelineDefinitionsFromRoot,
   parsePipelineYaml,
 } from './catalog/pipelineCatalog.js';
 export type {
