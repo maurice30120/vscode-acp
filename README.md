@@ -63,3 +63,4 @@ npm run vsx -w acp-client
 - Décision d'architecture monorepo : [`plugin-vscode/doc_fr/adr/0017-monorepo-npm-workspaces.md`](plugin-vscode/doc_fr/adr/0017-monorepo-npm-workspaces.md)
 - Décision pipeline v2 canonique : [`plugin-vscode/doc_fr/adr/0018-pipeline-v2-catalogue-canonique.md`](plugin-vscode/doc_fr/adr/0018-pipeline-v2-catalogue-canonique.md)
 - Décision `promptFile` partagé : [`plugin-vscode/doc_fr/adr/0019-promptfile-pipeline-partage.md`](plugin-vscode/doc_fr/adr/0019-promptfile-pipeline-partage.md)
+- Décision `pipeline-cli` comme référence fonctionnelle : [`plugin-vscode/doc_fr/adr/0020-pipeline-cli-reference-fonctionnelle-publication-artifacts.md`](plugin-vscode/doc_fr/adr/0020-pipeline-cli-reference-fonctionnelle-publication-artifacts.md)
