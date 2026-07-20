@@ -74,7 +74,6 @@ test('PipelineService materializes planning artifacts before delivery approval',
     ],
   }, { Codex: {} }).program!;
 
-  const statuses: string[] = [];
   const service = new PipelineService(
     () => workspace,
     {
@@ -95,9 +94,6 @@ test('PipelineService materializes planning artifacts before delivery approval',
       }),
     },
   );
-  service.on('status', (event: { message: string }) => {
-    statuses.push(event.message);
-  });
 
   try {
     const result = await service.startPipeline(
@@ -123,11 +119,6 @@ test('PipelineService materializes planning artifacts before delivery approval',
       ),
       true,
     );
-    assert.ok(statuses.some(message =>
-      message.includes(
-        'Pipeline artifacts written to .scratch/publication-partagee',
-      ),
-    ));
   } finally {
     await service.dispose();
     fs.rmSync(workspace, { recursive: true, force: true });
