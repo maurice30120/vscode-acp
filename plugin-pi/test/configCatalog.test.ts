@@ -66,7 +66,7 @@ test("loadPiAcpConfig loads config from the workspace root", () => {
 	assert.equal(config.agents["Pi Agent"].command, "pi-acp");
 	assert.equal(config.pipeline.enabled, true);
 	assert.equal(config.pipeline.instructionsMaxBytes, 262144);
-	assert.equal(config.filePath.replaceAll("\", "/"), `${workspace.replaceAll("\", "/")}/.acp/acp-agents.json`);
+	assert.equal(config.filePath.replaceAll(String.fromCharCode(92), "/"), `${workspace.replaceAll(String.fromCharCode(92), "/")}/.acp/acp-agents.json`);
 });
 
 test("loadPiAcpConfig reports missing workspace config without package fallback", () => {
