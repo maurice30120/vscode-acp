@@ -1,45 +1,90 @@
-# ACP Pipeline CLI
+# ACP CLI
 
-`@acp-client/pipeline-cli` exécute les pipelines ACP depuis un terminal, sans lancer VS Code ni Pi.
+`@acp-client/cli` exécute un pipeline ACP directement depuis un terminal.
 
-Le package réutilise le moteur `@acp-client/pipeline` et l'entrée hôte sans effet de bord de `@acp-client/pi-extension`. Les définitions de pipelines, les agents ACP, les skills et la configuration Sandcastle restent donc identiques entre Pi et le CLI au lieu d'être dupliqués.
+La commande principale est volontairement minimale :
+
+```bash
+acp-cli run "nom-du-pipeline" "le prompt utilisateur"
+```
+
+Aucun agent n'est passé en argument. Le CLI :
+
+1. charge le pipeline depuis `.acp/pipelines/*.yaml` ;
+2. lit les agents du workspace dans `.acp/acp-agents.json` ;
+3. résout l'agent déclaré par chaque primitive du pipeline ;
+4. lance les processus ACP ou Sandcastle requis par le DAG ;
+5. orchestre les questions, approbations et reprises avec `@acp-client/pipeline`.
+
+Le CLI ne charge aucun catalogue de pipelines ou d'agents embarqué dans Pi.
+
+## Configuration
+
+Le fichier `.acp/acp-agents.json` utilise le même format plat que le workspace VS Code :
+
+```json
+{
+  "Codex CLI": {
+    "command": "npx",
+    "args": ["@zed-industries/codex-acp@latest"],
+    "env": {}
+  },
+  "Vibe Sandcastle": {
+    "transport": "sandcastle",
+    "provider": "vibe",
+    "model": "mistral-large-latest",
+    "env": {}
+  }
+}
+```
+
+Chaque primitive choisit son agent dans le YAML :
+
+```yaml
+primitives:
+  planner:
+    agent: Codex CLI
+    skills:
+      - grill-me
+    output: proposed_plan
+    sideEffects: none
+    permissions: allowAll
+```
+
+## `grill-me`
+
+Les skills nommés explicitement par une primitive sont chargés depuis
+`.agents/skills/<nom>/SKILL.md` et injectés intégralement dans le prompt.
+
+`disable-model-invocation: true` bloque uniquement la découverte automatique ;
+il ne bloque pas un skill explicitement demandé par un pipeline. Le planner
+`grill-me` peut donc poser une seule question à la fois jusqu'à obtenir un plan
+complet, puis le CLI demande l'approbation avant les étapes à effets de bord.
 
 ## Commandes
 
-Depuis la racine du dépôt :
-
 ```bash
-npm run pipeline -- list
-npm run pipeline -- run grill-skeleton-tdd "Ajouter une commande export"
+acp-cli run grill-skeleton-tdd "Ajouter une commande export"
+acp-cli list
 ```
 
-Options principales :
+Options :
 
 ```text
---cwd <path>  workspace transmis aux agents
+--cwd <path>  workspace contenant .acp et .agents
 --yes, -y     approuve automatiquement le plan final
 --verbose     affiche les statuts et chunks des agents sur stderr
 --json        sérialise la liste ou le résultat final
 ```
 
-## Boucle `grill-me`
+`--yes` ne valide pas automatiquement une promotion Sandcastle : l'application
+des modifications isolées reste une décision distincte.
 
-Pour un pipeline interactif, le CLI :
+## Développement
 
-1. démarre le planner dans une session pipeline unique ;
-2. affiche le bloc `<proposed_plan>` ;
-3. pose uniquement la `<clarification_question>` courante ;
-4. transmet la réponse à la révision du plan existant ;
-5. recommence tant que `interview_state=question` ;
-6. demande une approbation seulement quand le plan est `ready` ;
-7. reprend le DAG après approbation.
-
-`--yes` ne supprime pas les demandes de promotion Sandcastle : appliquer les modifications isolées au workspace reste une décision séparée.
-
-## Validation
+Depuis la racine du dépôt :
 
 ```bash
 npm run test:cli
+npm run acp-cli -- run grill-skeleton-tdd "Ajouter une commande export"
 ```
-
-Les tests couvrent le parsing des arguments, la succession question → réponse → plan prêt, l'approbation et le rejet avant implémentation.
