@@ -62,17 +62,4 @@ jobs:
       - run: npm ci --silent
 
       - name: Test ACP CLI
-        shell: bash
-        run: |
-          if ! npm run test:cli > acp-cli-test.log 2>&1; then
-            tail -n 100 acp-cli-test.log
-            exit 1
-          fi
-          tail -n 40 acp-cli-test.log
-
-      - name: Upload ACP CLI log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: acp-cli-test-${{ matrix.os }}
-          path: acp-cli-test.log
+        run: npm run test:cli
