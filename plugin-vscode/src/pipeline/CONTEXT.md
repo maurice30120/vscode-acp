@@ -1,6 +1,6 @@
 # Pipeline et orchestration
 
-Workflows multi-étapes basés sur LangGraph, exposés comme agents virtuels dans le même arbre d’agents et la même UI de chat que les agents ACP natifs.
+Workflows multi-étapes basés sur le runtime pipeline v3 partagé, exposés comme agents virtuels dans le même arbre d’agents et la même UI de chat que les agents ACP natifs.
 
 ## Agents virtuels
 
@@ -9,15 +9,15 @@ Nom de ConfiguredAgent qui ne correspond pas à un processus enfant ACP longue d
 _À éviter_ : agent pipeline (quand on parle de l’entrée d’arbre), faux agent
 
 **Pipeline** :
-Workflow déclaratif (YAML sous `.acp/pipelines/` du workspace) compilé en graphe LangGraph : étapes séquentielles, branches parallèles et portes d’approbation optionnelles.
+Workflow déclaratif v3 (YAML sous `.acp/pipelines/` du workspace) compilé en DAG immutable : nœuds agents, branches parallèles par dépendances et pauses explicites.
 _À éviter_ : workflow (générique), graphe (implémentation)
 
 **Pipeline canonique** :
-Workflow déclaratif YAML sous `.acp/pipelines/`. Les anciens raccourcis `.acp/teams/` ont été supprimés ; les workflows rôle-basés doivent être exprimés en pipeline v2 standard.
+Workflow déclaratif YAML sous `.acp/pipelines/`. Les anciens raccourcis `.acp/teams/` ont été supprimés ; les workflows rôle-basés doivent être exprimés en pipeline v3.
 _À éviter_ : squad, crew, multi-agent (générique)
 
 **PipelineStep** :
-Un nœud du graphe Pipeline (ex. planner, implementer, primitive custom). Peut invoquer un ConfiguredAgent sous-jacent.
+Un nœud du DAG Pipeline (ex. planner, implementer, verifier). Peut invoquer un ConfiguredAgent sous-jacent ou produire une pause.
 _À éviter_ : étape (seule, ambiguë), phase
 
 **PlanApprovalGate** :
@@ -35,16 +35,16 @@ Lancement ACP de courte durée utilisé dans un PipelineStep (ou édition inline
 _Routage_ : `EphemeralAgentRunner` choisit native ACP ou Sandcastle+Promotion selon la config agent.
 _À éviter_ : sous-session, session enfant, mini-session
 
-**PipelineExecutor** :
-Module qui exécute un PipelineStep (primitive + prompt) et normalise la sortie adapter en texte d’étape.
+**PipelineRuntimeAgentAdapter** :
+Module qui exécute un nœud agent v3 via `EphemeralAgentRunner` et publie un artefact typé.
 _À éviter_ : runConfiguredAcpAgent (nom historique)
 
-**PipelineRunEngine** :
-Exécution complète d'un OrchestrationRun : registry, compilation graphe LangGraph, PlanApprovalGate, abort/Sandcastle stop, émission des événements `status` / `plan-ready` / `session-update`.
+**PipelineRuntime** :
+Exécution complète d'un OrchestrationRun : programme v3 compilé, pauses génériques, reprise, annulation, artefacts typés, retries/fail-fast et émission des événements `status` / `plan-ready` / `session-update`.
 _À éviter_ : PipelineService (quand on parle de la logique run, pas du wiring extension)
 
 **PipelineService** :
-Façade wiring pour l'extension VS Code : construit le moteur, délègue createPlan/approve/reject/cancel, forward les événements EventEmitter vers OrchestrationRuntime.
+Façade wiring pour l'extension VS Code : construit le runtime v3, délègue createPlan/approve/reject/cancel, forward les événements EventEmitter vers OrchestrationRuntime.
 _À éviter_ : service pipeline (générique)
 
 **PipelineTimeline** :

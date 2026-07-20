@@ -59,7 +59,7 @@ Comment une Conversation est exécutée : `nativeAcp` (processus ACP sur l’hô
 _À éviter_ : runtime (ambigu), mode
 
 **EphemeralAgentRunner** :
-Seam partagé pour EphemeralRun — route vers ACP natif ou Sandcastle selon le ConfiguredAgent. Utilisé par PipelineExecutor et InlineEditAgent.
+Seam partagé pour EphemeralRun — route vers ACP natif ou Sandcastle selon le ConfiguredAgent. Utilisé par le runtime pipeline v3 et InlineEditAgent.
 _À éviter_ : runEphemeralSandcastleAgent (détail d’implémentation Sandcastle)
 
 **AgentConnectionFactory** :

@@ -4,8 +4,7 @@ import {
   mapPolicyToLegacyPermissions,
   mapPolicyToLegacySideEffects,
 } from "./PipelinePolicy";
-import type { PipelineAgentRunner } from "./PipelineExecutor";
-import type { PipelineStepStatusUpdate } from "./PipelineTypes";
+import type { PipelineAgentRunner, PipelineStepStatusUpdate } from "./PipelineAgentRunner";
 import type {
   CompiledPipelineNode,
   PipelineNodeExecutionInput,

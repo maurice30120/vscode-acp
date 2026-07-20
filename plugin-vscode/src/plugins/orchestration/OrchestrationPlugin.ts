@@ -7,8 +7,6 @@ import {
   type AgentConfigEntry,
 } from '../../config/AgentConfig';
 import {
-  getPipelineDefinitionForAgent,
-  getPipelineDefinitions,
   getPipelineProgramForAgent,
   getPipelinePrograms,
 } from '../../config/PipelineCatalog';
@@ -40,9 +38,6 @@ export class OrchestrationPlugin implements FeaturePlugin<OrchestrationPluginCon
     const ephemeralRunner = new DefaultEphemeralAgentRunner(sandcastlePromotion);
     const readAgentConfigs = () => getAgentConfigs(context.workspaceCwd());
     const pipelineService = new PipelineService(context.workspaceCwd, {
-      getPipelineDefinitions: () => getPipelineDefinitions(context.workspaceCwd(), readAgentConfigs()),
-      getPipelineDefinitionForAgent: agentName =>
-        getPipelineDefinitionForAgent(agentName, context.workspaceCwd(), readAgentConfigs()),
       getPipelinePrograms: () => getPipelinePrograms(context.workspaceCwd(), readAgentConfigs()),
       getPipelineProgramForAgent: agentName =>
         getPipelineProgramForAgent(agentName, context.workspaceCwd(), readAgentConfigs()),

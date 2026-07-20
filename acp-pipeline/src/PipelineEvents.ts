@@ -41,5 +41,3 @@ export interface PipelineSessionUpdateEvent {
   role?: string;
   agentName?: string;
 }
-
-export type PipelineExecutorKind = string;

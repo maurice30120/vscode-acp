@@ -1,7 +1,6 @@
 import { EventEmitter } from 'node:events';
 
-import type { PipelineDefinition } from './PipelineTypes';
-import { PipelineRunEngine, type PipelineRunEngineDependencies } from './PipelineRunEngine';
+import type { PipelineAgentRunner } from './PipelineAgentRunner';
 import { PipelineRuntime } from './PipelineRuntime';
 import { PipelineRuntimeAgentAdapter } from './PipelineRuntimeAgentAdapter';
 import type { CompiledPipelineProgram, PipelinePauseSnapshot, PipelineRuntimeResult } from './PipelineV3Types';
@@ -11,23 +10,18 @@ export type {
   PipelineStatusEvent,
   PipelinePlanReadyEvent,
   PipelineSessionUpdateEvent,
-  PipelineExecutorKind,
 } from './PipelineEvents';
 
 export interface PipelineServiceDependencies {
-  getPipelineDefinitions?: () => PipelineDefinition[];
-  getPipelineDefinitionForAgent?: (agentName: string) => PipelineDefinition | null;
   getPipelinePrograms?: () => CompiledPipelineProgram[];
   getPipelineProgramForAgent?: (agentName: string) => CompiledPipelineProgram | null;
   getAgentConfigs?: () => Record<string, unknown>;
-  runAcpAgent?: PipelineRunEngineDependencies['runAcpAgent'];
-  runAgent?: PipelineRunEngineDependencies['runAgent'];
-  isAgentSandcastle?: PipelineRunEngineDependencies['isAgentSandcastle'];
-  isRunAbortedError?: PipelineRunEngineDependencies['isRunAbortedError'];
+  runAgent?: PipelineAgentRunner;
+  isAgentSandcastle?: (agentName: string, agentConfigs: Record<string, unknown>) => boolean;
+  isRunAbortedError?: (error: unknown) => boolean;
 }
 
 export class PipelineService extends EventEmitter {
-  private readonly engine: PipelineRunEngine;
   private readonly v3Runs = new Map<string, PipelineRuntime>();
   private readonly v3RejectedRuns = new Set<string>();
 
@@ -36,24 +30,18 @@ export class PipelineService extends EventEmitter {
     private readonly dependencies: PipelineServiceDependencies = {},
   ) {
     super();
-    this.engine = new PipelineRunEngine(workspaceCwd, dependencies);
-    this.engine.on('status', event => {
-      this.emit('status', event);
-    });
-    this.engine.on('plan-ready', event => {
-      this.emit('plan-ready', event);
-    });
-    this.engine.on('session-update', event => {
-      this.emit('session-update', event);
-    });
   }
 
   async createPlan(sessionId: string, userPrompt: string, pipelineAgentName?: string): Promise<string> {
     const program = this.readPipelineProgram(pipelineAgentName);
-    if (program) {
-      return this.startV3Pipeline(sessionId, program, userPrompt);
+    if (!program) {
+      throw new Error(
+        pipelineAgentName
+          ? `ACP pipeline "${pipelineAgentName}" was not found or is not a valid version 3 pipeline.`
+          : 'No valid ACP version 3 pipelines found.',
+      );
     }
-    return this.engine.createPlan(sessionId, userPrompt, pipelineAgentName);
+    return this.startV3Pipeline(sessionId, program, userPrompt);
   }
 
   async approvePlan(sessionId: string, approvedPlan: string): Promise<string> {
@@ -73,7 +61,7 @@ export class PipelineService extends EventEmitter {
         }),
       );
     }
-    return this.engine.approvePlan(sessionId, approvedPlan);
+    throw new Error('No pending pipeline pause for this session.');
   }
 
   rejectPlan(sessionId: string): void {
@@ -85,11 +73,12 @@ export class PipelineService extends EventEmitter {
         if (pause) {
           void runtime.resume(sessionId, { pauseId: pause.id, kind: 'reject' })
             .then(result => this.handleV3Result(sessionId, result));
+        } else {
+          this.v3RejectedRuns.delete(sessionId);
         }
       });
       return;
     }
-    this.engine.rejectPlan(sessionId);
   }
 
   cancel(sessionId: string): void {
@@ -99,11 +88,9 @@ export class PipelineService extends EventEmitter {
       this.v3Runs.delete(sessionId);
       return;
     }
-    this.engine.cancel(sessionId);
   }
 
   async dispose(): Promise<void> {
-    await this.engine.dispose();
     for (const [sessionId, runtime] of this.v3Runs.entries()) {
       await runtime.cancel(sessionId);
     }

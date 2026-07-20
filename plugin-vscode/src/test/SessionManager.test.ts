@@ -896,18 +896,17 @@ suite('SessionManager', () => {
       const pipelineDir = path.join(workspaceRoot, '.acp', 'pipelines');
       fs.mkdirSync(pipelineDir, { recursive: true });
       fs.writeFileSync(path.join(pipelineDir, 'plan-execute-verify.yaml'), `
-version: 2
+version: 3
 id: plan-execute-verify
 title: Plan Execute Verify
-primitives:
-  planner:
-    agent: Agent A
-    output: proposed_plan
-    sideEffects: none
-    prompt: Plan.
-steps:
+nodes:
   - id: plan
-    use: planner
+    agent: Agent A
+    prompt: Plan.
+    output:
+      name: plan
+      type: acp.plan/v1
+      format: markdown
 `, 'utf8');
 
       const manager = createManager(workspaceRoot).manager;

@@ -70,7 +70,7 @@ test("PipelineService cancel clears active v3 runtime sessions", async () => {
     service.cancel("session-v3-cancel");
     await assert.rejects(
       () => service.approvePlan("session-v3-cancel", "approved"),
-      /No pending pipeline plan/,
+      /No pending pipeline pause/,
     );
   } finally {
     await service.dispose();

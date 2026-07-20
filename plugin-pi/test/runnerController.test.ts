@@ -2,7 +2,11 @@ import * as assert from "node:assert/strict";
 import { setImmediate } from "node:timers/promises";
 import { test } from "node:test";
 
-import { PipelineService, type PipelineAgentRunner } from "@acp-client/pipeline";
+import {
+	PipelineService,
+	compilePipelineV3Definition,
+	type PipelineAgentRunner,
+} from "@acp-client/pipeline";
 import type { SessionNotification } from "@agentclientprotocol/sdk";
 
 import { EphemeralAcpRunner } from "../src/acp/ephemeralRunner.js";
@@ -748,41 +752,49 @@ test("/pipeline run then approve executes planner and implementer", async () => 
 	assert.ok(messages.some((message) => String(message.content).includes("implementation done")));
 });
 
-test("PipelineService plan_ready message mentions Sandcastle for a Sandcastle implementer", async () => {
+test("PipelineService emits approval pause status for a v3 Sandcastle implementer pipeline", async () => {
 	const workspace = createTempWorkspace();
 	const statuses: string[] = [];
-	const definition = {
-		version: 2 as const,
+	const program = compilePipelineV3Definition({
+		version: 3 as const,
 		id: "sandcastle-plan",
 		title: "Sandcastle Plan",
-		primitives: {
-			planner: {
-				agent: "Planner",
-				prompt: "Plan {{userPrompt}}",
-				output: "proposed_plan" as const,
-				sideEffects: "none" as const,
+		nodes: [
+			{
+				id: "approval",
+				type: "pause" as const,
+				pause: "approval" as const,
+				content: "<proposed_plan>Use Sandcastle.</proposed_plan>",
+				output: { name: "approved", type: "acp.approval/v1", format: "markdown" as const },
 			},
-			implementer: {
+			{
+				id: "implement",
 				agent: "Codex Sandcastle",
-				prompt: "Implement {{steps.approval.output}}",
-				output: "markdown" as const,
-				sideEffects: "workspace" as const,
+				prompt: "Implement {{inputs.plan}}",
+				needs: ["approval"],
+				inputs: [{ name: "plan", from: "approval.approved", type: "acp.approval/v1", format: "markdown" as const }],
+				policy: {
+					filesystem: "workspace-write" as const,
+					terminal: "workspace-write" as const,
+					promotion: "ask" as const,
+				},
+				output: { name: "result", type: "acp.implementation-result/v1", format: "markdown" as const },
 			},
-		},
-		steps: [
-			{ id: "plan", use: "planner" },
-			{ id: "approval", type: "approval" as const, input: "{{steps.plan.output}}" },
-			{ id: "implement", use: "implementer" },
 		],
-	};
+	}, {
+		"Codex Sandcastle": {
+			transport: "sandcastle",
+			provider: "codex",
+			model: "gpt-5",
+		},
+	}).program!;
 	const service = new PipelineService(
 		() => workspace,
 		{
-			getPipelineDefinitions: () => [definition],
-			getPipelineDefinitionForAgent: agentName =>
-				agentName === definition.id ? definition : null,
+			getPipelinePrograms: () => [program],
+			getPipelineProgramForAgent: agentName =>
+				agentName === program.id ? program : null,
 			getAgentConfigs: () => ({
-				Planner: { command: "planner" },
 				"Codex Sandcastle": {
 					transport: "sandcastle",
 					provider: "codex",
@@ -791,7 +803,7 @@ test("PipelineService plan_ready message mentions Sandcastle for a Sandcastle im
 			}),
 			isAgentSandcastle: (agentName, configs) =>
 				(configs[agentName] as { transport?: string } | undefined)?.transport === "sandcastle",
-			runAgent: async () => "<proposed_plan>Use Sandcastle.</proposed_plan>",
+			runAgent: async () => "implementation done",
 		},
 	);
 	service.on("status", event => {
@@ -802,7 +814,7 @@ test("PipelineService plan_ready message mentions Sandcastle for a Sandcastle im
 
 	await service.createPlan("session-1", "add feature", "sandcastle-plan");
 
-	assert.deepEqual(statuses, ["Plan ready — approve before Sandcastle implementation."]);
+	assert.ok(statuses.includes("Pipeline paused for approval."));
 	await service.dispose();
 });
 

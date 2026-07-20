@@ -64,9 +64,6 @@ export function getPipelineAgentNames(
   for (const program of getPipelinePrograms(workspaceCwd, agentConfigs)) {
     names.add(program.title);
   }
-  for (const definition of getPipelineDefinitions(workspaceCwd, agentConfigs)) {
-    names.add(definition.title);
-  }
   return [...names];
 }
 

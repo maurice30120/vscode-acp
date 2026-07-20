@@ -14,8 +14,6 @@ import { EphemeralAcpRunner } from '../acp/ephemeralRunner.js';
 import { RunAbortedError } from '../acp/runAbortedError.js';
 import { loadPiAgentCatalog } from '../catalog/config.js';
 import {
-  getPipelineDefinitionForAgent,
-  getPipelineDefinitions,
   getPipelineProgramForAgent,
   getPipelinePrograms,
 } from '../catalog/pipelineCatalog.js';
@@ -82,9 +80,6 @@ export class PipelineController {
     this.service = new PipelineService(
       () => this.workspaceCwd,
       {
-        getPipelineDefinitions: () => getPipelineDefinitions(this.workspaceCwd, this.options.logger),
-        getPipelineDefinitionForAgent: agentName =>
-          getPipelineDefinitionForAgent(this.workspaceCwd, agentName, this.options.logger),
         getPipelinePrograms: () => getPipelinePrograms(this.workspaceCwd, this.options.logger),
         getPipelineProgramForAgent: agentName =>
           getPipelineProgramForAgent(this.workspaceCwd, agentName, this.options.logger),
@@ -120,12 +115,8 @@ export class PipelineController {
   }
 
   listPipelines(): PipelineListEntry[] {
-    const programs = getPipelinePrograms(this.workspaceCwd, this.options.logger);
-    if (programs.length > 0) {
-      return programs.map(program => ({ id: program.id, title: program.title }));
-    }
-    return getPipelineDefinitions(this.workspaceCwd, this.options.logger)
-      .map(definition => ({ id: definition.id, title: definition.title }));
+    return getPipelinePrograms(this.workspaceCwd, this.options.logger)
+      .map(program => ({ id: program.id, title: program.title }));
   }
 
   formatPipelineList(): string {

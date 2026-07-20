@@ -26,18 +26,17 @@ suite('ActiveAgentResolver', () => {
     const pipelinePath = path.join(workspace, '.acp', 'pipelines', 'plan-execute-verify.yaml');
     fs.mkdirSync(path.dirname(pipelinePath), { recursive: true });
     fs.writeFileSync(pipelinePath, `
-version: 2
+version: 3
 id: plan-execute-verify
 title: Plan Execute Verify
-primitives:
-  planner:
-    agent: Codex
-    output: proposed_plan
-    sideEffects: none
-    prompt: Plan the request.
-steps:
+nodes:
   - id: plan
-    use: planner
+    agent: Codex
+    prompt: Plan the request.
+    output:
+      name: plan
+      type: acp.plan/v1
+      format: markdown
 `, 'utf8');
   }
 

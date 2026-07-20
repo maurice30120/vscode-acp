@@ -64,6 +64,8 @@ suite('AgentConfig pipeline', () => {
   });
 
   test('v3 pipeline program loader refuses v2 definitions', () => {
+    writePipelineConfig(workspaceRoot, 2);
+
     const result = loadWorkspacePipelinePrograms(workspaceRoot, { 'Codex CLI': { command: 'codex' } });
 
     assert.strictEqual(result.programs.length, 0);
@@ -87,7 +89,7 @@ function writeAgentConfig(workspaceRoot: string, agents: Record<string, unknown>
   fs.writeFileSync(configPath, `${JSON.stringify(agents, null, 2)}\n`, 'utf8');
 }
 
-function writePipelineConfig(workspaceRoot: string, version: 2 | 3 = 2): void {
+function writePipelineConfig(workspaceRoot: string, version: 2 | 3 = 3): void {
   const pipelinePath = path.join(workspaceRoot, '.acp', 'pipelines', 'plan-execute-verify.yaml');
   fs.mkdirSync(path.dirname(pipelinePath), { recursive: true });
   if (version === 2) {

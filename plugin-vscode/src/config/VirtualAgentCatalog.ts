@@ -1,11 +1,9 @@
 import type { AgentConfigEntry } from './AgentConfig';
+import type { CompiledPipelineProgram } from '@acp-client/pipeline';
 import { getAgentConfigs } from './AgentConfig';
 import {
-  getPipelineDefinitionForAgent,
   getPipelineAgentNames,
-  getPipelineDefinitions,
   getPipelineProgramForAgent,
-  type PipelineDefinition,
 } from './PipelineCatalog';
 import { resolveWorkspaceIdentity } from '../core/WorkspaceIdentity';
 
@@ -15,7 +13,7 @@ export interface AgentResolution {
   kind: AgentResolutionKind;
   name: string;
   runnable: boolean;
-  pipeline?: PipelineDefinition;
+  pipeline?: CompiledPipelineProgram;
   errors: string[];
 }
 
@@ -46,17 +44,6 @@ export function resolveAgent(
       kind: 'configured',
       name: normalized,
       runnable: true,
-      errors: [],
-    };
-  }
-
-  const pipeline = getPipelineDefinitionForAgent(normalized, workspaceCwd, configs);
-  if (pipeline) {
-    return {
-      kind: 'pipeline',
-      name: pipeline.title,
-      runnable: true,
-      pipeline,
       errors: [],
     };
   }
@@ -119,6 +106,15 @@ export function listSelectableAgentNames(
 export function getPipelineDefinitionsForWorkspace(
   workspaceCwd: string = resolveWorkspaceIdentity().cwd,
   agentConfigs?: Record<string, AgentConfigEntry>,
-): PipelineDefinition[] {
-  return getPipelineDefinitions(workspaceCwd, readAgentConfigs(agentConfigs, workspaceCwd));
+): CompiledPipelineProgram[] {
+  return getPipelineProgramList(workspaceCwd, readAgentConfigs(agentConfigs, workspaceCwd));
+}
+
+function getPipelineProgramList(
+  workspaceCwd: string,
+  agentConfigs: Record<string, AgentConfigEntry>,
+): CompiledPipelineProgram[] {
+  return getPipelineAgentNames(workspaceCwd, agentConfigs)
+    .map(name => getPipelineProgramForAgent(name, workspaceCwd, agentConfigs))
+    .filter((program): program is CompiledPipelineProgram => program !== null);
 }
