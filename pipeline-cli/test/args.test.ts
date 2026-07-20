@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { parseCliArgs } from '../src/args.js';
+import { formatHelp, parseCliArgs } from '../src/args.js';
 
 test('parses list command options', () => {
   assert.deepEqual(parseCliArgs(['list', '--json', '--cwd', 'demo'], '/repo'), {
@@ -12,7 +12,7 @@ test('parses list command options', () => {
   });
 });
 
-test('parses a pipeline run prompt', () => {
+test('parses acp-cli run without an agent argument', () => {
   assert.deepEqual(
     parseCliArgs(['run', 'grill-skeleton-tdd', '--yes', '--verbose', '--', 'add', 'a', 'CLI'], '/repo'),
     {
@@ -27,9 +27,16 @@ test('parses a pipeline run prompt', () => {
   );
 });
 
-test('requires a pipeline name and prompt', () => {
+test('requires only a pipeline name and prompt', () => {
   assert.throws(
     () => parseCliArgs(['run', 'grill-skeleton-tdd'], '/repo'),
-    /Usage: acp-pipeline run/,
+    /Usage: acp-cli run/,
   );
+});
+
+test('help explains that the pipeline selects its agents', () => {
+  const help = formatHelp();
+  assert.match(help, /acp-cli run <pipeline> <prompt/);
+  assert.match(help, /pipeline selects its own agents/);
+  assert.doesNotMatch(help, /--agent/);
 });
