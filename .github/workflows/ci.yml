@@ -62,4 +62,10 @@ jobs:
       - run: npm ci --silent
 
       - name: Test ACP CLI
-        run: npm run test:cli
+        shell: bash
+        run: |
+          if ! npm run test:cli > acp-cli-test.log 2>&1; then
+            tail -n 100 acp-cli-test.log
+            exit 1
+          fi
+          tail -n 40 acp-cli-test.log
