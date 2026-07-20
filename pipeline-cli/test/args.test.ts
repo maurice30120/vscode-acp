@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as path from 'node:path';
 import test from 'node:test';
 
 import { formatHelp, parseCliArgs } from '../src/args.js';
@@ -6,7 +7,7 @@ import { formatHelp, parseCliArgs } from '../src/args.js';
 test('parses list command options', () => {
   assert.deepEqual(parseCliArgs(['list', '--json', '--cwd', 'demo'], '/repo'), {
     kind: 'list',
-    cwd: '/repo/demo',
+    cwd: path.resolve('/repo', 'demo'),
     json: true,
     verbose: false,
   });
