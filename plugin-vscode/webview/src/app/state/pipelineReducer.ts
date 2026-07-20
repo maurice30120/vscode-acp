@@ -8,6 +8,8 @@ const PIPELINE_ACTIONS = new Set<PipelineAction['type']>([
   'revertPipelinePlanApproval',
   'updatePipelineTimeline',
   'setActivePipelineRole',
+  'updatePipelineActivity',
+  'clearPipelineActivity',
   'appendPipelineRoleOutput',
   'finalizeTeamRoleTurn',
 ]);
@@ -115,6 +117,18 @@ export function pipelineReducer(state: AppState, action: PipelineAction): AppSta
           ],
         },
       };
+
+    case 'updatePipelineActivity':
+      return {
+        ...state,
+        pipelineActivity: {
+          role: action.role,
+          agentName: action.agentName,
+        },
+      };
+
+    case 'clearPipelineActivity':
+      return state.pipelineActivity ? { ...state, pipelineActivity: null } : state;
 
     case 'finalizeTeamRoleTurn': {
       const { activeRole, activeAgentName } = state.orchestration;

@@ -39,6 +39,7 @@ import { HistoryTurnBlock } from './components/HistoryTurnBlock';
 import { SessionBanner } from './components/SessionBanner';
 import { PlanBlock } from './components/PlanBlock';
 import { PipelinePlanBlock } from './components/PipelinePlanBlock';
+import { PipelineActivityLine } from './components/PipelineActivityLine';
 import { PipelineRoleTimeline } from './components/PipelineRoleTimeline';
 import { PipelineRoleOutputBlock } from './components/PipelineRoleOutputBlock';
 import { getState, onMessage, postMessage, setState } from './vscode';
@@ -112,7 +113,7 @@ export function App(): JSX.Element {
   );
   const pipelineProjection = useMemo(
     () => selectOrchestrationView(state),
-    [state.orchestration],
+    [state.orchestration, state.pipelineActivity],
   );
   const hasPendingPipelinePlan = pipelineProjection.hasPendingPlan;
   const composerPlaceholder = hasPendingPipelinePlan
@@ -614,6 +615,8 @@ export function App(): JSX.Element {
         {pipelineProjection.hasTimeline ? (
           <PipelineRoleTimeline timeline={pipelineProjection.timeline} />
         ) : null}
+
+        <PipelineActivityLine item={pipelineProjection.activity} />
 
         {pipelineProjection.plan ? (
           <PipelinePlanBlock

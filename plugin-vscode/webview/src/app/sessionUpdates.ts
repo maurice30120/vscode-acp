@@ -30,7 +30,12 @@ function getMessageMetadata(update: SessionUpdate, fallbackAgentId?: AgentID): {
   };
 }
 
-export function mapSessionUpdateToActions(update: SessionUpdate, phase?: PipelinePhase, agentId?: AgentID): AppAction[] {
+export function mapSessionUpdateToActions(
+  update: SessionUpdate,
+  phase?: PipelinePhase,
+  agentId?: AgentID,
+  agentName?: string,
+): AppAction[] {
   if (!update || typeof update !== 'object') {
     return [];
   }
@@ -53,10 +58,19 @@ export function mapSessionUpdateToActions(update: SessionUpdate, phase?: Pipelin
         return [];
       }
       const metadata = getMessageMetadata(update, agentId);
+      if (isPlannerPhase) {
+        return [
+          { type: 'appendPlanningDraftChunk', text: contentText, messageId: metadata.messageId, agentId: metadata.agentId },
+        ];
+      }
+      if (!phase) {
+        return [
+          { type: 'appendAssistantChunk', text: contentText, messageId: metadata.messageId, agentId: metadata.agentId },
+        ];
+      }
       return [
-        isPlannerPhase
-          ? { type: 'appendPlanningDraftChunk', text: contentText, messageId: metadata.messageId, agentId: metadata.agentId }
-          : { type: 'appendAssistantChunk', text: contentText, messageId: metadata.messageId, agentId: metadata.agentId },
+        { type: 'clearPipelineActivity' },
+        { type: 'appendAssistantChunk', text: contentText, messageId: metadata.messageId, agentId: metadata.agentId },
       ];
     }
 
@@ -70,7 +84,17 @@ export function mapSessionUpdateToActions(update: SessionUpdate, phase?: Pipelin
     case 'agent_thought_chunk': {
       const contentText = getTextContent(update);
       const metadata = getMessageMetadata(update, agentId);
-      return contentText ? [{ type: 'appendThoughtChunk', text: contentText, messageId: metadata.messageId, agentId: metadata.agentId }] : [];
+      if (!contentText) {
+        return [];
+      }
+      if (phase && !isPlannerPhase) {
+        return [{
+          type: 'updatePipelineActivity',
+          role: phase,
+          agentName: agentName ?? metadata.agentId,
+        }];
+      }
+      return [{ type: 'appendThoughtChunk', text: contentText, messageId: metadata.messageId, agentId: metadata.agentId }];
     }
 
     case 'tool_call': {

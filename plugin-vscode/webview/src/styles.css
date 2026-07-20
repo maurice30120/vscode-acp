@@ -759,6 +759,37 @@ body {
   color: var(--acp-text-secondary);
 }
 
+.pipeline-activity-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: calc(-1 * var(--acp-space-sm)) 0 var(--acp-space-md);
+  color: var(--acp-text-secondary);
+  font-size: var(--acp-font-size-sm);
+  min-width: 0;
+}
+
+.pipeline-activity-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--vscode-progressBar-background);
+  flex: 0 0 auto;
+}
+
+.pipeline-activity-label {
+  color: var(--acp-text-primary);
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+
+.pipeline-activity-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
 .pipeline-role-output {
   margin: 12px 0;
   padding: 12px;
