@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
+import type { SessionNotification } from '@agentclientprotocol/sdk';
 import {
   PipelineRuntime,
   PipelineRuntimeAgentAdapter,
   type CompiledPipelineProgram,
+  type CompiledPipelineNode,
   type PipelineAgentRunner,
   type PipelineResumeDecision,
   type PipelineRuntimeResult,
@@ -35,6 +37,7 @@ export class CliPipelineHost {
   private readonly runtimes = new Map<string, PipelineRuntime>();
   private readonly runner: PipelineAgentRunner;
   private readonly logger: Logger;
+  private readonly activityByNode = new Map<string, 'agent_message_chunk' | 'agent_thought_chunk'>();
 
   constructor(
     private readonly workspaceCwd: string,
@@ -124,6 +127,9 @@ export class CliPipelineHost {
     const adapter = new PipelineRuntimeAgentAdapter({
       workspaceCwd: () => this.workspaceCwd,
       runAgent: this.runner,
+      onSessionUpdate: (activeRunId, node, update) => {
+        this.reportSessionUpdate(activeRunId, node, update);
+      },
       onStatus: (_activeRunId, node, update) => {
         if (this.options.verbose) {
           this.options.terminal.writeError(
@@ -140,6 +146,9 @@ export class CliPipelineHost {
           const node = event.nodeId ? ` node=${event.nodeId}` : '';
           const message = event.message ? ` ${event.message}` : '';
           this.options.terminal.writeError(`[runtime] ${event.type}${node}${message}`);
+        }
+        if ((event.type === 'node_completed' || event.type === 'node_failed') && event.nodeId) {
+          this.activityByNode.delete(activityKey(event.runId, event.nodeId));
         }
       },
     });
@@ -184,8 +193,41 @@ export class CliPipelineHost {
   private cleanupTerminalResult(result: PipelineRuntimeResult): void {
     if (result.status !== 'paused') {
       this.runtimes.delete(result.runId);
+      for (const key of this.activityByNode.keys()) {
+        if (key.startsWith(`${result.runId}:`)) {
+          this.activityByNode.delete(key);
+        }
+      }
     }
   }
+
+  private reportSessionUpdate(runId: string, node: CompiledPipelineNode, notification: SessionNotification): void {
+    const update = notification.update;
+    const kind = update?.sessionUpdate;
+    if (kind !== 'agent_thought_chunk' && kind !== 'agent_message_chunk') {
+      return;
+    }
+
+    const key = activityKey(runId, node.id);
+    if (this.activityByNode.get(key) === kind) {
+      return;
+    }
+    this.activityByNode.set(key, kind);
+
+    const label = formatAgentLabel(node);
+    const action = kind === 'agent_thought_chunk' ? 'réfléchit' : 'répond';
+    this.options.terminal.writeError(`[acp-cli] ${label} ${action}`);
+  }
+}
+
+function activityKey(runId: string, nodeId: string): string {
+  return `${runId}:${nodeId}`;
+}
+
+function formatAgentLabel(node: CompiledPipelineNode): string {
+  return node.agent && node.agent !== node.id
+    ? `${node.id} · ${node.agent}`
+    : node.id;
 }
 
 function formatError(error: unknown): string {

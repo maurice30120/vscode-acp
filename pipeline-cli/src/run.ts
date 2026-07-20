@@ -12,7 +12,7 @@ export interface CliRunResult {
   status: 'completed' | 'cancelled' | 'failed';
   runId: string;
   artifact?: PipelineArtifact;
-  error?: { code: string; message: string };
+  error?: { code: string; message: string; nodeId?: string; attempt?: number };
 }
 
 export async function runPipelineInteractive(
@@ -62,7 +62,7 @@ export async function runPipelineInteractive(
       terminal.write(output);
     }
   } else if (final.status === 'failed') {
-    terminal.writeError(`Pipeline failed [${final.error?.code ?? 'unknown'}]: ${final.error?.message ?? 'Unknown error'}`);
+    terminal.writeError(formatFailure(final.error));
   } else {
     terminal.writeError('Pipeline cancelled.');
   }
@@ -87,10 +87,23 @@ function normalizeResult(result: PipelineRuntimeResult): CliRunResult {
     return {
       status: 'failed',
       runId: result.runId,
-      error: { code: result.error.code, message: result.error.message },
+      error: {
+        code: result.error.code,
+        message: result.error.message,
+        nodeId: result.error.nodeId,
+        attempt: result.error.attempt,
+      },
     };
   }
   return { status: 'cancelled', runId: result.runId };
+}
+
+function formatFailure(error: CliRunResult['error']): string {
+  const code = error?.code ?? 'unknown';
+  const location = error?.nodeId ? ` at node "${error.nodeId}"` : '';
+  const attempt = error?.attempt !== undefined ? ` attempt ${error.attempt}` : '';
+  const message = error?.message ?? 'Unknown error';
+  return `Pipeline failed [${code}]${location}${attempt}: ${message}`;
 }
 
 function formatPause(pause: PipelinePauseSnapshot): string {

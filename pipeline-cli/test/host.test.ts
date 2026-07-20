@@ -146,6 +146,48 @@ test('verbose mode logs ACP error code and data with the failing agent name', as
   ));
 });
 
+test('prints compact agent activity for CLI session updates without thought text', async () => {
+  const cwd = createWorkspace();
+  const terminal = new FakeTerminal();
+  const host = new CliPipelineHost(cwd, {
+    terminal,
+    runAgent: async input => {
+      input.onSessionUpdate?.({
+        sessionId: 's1',
+        update: {
+          sessionUpdate: 'agent_thought_chunk',
+          content: { type: 'text', text: 'hidden reasoning' },
+        },
+      } as any);
+      input.onSessionUpdate?.({
+        sessionId: 's1',
+        update: {
+          sessionUpdate: 'agent_thought_chunk',
+          content: { type: 'text', text: 'more hidden reasoning' },
+        },
+      } as any);
+      input.onSessionUpdate?.({
+        sessionId: 's1',
+        update: {
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text: 'Visible answer' },
+        },
+      } as any);
+      return { text: 'Which public API should be used?' };
+    },
+  });
+
+  const started = await host.start('question-flow', 'add a CLI');
+
+  assert.equal(started.status, 'paused');
+  assert.deepEqual(terminal.errors, [
+    '[acp-cli] Starting node agent "Planner"',
+    '[acp-cli] plan · Planner réfléchit',
+    '[acp-cli] plan · Planner répond',
+  ]);
+  assert.ok(!terminal.errors.some(line => line.includes('hidden reasoning')));
+});
+
 test('lists workspace pipelines with stable CLI metadata', () => {
   const cwd = createWorkspace();
   const host = new CliPipelineHost(cwd, {

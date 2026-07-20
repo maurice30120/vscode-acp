@@ -260,6 +260,26 @@ test('reports failed and cancelled final results on stderr', async () => {
   assert.deepEqual(cancelledTerminal.errors, ['Pipeline cancelled.']);
 });
 
+test('reports failed final results with node and attempt context when available', async () => {
+  const terminal = new FakeTerminal();
+  const host = {
+    start: async (): Promise<PipelineRuntimeResult> => ({
+      status: 'failed',
+      runId: 'run-failed',
+      error: { code: 'agent_failed', message: 'Internal error', nodeId: 'implementer', attempt: 2 },
+      snapshot: { ...snapshot('failed'), runId: 'run-failed' },
+    }),
+    resume: async (): Promise<PipelineRuntimeResult> => {
+      throw new Error('resume should not be called');
+    },
+  };
+
+  const failed = await runPipelineInteractive(host, terminal, command());
+
+  assert.equal(failed.status, 'failed');
+  assert.deepEqual(terminal.errors, ['Pipeline failed [agent_failed] at node "implementer" attempt 2: Internal error']);
+});
+
 test('keeps asking until a question receives a non-empty answer', async () => {
   const terminal = new FakeTerminal();
   terminal.answers.push('', 'Use retries');
