@@ -1,10 +1,11 @@
 {
-  "name": "@acp-client/pipeline-cli",
+  "name": "@acp-client/cli",
   "version": "0.0.0",
   "private": true,
+  "description": "Run ACP pipelines and their configured agents from a terminal.",
   "type": "module",
   "bin": {
-    "acp-pipeline": "./dist/src/cli.js"
+    "acp-cli": "./dist/src/cli.js"
   },
   "main": "./dist/src/cli.js",
   "types": "./dist/src/cli.d.ts",
