@@ -24,6 +24,8 @@ export * from './PipelineV3Compiler';
 export * from './PipelineRuntime';
 export * from './PipelineRunStore';
 export * from './MultiAgentArtifacts';
+export * from './PipelinePolicy';
+export * from './PipelineSkillResolution';
 export * from './PipelinePromptFileResolver';
 export * from './PipelineValidator';
 export * from './ProposedPlan';

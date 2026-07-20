@@ -1,11 +1,12 @@
+import { normalizePipelinePolicy } from "./PipelinePolicy";
 import type {
   CompiledPipelineNode,
   CompiledPipelineProgram,
   PipelineCompileResult,
   PipelineNodeInputDefinition,
-  PipelinePolicyReference,
   PipelineRetryDefinition,
 } from "./PipelineV3Types";
+import type { PipelinePolicyReference } from "./PipelineV3Types";
 
 type RawRecord = Record<string, unknown>;
 
@@ -129,7 +130,7 @@ function readNodes(
           pause,
           pauseContent: content,
           pauseFormat: format,
-          policy,
+          policy: normalizePipelinePolicy(policy),
           skills: [],
         }));
       }
@@ -158,7 +159,7 @@ function readNodes(
         inputs,
         output,
         retry,
-        policy,
+        policy: normalizePipelinePolicy(policy),
       }));
     }
   }

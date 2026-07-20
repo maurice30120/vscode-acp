@@ -5,6 +5,7 @@ import {
   PipelineRuntime,
   compilePipelineV3Definition,
   InMemoryPipelineRunStore,
+  NATIVE_ACP_BASELINE_CAPABILITIES,
   type PipelineRuntimeAdapter,
 } from "../dist/index.js";
 
@@ -283,4 +284,71 @@ test("PipelineRuntime fail-fast result preserves diagnostics and cancels pending
   assert.equal(result.snapshot.nodeStates.after.status, "cancelled");
   assert.ok(await store.load("run-fail"));
   assert.equal((await store.readEvents("run-fail")).at(-1)?.type, "failed");
+});
+
+test("PipelineRuntime refuses unsupported adapter policies before sending prompts", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "policy",
+    title: "Policy",
+    nodes: [
+      {
+        id: "networked",
+        agent: "Codex",
+        prompt: "fetch",
+        policy: { network: "enabled" },
+        output: { name: "out", type: "note", format: "text" },
+      },
+    ],
+  }, agents).program!;
+  let executed = false;
+  const runtime = new PipelineRuntime({
+    async execute() {
+      executed = true;
+      return { artifact: { name: "out", type: "note", format: "text", value: "bad" } };
+    },
+  }, {
+    runIdFactory: () => "run-policy",
+    adapterName: "native ACP",
+    adapterCapabilities: NATIVE_ACP_BASELINE_CAPABILITIES,
+  });
+
+  const result = await runtime.start(program);
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.error.code, "unsupported_policy");
+  assert.equal(executed, false);
+});
+
+test("PipelineRuntime refuses unresolved node skills before sending prompts", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "skills",
+    title: "Skills",
+    nodes: [
+      {
+        id: "withSkill",
+        agent: "Codex",
+        prompt: "use skill",
+        skills: ["missing"],
+        output: { name: "out", type: "note", format: "text" },
+      },
+    ],
+  }, agents).program!;
+  let executed = false;
+  const runtime = new PipelineRuntime({
+    async execute() {
+      executed = true;
+      return { artifact: { name: "out", type: "note", format: "text", value: "bad" } };
+    },
+  }, {
+    runIdFactory: () => "run-skills",
+    resolveNodeSkills: node => node.skills.includes("missing") ? ['Pipeline node references missing skill "missing".'] : [],
+  });
+
+  const result = await runtime.start(program);
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.error.code, "skill_resolution_failed");
+  assert.equal(executed, false);
 });

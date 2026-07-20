@@ -1343,7 +1343,7 @@ test("extension keeps one PipelineController per cwd across session_start events
 	}
 });
 
-test("EphemeralAcpRunner prefixes the prompt with the filtered skills catalog", async () => {
+test("EphemeralAcpRunner prefixes the prompt with explicit pipeline skills", async () => {
 	const workspace = createTempWorkspace();
 	writeSkill(workspace, "tdd", {
 		name: "tdd",
@@ -1379,50 +1379,36 @@ test("EphemeralAcpRunner prefixes the prompt with the filtered skills catalog", 
 		skills: ["tdd"],
 	});
 
-	assert.ok(sentPrompt.includes("<available_skills>"), sentPrompt);
-	assert.ok(sentPrompt.includes("name: tdd"), sentPrompt);
+	assert.ok(sentPrompt.includes('<skill name="tdd">'), sentPrompt);
+	assert.ok(sentPrompt.includes("Test-driven development."), sentPrompt);
 	assert.ok(sentPrompt.endsWith("Do the work."), sentPrompt);
 });
 
-test("EphemeralAcpRunner skips skills injection when agents.<name>.skills is false", async () => {
+test("EphemeralAcpRunner rejects declared skills when agents.<name>.skills is false", async () => {
 	const workspace = createTempWorkspace();
 	writeSkill(workspace, "tdd", {
 		name: "tdd",
 		description: "Test-driven development.",
 	});
-	let sentPrompt = "";
 
 	const runner = new EphemeralAcpRunner(workspace, {
 		getAgentConfigs: () => ({
 			"Codex CLI": { command: "codex", skills: false },
 		}),
-		connector: async () => ({
-			agentId: "agent_1",
-			connInfo: {
-				initResponse: {},
-				client: undefined,
-				connection: {
-					newSession: async () => ({ sessionId: "s1" }),
-					prompt: async (request: { prompt: Array<{ text: string }> }) => {
-						sentPrompt = request.prompt[0].text;
-						return { stopReason: "end_turn" };
-					},
-					cancel: async () => {},
-					authenticate: async () => ({}),
-				},
-			} as any,
-			dispose: () => {},
+		connector: async () => {
+			throw new Error("connector should not run");
+		},
+	});
+
+	await assert.rejects(
+		runner.runAgent({
+			workspaceCwd: workspace,
+			agentName: "Codex CLI",
+			promptText: "Do the work.",
+			skills: ["tdd"],
 		}),
-	});
-
-	await runner.runAgent({
-		workspaceCwd: workspace,
-		agentName: "Codex CLI",
-		promptText: "Do the work.",
-		skills: ["tdd"],
-	});
-
-	assert.equal(sentPrompt, "Do the work.");
+		/skills disabled/,
+	);
 });
 
 test("EphemeralAcpRunner skips skills injection when skills is omitted", async () => {

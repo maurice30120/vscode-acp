@@ -1,4 +1,6 @@
 import { parseArtifactProducer } from "./PipelineV3Compiler";
+import { validateAdapterSupportsPolicy } from "./PipelinePolicy";
+import type { PipelineAdapterPolicyCapabilities } from "./PipelinePolicy";
 import type {
   CompiledPipelineNode,
   CompiledPipelineProgram,
@@ -17,6 +19,9 @@ export interface PipelineRuntimeOptions {
   store?: PipelineRunStore;
   programs?: CompiledPipelineProgram[];
   onEvent?: (event: PipelineRuntimeEvent) => void | Promise<void>;
+  adapterName?: string;
+  adapterCapabilities?: PipelineAdapterPolicyCapabilities;
+  resolveNodeSkills?: (node: CompiledPipelineNode) => string[] | Promise<string[]>;
 }
 
 export interface PipelineRuntimeEvent {
@@ -57,6 +62,9 @@ export class PipelineRuntime {
   private readonly runIdFactory: () => string;
   private readonly store?: PipelineRunStore;
   private readonly onEvent?: (event: PipelineRuntimeEvent) => void | Promise<void>;
+  private readonly adapterName: string;
+  private readonly adapterCapabilities?: PipelineAdapterPolicyCapabilities;
+  private readonly resolveNodeSkills?: (node: CompiledPipelineNode) => string[] | Promise<string[]>;
 
   constructor(
     private readonly adapter: PipelineRuntimeAdapter,
@@ -66,6 +74,9 @@ export class PipelineRuntime {
     this.runIdFactory = options.runIdFactory ?? (() => `run-${Date.now()}-${Math.random().toString(16).slice(2)}`);
     this.store = options.store;
     this.onEvent = options.onEvent;
+    this.adapterName = options.adapterName ?? "pipeline";
+    this.adapterCapabilities = options.adapterCapabilities;
+    this.resolveNodeSkills = options.resolveNodeSkills;
     for (const program of options.programs ?? []) {
       this.programsById.set(program.id, program);
     }
@@ -198,6 +209,42 @@ export class PipelineRuntime {
   private async executeNode(active: ActiveRun, node: CompiledPipelineNode): Promise<PipelineRuntimeDiagnostic | { ok: true }> {
     const state = active.snapshot.nodeStates[node.id];
     const inputs = resolveInputs(node, active.snapshot.artifacts);
+    const skillErrors = this.resolveNodeSkills ? await this.resolveNodeSkills(node) : [];
+    if (skillErrors.length > 0) {
+      active.snapshot.nodeStates[node.id] = {
+        ...state,
+        status: "failed",
+        attempts: state.attempts + 1,
+        completedAt: this.isoNow(),
+      };
+      active.snapshot.updatedAt = this.isoNow();
+      await this.persist(active.snapshot);
+      return {
+        nodeId: node.id,
+        attempt: state.attempts + 1,
+        code: "skill_resolution_failed",
+        message: skillErrors.join("; "),
+      };
+    }
+    const unsupportedPolicy = this.adapterCapabilities
+      ? validateAdapterSupportsPolicy(this.adapterName, this.adapterCapabilities, node.policy)[0]
+      : undefined;
+    if (unsupportedPolicy) {
+      active.snapshot.nodeStates[node.id] = {
+        ...state,
+        status: "failed",
+        attempts: state.attempts + 1,
+        completedAt: this.isoNow(),
+      };
+      active.snapshot.updatedAt = this.isoNow();
+      await this.persist(active.snapshot);
+      return {
+        nodeId: node.id,
+        attempt: state.attempts + 1,
+        code: unsupportedPolicy.code,
+        message: unsupportedPolicy.message,
+      };
+    }
     for (let attempt = state.attempts + 1; attempt <= node.retry.maxAttempts; attempt++) {
       active.snapshot.nodeStates[node.id] = { ...state, status: "running", attempts: attempt, startedAt: state.startedAt ?? this.isoNow() };
       active.snapshot.updatedAt = this.isoNow();

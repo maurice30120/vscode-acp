@@ -1,3 +1,5 @@
+import type { NormalizedPipelinePolicy } from "./PipelinePolicy";
+
 export type PipelineArtifactFormat = "text" | "markdown" | "json";
 
 export type PipelinePauseType = "approval" | "question" | "promotion";
@@ -93,7 +95,7 @@ export interface CompiledPipelineNode {
   pause?: PipelinePauseType;
   pauseContent?: string;
   pauseFormat?: PipelinePauseFormat;
-  policy: PipelinePolicyReference;
+  policy: NormalizedPipelinePolicy;
 }
 
 export interface CompiledPipelineProgram {

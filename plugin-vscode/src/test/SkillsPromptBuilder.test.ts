@@ -39,6 +39,13 @@ suite('SkillsPromptBuilder', () => {
       '---\nname: tdd\ndescription: Test-first development.\n---\n\n# TDD\n\nFollow red-green-refactor.\n',
       'utf8',
     );
+    const hiddenDir = path.join(root, '.agents', 'skills', 'hidden');
+    fs.mkdirSync(hiddenDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(hiddenDir, 'SKILL.md'),
+      '---\nname: hidden\ndescription: Hidden skill.\ndisable-model-invocation: true\n---\n\n# Hidden\n\nExplicit only.\n',
+      'utf8',
+    );
   });
 
   teardown(() => {
@@ -83,6 +90,20 @@ suite('SkillsPromptBuilder', () => {
     assert.match(result.text, /<skill name="tdd">/);
     assert.match(result.text, /Follow red-green-refactor/);
     assert.match(result.text, /add coverage for SessionManager/);
+    assert.doesNotMatch(result.text, /<available_skills>/);
+  });
+
+  test('expands explicit-only /skill invocations', () => {
+    const result = buildPromptWithSkills({
+      agentName: 'Codex Sandcastle',
+      workspaceCwd: root,
+      text: '/hidden use the explicit-only path',
+      skillsBootstrapped: false,
+    });
+
+    assert.match(result.text, /<skill name="hidden">/);
+    assert.match(result.text, /Explicit only/);
+    assert.match(result.text, /use the explicit-only path/);
     assert.doesNotMatch(result.text, /<available_skills>/);
   });
 

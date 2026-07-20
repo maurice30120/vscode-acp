@@ -1,14 +1,21 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import {
+	renderExplicitPipelineSkills,
+	resolveExplicitPipelineSkills,
+	type PipelineSkillEntry,
+} from "@acp-client/pipeline";
+
 const SKILLS_DIR = path.join(".agents", "skills");
 const SKILL_FILE = "SKILL.md";
 
-export interface SkillCatalogEntry {
+export interface SkillCatalogEntry extends PipelineSkillEntry {
 	name: string;
 	description: string;
 	disableModelInvocation: boolean;
 	filePath: string;
+	content: string;
 }
 
 export interface SkillCatalogOptions {
@@ -63,6 +70,7 @@ export function loadSkillCatalog(
 			description: parsed.description,
 			disableModelInvocation: parsed.disableModelInvocation,
 			filePath,
+			content: text,
 		});
 	}
 
@@ -113,10 +121,8 @@ function readScalar(frontmatter: string, key: string): string {
 }
 
 /**
- * Builds the filtered `<available_skills>` catalog block for a step. Only
- * skills listed in `allowList` are included, and skills with
- * `disable-model-invocation: true` are excluded. Returns an empty string when
- * nothing is eligible, so the runner can skip injection entirely.
+ * Builds explicit `<skill>` blocks for a pipeline step. Skills listed by a
+ * node are injected even when they are hidden from automatic model discovery.
  */
 export function renderSkillsCatalog(
 	catalog: SkillCatalogEntry[],
@@ -126,21 +132,9 @@ export function renderSkillsCatalog(
 	if (!allowList || allowList.length === 0) {
 		return "";
 	}
-
-	const allowed = new Set(allowList);
-	const entries = catalog.filter(
-		(entry) => allowed.has(entry.name) && !entry.disableModelInvocation,
-	);
-	if (entries.length === 0) {
-		return "";
+	const resolved = resolveExplicitPipelineSkills(allowList, catalog, workspaceCwd);
+	if (resolved.errors.length > 0) {
+		throw new Error(`Unable to resolve pipeline skills: ${resolved.errors.join("; ")}`);
 	}
-
-	const lines = entries.map((entry) => {
-		const relativePath = path
-			.relative(workspaceCwd, entry.filePath)
-			.replace(/\\/g, "/");
-		return `- name: ${entry.name}\n  description: ${entry.description}\n  location: ${relativePath}`;
-	});
-
-	return `<available_skills>\n${lines.join("\n")}\n</available_skills>`;
+	return renderExplicitPipelineSkills(resolved.skills);
 }

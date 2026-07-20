@@ -901,10 +901,8 @@ test("renderSkillsCatalog injects only the allowed skill entry", () => {
 	const catalog = loadSkillCatalog({ workspaceCwd: workspace });
 	const block = renderSkillsCatalog(catalog, ["tdd"], workspace);
 
-	assertIncludes(block, "<available_skills>");
-	assertIncludes(block, "name: tdd");
-	assertIncludes(block, "description: Test-driven development.");
-	assertIncludes(block, ".agents/skills/tdd/SKILL.md");
+	assertIncludes(block, '<skill name="tdd">');
+	assertIncludes(block, "Test-driven development.");
 	assert.ok(!block.includes("code-review"));
 });
 
@@ -921,7 +919,7 @@ test("skills omitted produces no catalog block", () => {
 	assert.equal(block, "");
 });
 
-test("disable-model-invocation skill is excluded from the catalog block", () => {
+test("disable-model-invocation skill is injected when explicitly requested", () => {
 	const workspace = createTempWorkspace();
 	writeSkill(workspace, "secret", {
 		name: "secret",
@@ -932,5 +930,6 @@ test("disable-model-invocation skill is excluded from the catalog block", () => 
 	const catalog = loadSkillCatalog({ workspaceCwd: workspace });
 	const block = renderSkillsCatalog(catalog, ["secret"], workspace);
 
-	assert.equal(block, "");
+	assertIncludes(block, '<skill name="secret">');
+	assertIncludes(block, "User-only.");
 });

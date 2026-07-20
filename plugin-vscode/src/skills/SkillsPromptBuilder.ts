@@ -1,3 +1,5 @@
+import { renderExplicitPipelineSkills } from '@acp-client/pipeline';
+
 import { SkillsCatalog } from './SkillsCatalog';
 import { isSkillsEnabledAgent } from './SkillsConfig';
 
@@ -20,15 +22,13 @@ function expandSkillInvocation(
   skillName: string,
   remainder: string,
 ): string | null {
-  const resolved = catalog.resolveSkill(skillName);
-  if (!resolved) {
+  const resolved = catalog.resolveExplicitSkills([skillName]);
+  if (resolved.errors.length > 0 || resolved.skills.length === 0) {
     return null;
   }
 
   const parts = [
-    `<skill name="${resolved.entry.name}">`,
-    resolved.content.trim(),
-    '</skill>',
+    renderExplicitPipelineSkills(resolved.skills),
   ];
   if (remainder.trim()) {
     parts.push('', remainder.trim());

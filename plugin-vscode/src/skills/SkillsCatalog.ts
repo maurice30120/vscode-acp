@@ -2,15 +2,22 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import * as yaml from 'js-yaml';
+import {
+  discoverModelInvokedSkills,
+  renderModelSkillCatalog,
+  resolveExplicitPipelineSkills,
+  type PipelineSkillEntry,
+} from '@acp-client/pipeline';
 
 import { getSkillsDirectory, getSkillsMaxCatalogBytes } from './SkillsConfig';
 
-export interface SkillEntry {
+export interface SkillEntry extends PipelineSkillEntry {
   name: string;
   description: string;
   relativePath: string;
   absolutePath: string;
   modelInvoked: boolean;
+  content: string;
 }
 
 interface SkillFrontmatter {
@@ -112,6 +119,9 @@ export class SkillsCatalog {
         description: typeof frontmatter.description === 'string' ? frontmatter.description.trim() : '',
         relativePath: path.relative(this.workspaceCwd, filePath).replace(/\\/g, '/'),
         absolutePath: filePath,
+        filePath,
+        content,
+        disableModelInvocation,
         modelInvoked: !disableModelInvocation,
       };
     });
@@ -121,50 +131,49 @@ export class SkillsCatalog {
   }
 
   resolveSkill(name: string): { entry: SkillEntry; content: string } | null {
-    const normalized = name.replace(/^\//, '').trim().toLowerCase();
-    if (!normalized) {
+    const resolved = this.resolveExplicitSkills([name]);
+    const skill = resolved.skills[0];
+    if (resolved.errors.length > 0 || !skill) {
       return null;
     }
-
-    for (const entry of this.listSkills()) {
-      const folderName = path.basename(path.dirname(entry.absolutePath)).toLowerCase();
-      if (entry.name.toLowerCase() === normalized || folderName === normalized) {
-        const content = fs.readFileSync(entry.absolutePath, 'utf8');
-        return { entry, content };
-      }
-    }
-
-    return null;
+    return {
+      entry: {
+        name: skill.name,
+        description: skill.description,
+        relativePath: skill.relativePath,
+        absolutePath: skill.filePath,
+        filePath: skill.filePath,
+        content: skill.content ?? '',
+        disableModelInvocation: !skill.modelInvoked,
+        modelInvoked: skill.modelInvoked,
+      },
+      content: skill.content ?? '',
+    };
   }
 
   buildCatalogText(): string {
-    const modelInvoked = this.listSkills().filter(skill => skill.modelInvoked);
+    const modelInvoked = discoverModelInvokedSkills(this.listSkills(), this.workspaceCwd);
     if (modelInvoked.length === 0) {
       return '';
     }
 
-    const lines = modelInvoked.map(skill => {
-      const description = skill.description || '(no description)';
-      return `- ${skill.name}: ${description} (path: ${skill.relativePath})`;
-    });
+    let catalog = renderModelSkillCatalog(modelInvoked);
+    const lines = catalog.split('\n');
 
-    let catalog = lines.join('\n');
-    const header = [
-      'When a skill is relevant, read its SKILL.md via the filesystem before acting.',
-      'When the user types /skill-name, follow that skill fully.',
-      '',
-    ].join('\n');
-
-    while (Buffer.byteLength(`${header}${catalog}`, 'utf8') > this.maxCatalogBytes && lines.length > 1) {
+    while (Buffer.byteLength(catalog, 'utf8') > this.maxCatalogBytes && lines.length > 4) {
       lines.pop();
-      catalog = `${lines.join('\n')}\n…(catalog truncated)`;
+      catalog = `${lines.join('\n')}\n...(catalog truncated)`;
     }
 
-    if (Buffer.byteLength(`${header}${catalog}`, 'utf8') > this.maxCatalogBytes) {
+    if (Buffer.byteLength(catalog, 'utf8') > this.maxCatalogBytes) {
       return '';
     }
 
-    return `${header}${catalog}`;
+    return catalog;
+  }
+
+  resolveExplicitSkills(names: readonly string[]): ReturnType<typeof resolveExplicitPipelineSkills> {
+    return resolveExplicitPipelineSkills(names, this.listSkills(), this.workspaceCwd);
   }
 }
 

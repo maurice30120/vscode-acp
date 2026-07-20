@@ -85,6 +85,9 @@ export class EphemeralAcpRunner {
 
 	async runAgent(input: PipelineAgentRunInput): Promise<{ text: string; promotion?: PipelinePromotionStatus }> {
 		const config = this.readAgentConfig(input.agentName);
+		if (input.skills && input.skills.length > 0 && config.skills === false) {
+			throw new Error(`Pipeline node declares skills but agent "${input.agentName}" has skills disabled.`);
+		}
 		const sessionUpdateHandler = new SessionUpdateHandler();
 		let connected: ConnectedAcpAgent | null = null;
 		let sessionId: string | null = null;
@@ -165,7 +168,7 @@ export class EphemeralAcpRunner {
 					connected.connInfo.connection.prompt({
 						sessionId,
 						prompt: [
-							{ type: "text", text: this.composeRunnerPrompt(input, config) },
+							{ type: "text", text: this.composeRunnerPrompt(input) },
 						],
 					}),
 					async () => {
@@ -293,10 +296,9 @@ export class EphemeralAcpRunner {
 
 	private composeRunnerPrompt(
 		input: PipelineAgentRunInput,
-		config: PiAgentConfigEntry,
 	): string {
 		const skills = input.skills;
-		if (config.skills === false || !skills || skills.length === 0) {
+		if (!skills || skills.length === 0) {
 			return input.promptText;
 		}
 
