@@ -1,58 +1,54 @@
 # ACP Client monorepo
 
-Ce dépôt regroupe les surfaces ACP Client qui doivent évoluer ensemble : une extension VS Code, un moteur d'orchestration partagé, une extension Pi et un CLI de pipelines. La racine ne contient pas de code applicatif ; elle sert de point d'entrée pour les commandes transverses, la déclaration des workspaces et la cohérence des builds.
+Ce dépôt regroupe les surfaces ACP Client qui doivent évoluer ensemble : une extension VS Code, un moteur d'orchestration partagé, une extension Pi et un CLI. La racine ne contient pas de code applicatif ; elle sert de point d'entrée pour les commandes transverses et la cohérence des builds.
 
-Le monorepo permet de faire évoluer le modèle pipeline une seule fois, puis de le consommer depuis plusieurs environnements. C'est important parce que l'orchestration d'agents ACP, les pipelines déclaratifs, les approbations humaines et les runs isolés Sandcastle doivent rester cohérents entre VS Code, Pi et le terminal, même si les intégrations UI et runtime sont différentes.
+Le modèle pipeline est implémenté une seule fois dans `@acp-client/pipeline`, puis consommé depuis VS Code, Pi ou un terminal. Les hôtes fournissent l'interaction utilisateur et le lancement des agents, mais le DAG, les approbations et les reprises restent communs.
 
 ## Packages
 
 | Dossier | Package npm | Rôle |
 | --- | --- | --- |
-| `plugin-vscode` | `acp-client` | Extension VS Code principale. Elle connecte l'éditeur à des agents compatibles ACP, fournit le chat, l'historique de sessions, les pipelines v2 et les runtimes Sandcastle avec promotion Apply/Reject. |
-| `acp-pipeline` | `@acp-client/pipeline` | Bibliothèque TypeScript indépendante de VS Code. Elle porte les types, la validation, la compilation et l'exécution des pipelines déclaratifs, avec approbation humaine, reprise, annulation et branches parallèles. |
-| `plugin-pi` | `@acp-client/pi-extension` | Extension pour l'hôte Pi. Elle embarque sa configuration ACP, expose des commandes `/pipeline`, lance des agents ACP externes et consomme le moteur pipeline partagé pour orchestrer des workflows dans Pi. |
-| `pipeline-cli` | `@acp-client/pipeline-cli` | Binaire `acp-pipeline` autonome. Il liste et exécute les mêmes pipelines depuis un terminal, y compris les interviews `grill-me`, les approbations et les promotions Sandcastle. |
+| `plugin-vscode` | `acp-client` | Extension VS Code principale. Elle connecte l'éditeur à des agents compatibles ACP, fournit le chat, l'historique de sessions et les pipelines. |
+| `acp-pipeline` | `@acp-client/pipeline` | Bibliothèque TypeScript indépendante de l'UI. Elle porte les types, la validation, la compilation et l'exécution des pipelines déclaratifs. |
+| `plugin-pi` | `@acp-client/pi-extension` | Extension pour Pi exposant les pipelines dans cet hôte. |
+| `pipeline-cli` | `@acp-client/cli` | Binaire `acp-cli`. Il charge les fichiers `.acp` du workspace, lance les agents déclarés par le pipeline et orchestre le run depuis un terminal. |
 
-## Pourquoi ce découpage
+## CLI
 
-- `plugin-vscode` reste le produit principal livré en VSIX, avec toute l'intégration VS Code.
-- `acp-pipeline` isole la logique métier d'orchestration pour qu'elle soit testable et réutilisable hors VS Code.
-- `plugin-pi` valide que le modèle pipeline peut vivre dans un autre hôte, sans dépendre de l'extension VS Code.
-- `pipeline-cli` fournit une surface sans éditeur ni plugin, tout en réutilisant le moteur et le host ACP existants.
-- La racine garde les commandes courantes pour éviter de mémoriser les noms exacts des packages npm.
+La commande n'accepte pas de paramètre d'agent :
 
-## À quoi sert le projet
+```bash
+acp-cli run "nom-du-pipeline" "le prompt"
+```
 
-ACP Client sert à piloter des agents de code depuis un environnement développeur, sans lier l'utilisateur à un seul fournisseur. Le projet fournit une couche d'intégration autour du protocole ACP : découverte et lancement d'agents, chat, contexte éditeur, accès fichiers/terminal, permissions, historique de sessions et orchestration de workflows.
+Le pipeline choisit ses agents dans ses primitives. `acp-cli` les résout dans
+`.acp/acp-agents.json` et lance automatiquement les processus ACP ou
+Sandcastle nécessaires.
 
-Le sujet central du dépôt est donc le **harness d'exécution d'agents** : tout ce qui entoure le modèle ou le CLI agent pour le rendre utilisable dans un vrai workspace. Cela inclut le choix du contexte transmis, la manière d'enchaîner plusieurs agents, les points d'approbation humaine, l'isolation des modifications dans Sandcastle et la promotion contrôlée des changements vers le workspace.
+Le CLI ne dépend d'aucun catalogue de pipelines ou d'agents embarqué dans Pi.
+Les pipelines viennent de `.acp/pipelines` et les skills explicites de
+`.agents/skills`.
 
-Le monorepo existe pour partager cette logique entre plusieurs surfaces :
+Exemple local depuis la racine :
 
-- dans VS Code, l'utilisateur manipule directement les agents depuis l'éditeur ;
-- dans Pi, les mêmes concepts sont exposés comme plugin et commandes de pipeline ;
-- dans le CLI, les pipelines sont exécutés directement depuis un terminal ;
-- dans `acp-pipeline`, l'orchestration reste indépendante de l'UI et du runtime concret.
-
-Dans le vocabulaire de recherche récent, ce type de travail se rapproche du **harness engineering** : améliorer le code et les règles autour d'un agent pour mieux gérer le contexte, les outils, la mémoire, les traces et les effets de bord. Le projet ne cherche pas à optimiser automatiquement des harnesses comme Meta-Harness ; il construit le harness applicatif nécessaire pour utiliser, orchestrer et isoler des agents ACP dans des environnements de développement réels.
+```bash
+npm run acp-cli -- run grill-skeleton-tdd "Ajouter une nouvelle commande"
+```
 
 ## Commandes courantes
 
-Depuis la racine :
-
 ```bash
-npm run compile      # compiler l'extension VS Code
-npm test             # exécuter toute la matrice de tests
-npm run test:pi      # tests du plugin Pi
-npm run test:cli     # tests du CLI de pipelines
-npm run pipeline -- list
-npm run pipeline -- run grill-skeleton-tdd "Ajouter une nouvelle commande"
-npm run lint         # lint transverse
-npm run package      # build de production VS Code
-npm run vsx          # générer le VSIX
+npm run compile
+npm test
+npm run test:pi
+npm run test:cli
+npm run acp-cli -- list
+npm run lint
+npm run package
+npm run vsx
 ```
 
-Commandes ciblées :
+Commandes ciblées :
 
 ```bash
 npm run build -w @acp-client/pipeline
@@ -66,8 +62,6 @@ npm run vsx -w acp-client
 - Extension VS Code : [`plugin-vscode/README.fr.md`](plugin-vscode/README.fr.md)
 - Pipeline partagé : [`acp-pipeline/README.md`](acp-pipeline/README.md)
 - Plugin Pi : [`plugin-pi/README.md`](plugin-pi/README.md)
-- CLI de pipelines : [`pipeline-cli/README.md`](pipeline-cli/README.md)
-- Roadmap monorepo : [`ROADMAP.md`](ROADMAP.md)
-- Décision d'architecture monorepo : [`plugin-vscode/doc_fr/adr/0017-monorepo-npm-workspaces.md`](plugin-vscode/doc_fr/adr/0017-monorepo-npm-workspaces.md)
-- Décision pipeline v2 canonique : [`plugin-vscode/doc_fr/adr/0018-pipeline-v2-catalogue-canonique.md`](plugin-vscode/doc_fr/adr/0018-pipeline-v2-catalogue-canonique.md)
-- Décision `promptFile` partagé : [`plugin-vscode/doc_fr/adr/0019-promptfile-pipeline-partage.md`](plugin-vscode/doc_fr/adr/0019-promptfile-pipeline-partage.md)
+- CLI : [`pipeline-cli/README.md`](pipeline-cli/README.md)
+- Architecture cible : [`docs/architecture/pipeline-target-architecture.md`](docs/architecture/pipeline-target-architecture.md)
+- Plan de migration : [`docs/architecture/pipeline-migration-plan.md`](docs/architecture/pipeline-migration-plan.md)
