@@ -10,6 +10,7 @@ export * from './PipelineRuntimeAgentAdapter';
 export * from './PipelineRunStore';
 export * from './PipelineInterviewProtocol';
 export * from './MultiAgentArtifacts';
+export * from './PipelineArtifactPublisher';
 export * from './PipelinePolicy';
 export * from './PipelineSkillResolution';
 export * from './ProposedPlan';
