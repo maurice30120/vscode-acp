@@ -12,7 +12,6 @@ import type {
   SandcastlePromotion,
   SandcastleProvider,
 } from '../types.js';
-import { getPiPluginRoot } from './pluginRoot.js';
 
 const CONFIG_PATH = '.acp/acp-agents.json';
 const SANDCASTLE_CONFIG_PATH = '.acp/.sandcastle/config.json';
@@ -32,8 +31,8 @@ const TIMEOUT_KEYS = [
   'promotionUiMs',
 ] as const;
 
-export function loadPiAcpConfig(_workspaceCwd: string, pluginRoot = getPiPluginRoot()): PiAcpConfig {
-  const filePath = path.join(pluginRoot, CONFIG_PATH);
+export function loadPiAcpConfig(workspaceCwd: string, configRoot = workspaceCwd): PiAcpConfig {
+  const filePath = path.join(configRoot, CONFIG_PATH);
   if (!fs.existsSync(filePath)) {
     return {
       filePath,
@@ -42,7 +41,7 @@ export function loadPiAcpConfig(_workspaceCwd: string, pluginRoot = getPiPluginR
         enabled: true,
         instructionsMaxBytes: DEFAULT_INSTRUCTIONS_MAX_BYTES,
       },
-      errors: [`Missing embedded Pi ACP config: ${CONFIG_PATH}`],
+      errors: [`Missing Pi ACP config at workspace root: ${CONFIG_PATH}`],
     };
   }
 
@@ -98,8 +97,8 @@ export function parsePiAcpConfig(text: string, filePath = CONFIG_PATH): PiAcpCon
   };
 }
 
-export function loadSandcastleConfig(_workspaceCwd: string, pluginRoot = getPiPluginRoot()): SandcastleConfig {
-  const filePath = path.join(pluginRoot, SANDCASTLE_CONFIG_PATH);
+export function loadSandcastleConfig(workspaceCwd: string, configRoot = workspaceCwd): SandcastleConfig {
+  const filePath = path.join(configRoot, SANDCASTLE_CONFIG_PATH);
   if (!fs.existsSync(filePath)) {
     return emptySandcastleConfig(filePath, []);
   }
@@ -147,9 +146,9 @@ export function parseSandcastleConfig(text: string, filePath = SANDCASTLE_CONFIG
   };
 }
 
-export function loadPiAgentCatalog(workspaceCwd: string, pluginRoot = getPiPluginRoot()): PiAgentCatalog {
-  const native = loadPiAcpConfig(workspaceCwd, pluginRoot);
-  const sandcastle = loadSandcastleConfig(workspaceCwd, pluginRoot);
+export function loadPiAgentCatalog(workspaceCwd: string, configRoot = workspaceCwd): PiAgentCatalog {
+  const native = loadPiAcpConfig(workspaceCwd, configRoot);
+  const sandcastle = loadSandcastleConfig(workspaceCwd, configRoot);
   const agents: Record<string, PiAgentConfigEntry> = { ...native.agents };
   const errors = [...native.errors, ...sandcastle.errors];
 

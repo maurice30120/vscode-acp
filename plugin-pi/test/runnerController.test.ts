@@ -25,8 +25,10 @@ import { PipelineController } from "../src/runtime/pipelineController.js";
 import { registerRunPipelineTool } from "../src/runtime/tool.js";
 import {
 	createTempWorkspace,
+	writeFile,
 	writeDefaultConfig,
 	writeDemoPipeline,
+	writePlanExecuteVerifyPipeline,
 	writeSkill,
 } from "./helpers.js";
 
@@ -696,7 +698,7 @@ test("EphemeralAcpRunner ignores and does not forward updates from other session
 });
 
 test("/pipeline list reports configured pipelines", async () => {
-	const workspace = createTempWorkspace();
+	const workspace = createConfiguredPipelineWorkspace();
 
 	const notifications: string[] = [];
 	const controller = new PipelineController(
@@ -717,7 +719,7 @@ test("/pipeline list reports configured pipelines", async () => {
 });
 
 test("/pipeline run then approve executes planner and implementer", async () => {
-	const workspace = createTempWorkspace();
+	const workspace = createConfiguredPipelineWorkspace();
 
 	const notifications: string[] = [];
 	const messages: Array<{ content: unknown; details?: unknown }> = [];
@@ -841,7 +843,7 @@ test("/pipeline verbose toggles runtime verbose mode", async () => {
 });
 
 test("PipelineController activity relays agent message chunks", async () => {
-	const workspace = createTempWorkspace();
+	const workspace = createConfiguredPipelineWorkspace();
 
 	const messages: Array<{ content: unknown; details?: { kind?: string } }> = [];
 	const runner: PipelineAgentRunner = async (input) => {
@@ -874,7 +876,7 @@ test("PipelineController activity relays agent message chunks", async () => {
 });
 
 test("PipelineController groups adjacent agent message chunks", async () => {
-	const workspace = createTempWorkspace();
+	const workspace = createConfiguredPipelineWorkspace();
 
 	const messages: Array<{ content: unknown; details?: { kind?: string } }> = [];
 	const runner: PipelineAgentRunner = async (input) => {
@@ -906,7 +908,7 @@ test("PipelineController groups adjacent agent message chunks", async () => {
 });
 
 test("PipelineController activity relays agent thought chunks", async () => {
-	const workspace = createTempWorkspace();
+	const workspace = createConfiguredPipelineWorkspace();
 
 	const messages: Array<{ content: unknown; details?: { kind?: string } }> = [];
 	const runner: PipelineAgentRunner = async (input) => {
@@ -936,7 +938,7 @@ test("PipelineController activity relays agent thought chunks", async () => {
 });
 
 test("PipelineController verbose activity still reports non-text session updates", async () => {
-	const workspace = createTempWorkspace();
+	const workspace = createConfiguredPipelineWorkspace();
 
 	const messages: Array<{ content: unknown; details?: { kind?: string } }> = [];
 	const runner: PipelineAgentRunner = async (input) => {
@@ -978,7 +980,7 @@ test("PipelineController verbose activity still reports non-text session updates
 });
 
 test("PipelineController keeps heartbeat internal during long-running activity", async () => {
-	const workspace = createTempWorkspace();
+	const workspace = createConfiguredPipelineWorkspace();
 
 	const messages: Array<{ content: unknown; details?: { kind?: string } }> = [];
 	const runner: PipelineAgentRunner = async () => {
@@ -1005,7 +1007,7 @@ test("PipelineController keeps heartbeat internal during long-running activity",
 });
 
 test("PipelineController status reports agent update counters without duplicating chunk text", async () => {
-	const workspace = createTempWorkspace();
+	const workspace = createConfiguredPipelineWorkspace();
 
 	const messages: Array<{
 		content: unknown;
@@ -1573,4 +1575,48 @@ function commandContext(workspace: string, notifications: string[]) {
 		switchSession: async () => ({ cancelled: false }),
 		reload: async () => {},
 	} as any;
+}
+
+function createConfiguredPipelineWorkspace(): string {
+	const workspace = createTempWorkspace();
+	writeDefaultConfig(workspace);
+	writeFile(
+		workspace,
+		".acp/acp-agents.json",
+		JSON.stringify(
+			{
+				agents: {
+					"Codex CLI": { command: "codex", args: [], env: {} },
+					"Pi Agent": { command: "pi-acp", args: [], env: {} },
+					Vibe: { command: "vibe", args: [], env: {} },
+				},
+				pipeline: {
+					enabled: true,
+					instructionsMaxBytes: 262144,
+				},
+			},
+			null,
+			2,
+		),
+	);
+	writeFile(
+		workspace,
+		".acp/.sandcastle/config.json",
+		JSON.stringify(
+			{
+				promotion: "ask",
+				agents: {
+					"Vibe Sandcastle": {
+						transport: "sandcastle",
+						provider: "vibe",
+						model: "mistral-large-latest",
+					},
+				},
+			},
+			null,
+			2,
+		),
+	);
+	writePlanExecuteVerifyPipeline(workspace);
+	return workspace;
 }

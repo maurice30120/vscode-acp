@@ -103,7 +103,7 @@ export function listSelectableAgentNames(
   return [...configured, ...virtualNames];
 }
 
-export function getPipelineDefinitionsForWorkspace(
+export function getPipelineProgramsForWorkspace(
   workspaceCwd: string = resolveWorkspaceIdentity().cwd,
   agentConfigs?: Record<string, AgentConfigEntry>,
 ): CompiledPipelineProgram[] {

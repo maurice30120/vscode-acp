@@ -243,23 +243,21 @@ Quand `acp.pipeline.enabled` est à `true`, chaque pipeline valide apparaît com
 Voir [doc_fr/pipelines-langgraph.md](doc_fr/pipelines-langgraph.md) · English: [docs/pipeline-a2a.md](docs/pipeline-a2a.md)
 
 ```yaml
-version: 2
+version: 3
 id: plan-execute-verify
 title: Plan Execute Verify
 
-primitives:
-  planner:
+nodes:
+  - id: planner
     agent: Cursor CLI
-    output: proposed_plan
-    sideEffects: none
     promptFile: ../agents/planner.md
     prompt: |
       Demande utilisateur :
       {{userPrompt}}
-
-steps:
-  - id: plan
-    use: planner
+    output:
+      name: plan
+      type: acp.plan/v1
+      format: markdown
 ```
 
 ---

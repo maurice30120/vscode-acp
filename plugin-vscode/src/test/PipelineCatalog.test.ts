@@ -4,300 +4,169 @@ import * as os from 'os';
 import * as path from 'path';
 
 import {
-  getPipelineDefinitionForAgent,
-  loadWorkspacePipelineDefinitions,
-  parsePipelineYaml,
+  getPipelineProgramForAgent,
+  loadWorkspacePipelinePrograms,
 } from '../config/PipelineCatalog';
-import { repoRoot } from './repoRoot';
-
-const VALID_PIPELINE = `
-version: 2
-id: feature-dev
-title: Feature Development
-
-primitives:
-  plan:
-    agent: Codex
-    output: proposed_plan
-    sideEffects: none
-    prompt: |
-      Plan this:
-      {{userPrompt}}
-  repo_search:
-    agent: Codex
-    output: markdown
-    sideEffects: none
-    prompt: |
-      Research:
-      {{steps.plan.output}}
-  test_search:
-    agent: Codex
-    output: markdown
-    sideEffects: none
-    prompt: |
-      Find tests:
-      {{steps.plan.output}}
-  synthesize:
-    agent: Codex
-    output: proposed_plan
-    sideEffects: none
-    prompt: |
-      Synthesize:
-      {{steps.investigate.branches.repo.output}}
-      {{steps.investigate.branches.tests.output}}
-  edit:
-    agent: Vibe
-    output: markdown
-    sideEffects: workspace
-    prompt: |
-      Implement:
-      {{steps.approve.output}}
-
-steps:
-  - id: plan
-    use: plan
-  - id: investigate
-    type: parallel
-    branches:
-      - id: repo
-        use: repo_search
-      - id: tests
-        use: test_search
-  - id: synthesize
-    use: synthesize
-  - id: approve
-    type: approval
-    input: "{{steps.synthesize.output}}"
-  - id: edit
-    use: edit
-`;
 
 suite('PipelineCatalog', () => {
-  test('parses a valid v2 primitive-first YAML pipeline', () => {
-    const result = parsePipelineYaml(
-      VALID_PIPELINE,
-      '/repo/.acp/pipelines/feature-dev.yaml',
-      { Codex: {}, Vibe: {} },
-    );
-
-    assert.deepStrictEqual(result.errors, []);
-    assert.ok(result.definition);
-    assert.strictEqual(result.definition.version, 2);
-    assert.strictEqual(result.definition.title, 'Feature Development');
-    assert.strictEqual(result.definition.primitives.edit.sideEffects, 'workspace');
-    assert.strictEqual(result.definition.primitives.edit.permissions, 'ask');
-    assert.strictEqual(result.definition.steps.length, 5);
-  });
-
-  test('accepts primitive permissions allowAll', () => {
-    const result = parsePipelineYaml(
-      VALID_PIPELINE.replace('sideEffects: none', 'sideEffects: none\n    permissions: allowAll'),
-      '/repo/.acp/pipelines/feature-dev.yaml',
-      { Codex: {}, Vibe: {} },
-    );
-
-    assert.deepStrictEqual(result.errors, []);
-    assert.strictEqual(result.definition?.primitives.plan.permissions, 'allowAll');
-  });
-
-  test('defaults primitive permissions to ask when absent', () => {
-    const result = parsePipelineYaml(
-      VALID_PIPELINE,
-      '/repo/.acp/pipelines/feature-dev.yaml',
-      { Codex: {}, Vibe: {} },
-    );
-
-    assert.deepStrictEqual(result.errors, []);
-    assert.strictEqual(result.definition?.primitives.plan.permissions, 'ask');
-  });
-
-  test('rejects invalid primitive permissions', () => {
-    const result = parsePipelineYaml(
-      VALID_PIPELINE.replace('sideEffects: none', 'sideEffects: none\n    permissions: yolo'),
-      '/repo/.acp/pipelines/feature-dev.yaml',
-      { Codex: {}, Vibe: {} },
-    );
-
-    assert.ok(result.errors.some(error => error.includes('permissions must be "ask" or "allowAll"')));
-    assert.strictEqual(result.definition, undefined);
-  });
-
-  test('parses the repository example pipeline', () => {
-    const text = fs.readFileSync(
-      path.join(repoRoot(), '.acp', 'pipelines', 'plan-execute-verify.yaml'),
-      'utf8',
-    );
-    const result = parsePipelineYaml(
-      text,
-      '/repo/.acp/pipelines/plan-execute-verify.yaml',
-      { 'Cursor CLI': {}, 'Vibe Sandcastle': {}, 'Pi Sandcastle': {}, Vibe: {}, 'Codex CLI': {}, 'Claude Code': {} },
-    );
-
-    assert.deepStrictEqual(result.errors, []);
-    assert.strictEqual(result.definition?.id, 'plan-execute-verify');
-    assert.strictEqual(result.definition?.primitives.planner.permissions, 'allowAll');
-    assert.strictEqual(result.definition?.primitives.implementer.permissions, 'allowAll');
-    assert.strictEqual(result.definition?.primitives.verifier.permissions, 'allowAll');
-  });
-
-  test('resolves promptFile content before returning workspace definitions', () => {
-    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-prompt-file-'));
+  test('loads compiled v3 pipeline programs from workspace YAML', () => {
+    const workspace = makeWorkspace();
     try {
-      fs.mkdirSync(path.join(workspace, '.acp', 'pipelines'), { recursive: true });
+      writePipeline(workspace, 'feature-dev.yaml', `
+version: 3
+id: feature-dev
+title: Feature Development
+nodes:
+  - id: plan
+    agent: Codex
+    prompt: Plan this.
+    output:
+      name: plan
+      type: acp.plan/v1
+      format: markdown
+  - id: edit
+    agent: Vibe
+    needs: [plan]
+    prompt: Implement it.
+    output:
+      name: changes
+      type: acp.changes/v1
+      format: markdown
+`);
+
+      const result = loadWorkspacePipelinePrograms(workspace, { Codex: {}, Vibe: {} });
+
+      assert.deepStrictEqual(result.errors, []);
+      assert.deepStrictEqual(result.programs.map(program => program.id), ['feature-dev']);
+      assert.strictEqual(result.programs[0].title, 'Feature Development');
+      assert.deepStrictEqual(result.programs[0].rootNodeIds, ['plan']);
+      assert.deepStrictEqual(result.programs[0].terminalNodeIds, ['edit']);
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  test('resolves v3 promptFile content before returning workspace programs', () => {
+    const workspace = makeWorkspace();
+    try {
       fs.mkdirSync(path.join(workspace, '.acp', 'agents'), { recursive: true });
       fs.writeFileSync(path.join(workspace, '.acp', 'agents', 'planner.md'), 'Planner instructions.', 'utf8');
-      fs.writeFileSync(path.join(workspace, '.acp', 'pipelines', 'prompt-file.yaml'), `
-version: 2
+      writePipeline(workspace, 'prompt-file.yaml', `
+version: 3
 id: prompt-file
 title: Prompt File
-
-primitives:
-  plan:
+nodes:
+  - id: plan
     agent: Codex
-    output: proposed_plan
-    sideEffects: none
     promptFile: ../agents/planner.md
-    prompt: |
-      User request:
-      {{userPrompt}}
+    output:
+      name: plan
+      type: acp.plan/v1
+      format: markdown
+`);
 
-steps:
-  - id: plan
-    use: plan
-`, 'utf8');
+      const result = loadWorkspacePipelinePrograms(workspace, { Codex: {} });
 
-      const definitions = loadWorkspacePipelineDefinitions(workspace, { Codex: {} });
-
-      assert.strictEqual(definitions.length, 1);
-      assert.strictEqual(definitions[0].primitives.plan.promptFile, undefined);
-      assert.match(definitions[0].primitives.plan.prompt ?? '', /Planner instructions\./);
-      assert.match(definitions[0].primitives.plan.prompt ?? '', /User request:/);
+      assert.deepStrictEqual(result.errors, []);
+      assert.strictEqual(result.programs[0].nodes[0].prompt, 'Planner instructions.');
+      assert.strictEqual(result.programs[0].nodes[0].promptFile, undefined);
     } finally {
       fs.rmSync(workspace, { recursive: true, force: true });
     }
   });
 
-  test('keeps a pipeline visible when promptFile is missing but inline prompt exists', () => {
-    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-missing-prompt-file-'));
+  test('keeps valid v3 programs while reporting invalid pipeline files', () => {
+    const workspace = makeWorkspace();
     try {
-      fs.mkdirSync(path.join(workspace, '.acp', 'pipelines'), { recursive: true });
-      fs.writeFileSync(path.join(workspace, '.acp', 'pipelines', 'inline-fallback.yaml'), `
-version: 2
-id: inline-fallback
-title: Inline Fallback
-
-primitives:
-  plan:
+      writePipeline(workspace, 'bad.yaml', 'version: 3\nid: bad\ntitle: Bad\n');
+      writePipeline(workspace, 'good.yaml', `
+version: 3
+id: good
+title: Good
+nodes:
+  - id: plan
     agent: Codex
-    output: proposed_plan
-    sideEffects: none
-    promptFile: ../agents/missing.md
-    prompt: |
-      User request:
-      {{userPrompt}}
+    prompt: Plan this.
+    output:
+      name: plan
+      type: acp.plan/v1
+      format: markdown
+`);
 
-steps:
-  - id: plan
-    use: plan
-`, 'utf8');
+      const result = loadWorkspacePipelinePrograms(workspace, { Codex: {} });
 
-      const definitions = loadWorkspacePipelineDefinitions(workspace, { Codex: {} });
-
-      assert.strictEqual(definitions.length, 1);
-      assert.strictEqual(definitions[0].title, 'Inline Fallback');
-      assert.match(definitions[0].primitives.plan.prompt ?? '', /User request:/);
+      assert.deepStrictEqual(result.programs.map(program => program.id), ['good']);
+      assert.match(result.errors[0]?.errors.join('\n') ?? '', /nodes must be an array/);
     } finally {
       fs.rmSync(workspace, { recursive: true, force: true });
     }
   });
 
-  test('resolves workspace pipelines by id or title', () => {
-    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-id-resolution-'));
+  test('reports YAML parse errors', () => {
+    const workspace = makeWorkspace();
     try {
-      fs.mkdirSync(path.join(workspace, '.acp', 'pipelines'), { recursive: true });
-      fs.writeFileSync(path.join(workspace, '.acp', 'pipelines', 'pev.yaml'), `
-version: 2
+      writePipeline(workspace, 'broken.yaml', 'version: 3\nnodes:\n  - : broken');
+
+      const result = loadWorkspacePipelinePrograms(workspace, { Codex: {} });
+
+      assert.strictEqual(result.programs.length, 0);
+      assert.match(result.errors[0]?.errors.join('\n') ?? '', /YAML parse error/);
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  test('resolves v3 programs by id or title', () => {
+    const workspace = makeWorkspace();
+    try {
+      writePipeline(workspace, 'pev.yaml', `
+version: 3
 id: pev
 title: Plan Execute Verify
-
-primitives:
-  plan:
-    agent: Codex
-    output: proposed_plan
-    sideEffects: none
-    prompt: "{{userPrompt}}"
-
-steps:
+nodes:
   - id: plan
-    use: plan
-`, 'utf8');
+    agent: Codex
+    prompt: Plan this.
+    output:
+      name: plan
+      type: acp.plan/v1
+      format: markdown
+`);
 
-      assert.strictEqual(getPipelineDefinitionForAgent('pev', workspace, { Codex: {} })?.title, 'Plan Execute Verify');
-      assert.strictEqual(getPipelineDefinitionForAgent('Plan Execute Verify', workspace, { Codex: {} })?.id, 'pev');
+      assert.strictEqual(getPipelineProgramForAgent('pev', workspace, { Codex: {} })?.title, 'Plan Execute Verify');
+      assert.strictEqual(getPipelineProgramForAgent('Plan Execute Verify', workspace, { Codex: {} })?.id, 'pev');
     } finally {
       fs.rmSync(workspace, { recursive: true, force: true });
     }
   });
 
-  test('rejects v1 pipelines', () => {
-    const result = parsePipelineYaml(
-      VALID_PIPELINE.replace('version: 2', 'version: 1'),
-      '/repo/.acp/pipelines/feature-dev.yaml',
-      { Codex: {}, Vibe: {} },
-    );
+  test('refuses v2 definitions without conversion', () => {
+    const workspace = makeWorkspace();
+    try {
+      writePipeline(workspace, 'v2.yaml', `
+version: 2
+id: old
+title: Old Pipeline
+primitives: {}
+steps: []
+`);
 
-    assert.ok(result.errors.some(error => error.includes('version must be 2')));
-    assert.strictEqual(result.definition, undefined);
-  });
+      const result = loadWorkspacePipelinePrograms(workspace, { Codex: {} });
 
-  test('rejects primitives that reference missing agents', () => {
-    const result = parsePipelineYaml(
-      VALID_PIPELINE,
-      '/repo/.acp/pipelines/feature-dev.yaml',
-      { Codex: {} },
-    );
-
-    assert.ok(result.errors.some(error => error.includes('Vibe')));
-    assert.strictEqual(result.definition, undefined);
-  });
-
-  test('rejects duplicate step ids', () => {
-    const result = parsePipelineYaml(
-      VALID_PIPELINE.replace('id: investigate', 'id: plan'),
-      '/repo/.acp/pipelines/feature-dev.yaml',
-      { Codex: {}, Vibe: {} },
-    );
-
-    assert.ok(result.errors.some(error => error.includes('duplicated')));
-  });
-
-  test('rejects template references to future steps', () => {
-    const result = parsePipelineYaml(
-      VALID_PIPELINE.replace('{{userPrompt}}', '{{steps.synthesize.output}}'),
-      '/repo/.acp/pipelines/feature-dev.yaml',
-      { Codex: {}, Vibe: {} },
-    );
-
-    assert.ok(result.errors.some(error => error.includes('previous step')));
-  });
-
-  test('rejects workspace side effects before approval', () => {
-    const result = parsePipelineYaml(
-      VALID_PIPELINE.replace('repo_search:\n    agent: Codex\n    output: markdown\n    sideEffects: none', 'repo_search:\n    agent: Codex\n    output: markdown\n    sideEffects: workspace'),
-      '/repo/.acp/pipelines/feature-dev.yaml',
-      { Codex: {}, Vibe: {} },
-    );
-
-    assert.ok(result.errors.some(error => error.includes('cannot use workspace side effects')));
-  });
-
-  test('rejects direct workspace steps before approval', () => {
-    const result = parsePipelineYaml(
-      VALID_PIPELINE.replace('  - id: plan\n    use: plan', '  - id: edit_early\n    use: edit'),
-      '/repo/.acp/pipelines/feature-dev.yaml',
-      { Codex: {}, Vibe: {} },
-    );
-
-    assert.ok(result.errors.some(error => error.includes('before an approval step')));
+      assert.strictEqual(result.programs.length, 0);
+      assert.match(result.errors[0]?.errors.join('\n') ?? '', /Unsupported ACP pipeline version 2/);
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
   });
 });
+
+function makeWorkspace(): string {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-catalog-'));
+}
+
+function writePipeline(workspace: string, fileName: string, content: string): void {
+  const pipelineDir = path.join(workspace, '.acp', 'pipelines');
+  fs.mkdirSync(pipelineDir, { recursive: true });
+  fs.writeFileSync(path.join(pipelineDir, fileName), content.trimStart(), 'utf8');
+}

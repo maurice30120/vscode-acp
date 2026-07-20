@@ -241,23 +241,21 @@ When `acp.pipeline.enabled` is `true`, each valid pipeline appears as a virtual 
 See [docs/pipeline-a2a.md](docs/pipeline-a2a.md) · French: [doc_fr/pipelines-langgraph.md](doc_fr/pipelines-langgraph.md)
 
 ```yaml
-version: 2
+version: 3
 id: plan-execute-verify
 title: Plan Execute Verify
 
-primitives:
-  planner:
+nodes:
+  - id: planner
     agent: Cursor CLI
-    output: proposed_plan
-    sideEffects: none
     promptFile: ../agents/planner.md
     prompt: |
       User request:
       {{userPrompt}}
-
-steps:
-  - id: plan
-    use: planner
+    output:
+      name: plan
+      type: acp.plan/v1
+      format: markdown
 ```
 
 ---

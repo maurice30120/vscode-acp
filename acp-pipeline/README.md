@@ -9,13 +9,13 @@ injecte via des callbacks.
 
 ## Ce que le package fournit
 
-- Les types publics de pipeline: `PipelineDefinition`,
-  `PipelinePrimitiveDefinition`, evenements pipeline, etc.
-- La validation des definitions pipeline.
-- L'execution de pipeline avec plan, approbation, reprise, annulation, branches
-  paralleles, evenements de statut et session updates.
+- Les types publics de pipeline v3: `PipelineV3Definition`,
+  `CompiledPipelineProgram`, evenements pipeline, etc.
+- La compilation et validation des definitions pipeline v3.
+- L'execution de pipeline par DAG de `nodes`, pauses d'approbation, reprise,
+  annulation, parallele, evenements de statut et session updates.
 - Les helpers autour de `<proposed_plan>`.
-- La resolution des `promptFile` attaches aux primitives.
+- La resolution des `promptFile` attaches aux nodes v3.
 
 ## Ce qui reste cote extension
 
@@ -48,9 +48,9 @@ import { PipelineService } from '@acp-client/pipeline';
 const service = new PipelineService(
   () => workspaceCwd,
   {
-    getPipelineDefinitions: () => pipelines,
-    getPipelineDefinitionForAgent: agentName =>
-      pipelines.find(pipeline => pipeline.title === agentName) ?? null,
+    getPipelinePrograms: () => programs,
+    getPipelineProgramForAgent: agentName =>
+      programs.find(program => program.title === agentName || program.id === agentName) ?? null,
     getAgentConfigs: () => agentConfigs,
     runAgent: input => runConcreteAgent(input),
     isAgentSandcastle: (agentName, configs) =>
@@ -86,11 +86,10 @@ npm run test:watch -w @acp-client/pipeline
 
 Structure :
 
-- `test/PipelineValidator.test.ts` — validation YAML v2, erreurs structurelles, templates, parallele.
-- `test/PipelinePromptFileResolver.test.ts` — resolution `promptFile`, securite path, taille max.
-- `test/PipelineGraphCompiler.test.ts` — substitution `renderTemplate`.
-- `test/PipelineRunRegistry.test.ts` — annulation, abort controller.
-- `test/engine/PipelineRoleLabels.test.ts` — mapping roles/phases.
+- `test/PipelineV3Compiler.test.ts` — compilation YAML v3, DAG, inputs et erreurs structurelles.
+- `test/PipelineV3Catalog.test.ts` — catalogue v3, resolution `promptFile`, securite path, taille max.
+- `test/PipelineRuntime.test.ts` — execution, pauses, reprise, annulation et parallele.
+- `test/PipelineService.test.ts` — integration service/runtime/adaptateur.
 - `test/helpers.ts` — fixtures et utilitaires partages.
 
 Les tests importent l'**API publique compilee** (`../dist/index.js`) et non les sources.

@@ -1,7 +1,7 @@
 import type { PromptResponse } from '@agentclientprotocol/sdk';
 import type * as vscode from 'vscode';
 
-import { getPipelineDefinitionForAgent, getPipelineProgramForAgent } from '../../config/PipelineCatalog';
+import { getPipelineProgramForAgent } from '../../config/PipelineCatalog';
 import { isVirtualAgentName } from '../../config/VirtualAgentCatalog';
 import type { SessionManager } from '../../core/SessionManager';
 import type { VirtualSessionDescriptor, VirtualSessionRuntime } from '../../core/VirtualSessionRuntime';
@@ -59,7 +59,6 @@ export class OrchestrationRuntime implements VirtualSessionRuntime, vscode.Dispo
       sessionId: `pipeline_${identity}`,
       agentId: `pipeline_agent_${identity}`,
       displayName: getPipelineProgramForAgent(agentName, cwd)?.title
-        ?? getPipelineDefinitionForAgent(agentName, cwd)?.title
         ?? agentName,
     };
   }

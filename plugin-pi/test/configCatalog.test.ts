@@ -9,17 +9,11 @@ import {
 	parseSandcastleConfig,
 } from "../src/catalog/config.js";
 import {
-	getPipelineDefinitionForAgent,
-	getPipelineDefinitions,
 	getPipelineProgramForAgent,
 	getPipelinePrograms,
-	loadPipelineDefinitionsFromRoot,
 	loadPipelineProgramsFromRoot,
-	loadWorkspacePipelineDefinitions,
 	loadWorkspacePipelinePrograms,
-	parsePipelineYaml,
 } from "../src/catalog/pipelineCatalog.js";
-import { resolvePipelinePromptFiles } from "../src/catalog/promptFileResolver.js";
 import {
 	loadSkillCatalog,
 	renderSkillsCatalog,
@@ -61,17 +55,27 @@ test("loads .acp/acp-agents.json compatible native ACP config", () => {
 	assert.equal(config.pipeline.instructionsMaxBytes, 1234);
 });
 
-test("loadPiAcpConfig loads the embedded plugin config for an empty workspace", () => {
+test("loadPiAcpConfig loads config from the workspace root", () => {
 	const workspace = createTempWorkspace();
+	writeDefaultConfig(workspace);
 
 	const config = loadPiAcpConfig(workspace);
 
 	assert.deepEqual(config.errors, []);
-	assert.equal(config.agents["Codex CLI"].command, "npx");
-	assert.equal(config.agents["Pi Agent"].command, "npx");
+	assert.equal(config.agents["Codex CLI"].command, "codex");
+	assert.equal(config.agents["Pi Agent"].command, "pi-acp");
 	assert.equal(config.pipeline.enabled, true);
 	assert.equal(config.pipeline.instructionsMaxBytes, 262144);
-	assert.match(config.filePath, /plugin-pi[\/\\]\.acp[\/\\]acp-agents\.json$/);
+	assert.equal(config.filePath, `${workspace}/.acp/acp-agents.json`);
+});
+
+test("loadPiAcpConfig reports missing workspace config without package fallback", () => {
+	const workspace = createTempWorkspace();
+
+	const config = loadPiAcpConfig(workspace);
+
+	assert.deepEqual(config.agents, {});
+	assert.match(config.errors.join("\n"), /Missing Pi ACP config at workspace root/);
 });
 
 test("parsePiAcpConfig reports JSON parse errors as empty config", () => {
@@ -230,9 +234,9 @@ test("parseSandcastleConfig reports explicit field errors", () => {
 
 test("loadSandcastleConfig missing file is an empty non-regression", () => {
 	const workspace = createTempWorkspace();
-	const pluginRoot = createTempWorkspace();
+	const configRoot = createTempWorkspace();
 
-	const config = loadSandcastleConfig(workspace, pluginRoot);
+	const config = loadSandcastleConfig(workspace, configRoot);
 
 	assert.deepEqual(config.errors, []);
 	assert.deepEqual(config.agents, {});
@@ -241,10 +245,9 @@ test("loadSandcastleConfig missing file is an empty non-regression", () => {
 
 test("loadPiAgentCatalog keeps native and Sandcastle agents disjoint but combines names for pipelines", () => {
 	const workspace = createTempWorkspace();
-	const pluginRoot = createTempWorkspace();
-	writeDefaultConfig(pluginRoot);
+	writeDefaultConfig(workspace);
 	writeFile(
-		pluginRoot,
+		workspace,
 		".acp/.sandcastle/config.json",
 		JSON.stringify({
 			promotion: "autoReject",
@@ -258,7 +261,7 @@ test("loadPiAgentCatalog keeps native and Sandcastle agents disjoint but combine
 		}),
 	);
 
-	const catalog = loadPiAgentCatalog(workspace, pluginRoot);
+	const catalog = loadPiAgentCatalog(workspace);
 
 	assert.deepEqual(catalog.errors, []);
 	assert.ok(catalog.native.agents["Codex CLI"]);
@@ -267,12 +270,11 @@ test("loadPiAgentCatalog keeps native and Sandcastle agents disjoint but combine
 	assert.equal(catalog.agents["Codex Sandcastle"].transport, "sandcastle");
 });
 
-test("duplicate native and Sandcastle agent names are errors and make pipelines referencing the name invalid", () => {
+test("duplicate native and Sandcastle agent names are errors and make v3 pipelines referencing the name invalid", () => {
 	const workspace = createTempWorkspace();
-	const pluginRoot = createTempWorkspace();
-	writeDefaultConfig(pluginRoot);
+	writeDefaultConfig(workspace);
 	writeFile(
-		pluginRoot,
+		workspace,
 		".acp/.sandcastle/config.json",
 		JSON.stringify({
 			promotion: "ask",
@@ -285,131 +287,87 @@ test("duplicate native and Sandcastle agent names are errors and make pipelines 
 			},
 		}),
 	);
-	writeFile(
-		pluginRoot,
-		".acp/pipelines/duplicate.yaml",
-		[
-			"version: 2",
-			"id: duplicate",
-			"title: Duplicate",
-			"primitives:",
-			"  planner:",
-			"    agent: Codex CLI",
-			'    prompt: "{{userPrompt}}"',
-			"    output: proposed_plan",
-			"steps:",
-			"  - id: planner",
-			"    use: planner",
-			"",
-		].join("\n"),
-	);
+	writePipelineFile(workspace, "duplicate.yaml", [
+		"version: 3",
+		"id: duplicate",
+		"title: Duplicate",
+		"nodes:",
+		"  - id: planner",
+		"    agent: Codex CLI",
+		"    prompt: '{{userPrompt}}'",
+		"    output:",
+		"      name: plan",
+		"      type: acp.plan/v1",
+		"      format: markdown",
+		"",
+	]);
 	const errors: string[] = [];
 
-	const catalog = loadPiAgentCatalog(workspace, pluginRoot);
-	const definitions = loadPipelineDefinitionsFromRoot({
+	const catalog = loadPiAgentCatalog(workspace);
+	const result = loadPipelineProgramsFromRoot({
 		workspaceCwd: workspace,
-		configRoot: pluginRoot,
+		configRoot: workspace,
 		agentConfigs: catalog.agents,
 		logger: {
 			log: () => {},
-			error: message => errors.push(message),
+			error: (message: string) => errors.push(message),
 		},
 	});
 
 	assert.match(catalog.errors.join("\n"), /declared in both/);
 	assert.equal(catalog.agents["Codex CLI"], undefined);
-	assert.deepEqual(definitions, []);
+	assert.deepEqual(result.programs, []);
 	assert.match(errors.join("\n"), /Codex CLI/);
 });
 
-test("parsePipelineYaml reports YAML parse errors", () => {
-	const result = parsePipelineYaml(
-		"version: 2\nprimitives:\n  - : broken",
-		"broken.yaml",
-		{ "Codex CLI": { command: "codex" } },
-	);
+test("loadPipelineProgramsFromRoot reports YAML parse errors", () => {
+	const workspace = createTempWorkspace();
+	writeFile(workspace, ".acp/pipelines/broken.yaml", "version: 3\nnodes:\n  - : broken");
 
-	assert.equal(result.definition, undefined);
-	assert.match(result.errors.join("\n"), /YAML parse error/);
+	const result = loadPipelineProgramsFromRoot({
+		workspaceCwd: workspace,
+		configRoot: workspace,
+		agentConfigs: { "Codex CLI": { command: "codex" } },
+	});
+
+	assert.equal(result.programs.length, 0);
+	assert.match(result.errors[0]?.errors.join("\n") ?? "", /YAML parse error/);
 });
 
-test("validates pipeline agent references against Pi config", () => {
-	const valid = parsePipelineYaml(
-		[
-			"version: 2",
-			"id: valid",
-			"title: Valid",
-			"primitives:",
-			"  planner:",
-			"    agent: Codex CLI",
-			'    prompt: "{{userPrompt}}"',
-			"    output: proposed_plan",
-			"steps:",
-			"  - id: planner",
-			"    use: planner",
-			"",
-		].join("\n"),
-		"valid.yaml",
-		{ "Codex CLI": { command: "codex" } },
-	);
+test("validates v3 pipeline agent references against Pi config", () => {
+	const workspace = createTempWorkspace();
+	writePipelineFile(workspace, "invalid.yaml", [
+		"version: 3",
+		"id: invalid",
+		"title: Invalid",
+		"nodes:",
+		"  - id: planner",
+		"    agent: Missing Agent",
+		"    prompt: '{{userPrompt}}'",
+		"    output:",
+		"      name: plan",
+		"      type: acp.plan/v1",
+		"      format: markdown",
+		"",
+	]);
 
-	assert.equal(valid.errors.length, 0);
-	assert.equal(valid.definition?.title, "Valid");
+	const result = loadWorkspacePipelinePrograms(workspace, {
+		"Codex CLI": { command: "codex" },
+	});
 
-	const invalid = parsePipelineYaml(
-		[
-			"version: 2",
-			"id: invalid",
-			"title: Invalid",
-			"primitives:",
-			"  planner:",
-			"    agent: Missing Agent",
-			'    prompt: "{{userPrompt}}"',
-			"    output: proposed_plan",
-			"steps:",
-			"  - id: planner",
-			"    use: planner",
-			"",
-		].join("\n"),
-		"invalid.yaml",
-		{ "Codex CLI": { command: "codex" } },
-	);
-
-	assert.match(invalid.errors.join("\n"), /Missing Agent/);
+	assert.equal(result.programs.length, 0);
+	assert.match(result.errors[0]?.errors.join("\n") ?? "", /Missing Agent/);
 });
 
-test("getPipelinePrograms loads embedded v3 pipelines for an empty workspace", () => {
+test("getPipelinePrograms returns no pipelines for an unconfigured workspace", () => {
 	const workspace = createTempWorkspace();
 
 	const programs = getPipelinePrograms(workspace);
 
-	assert.deepEqual(
-		programs.map((program) => program.id),
-		[
-			"async-use-case-review",
-			"grill-skeleton-tdd",
-			"grill-spec-tickets-implement-review",
-			"plan-execute-verify",
-			"vibe",
-		],
-	);
+	assert.deepEqual(programs, []);
 });
 
-test("loads .acp/pipelines/*.yaml from workspace", () => {
-	const workspace = createTempWorkspace();
-	writeDefaultConfig(workspace);
-	writeDemoPipeline(workspace);
-
-	const definitions = loadWorkspacePipelineDefinitions(workspace, {
-		"Codex CLI": { command: "codex" },
-		"Pi Agent": { command: "pi-acp" },
-	});
-
-	assert.equal(definitions.length, 1);
-	assert.equal(definitions[0].title, "Demo Pipeline");
-});
-
-test("loads only compiled v3 pipeline programs from workspace", () => {
+test("loads compiled v3 pipeline programs from workspace", () => {
 	const workspace = createTempWorkspace();
 	writeDefaultConfig(workspace);
 	writePipelineFile(workspace, "demo.yaml", [
@@ -450,36 +408,49 @@ test("v3 pipeline program loader refuses v2 without conversion", () => {
 	assert.match(result.errors[0]?.errors.join("\n") ?? "", /Unsupported ACP pipeline version 2/);
 });
 
-test("loads .acp/pipelines/*.yml from workspace", () => {
+test("loads .acp/pipelines/*.yml as v3 pipeline programs", () => {
 	const workspace = createTempWorkspace();
 	writeDefaultConfig(workspace);
 	writePipelineFile(workspace, "short.yml", [
-		"version: 2",
+		"version: 3",
 		"id: short",
 		"title: Short Pipeline",
-		"primitives:",
-		"  planner:",
-		"    agent: Codex CLI",
-		'    prompt: "{{userPrompt}}"',
-		"    output: proposed_plan",
-		"steps:",
+		"nodes:",
 		"  - id: planner",
-		"    use: planner",
+		"    agent: Codex CLI",
+		"    prompt: '{{userPrompt}}'",
+		"    output:",
+		"      name: plan",
+		"      type: acp.plan/v1",
+		"      format: markdown",
 		"",
 	]);
 
-	const definitions = loadWorkspacePipelineDefinitions(workspace, {
+	const result = loadWorkspacePipelinePrograms(workspace, {
 		"Codex CLI": { command: "codex" },
 	});
 
-	assert.deepEqual(
-		definitions.map((definition) => definition.id),
-		["short"],
-	);
+	assert.deepEqual(result.errors, []);
+	assert.deepEqual(result.programs.map((program) => program.id), ["short"]);
 });
 
-test("getPipelineDefinitionForAgent resolves by id or title", () => {
+test("getPipelineProgramForAgent resolves by id or title", () => {
 	const workspace = createTempWorkspace();
+	writeDefaultConfig(workspace);
+	writePipelineFile(workspace, "plan-execute-verify.yaml", [
+		"version: 3",
+		"id: plan-execute-verify",
+		"title: Plan Execute Verify",
+		"nodes:",
+		"  - id: planner",
+		"    agent: Codex CLI",
+		"    prompt: '{{userPrompt}}'",
+		"    output:",
+		"      name: plan",
+		"      type: acp.plan/v1",
+		"      format: markdown",
+		"",
+	]);
 
 	assert.equal(
 		getPipelineProgramForAgent(workspace, "plan-execute-verify")?.title,
@@ -489,253 +460,73 @@ test("getPipelineDefinitionForAgent resolves by id or title", () => {
 		getPipelineProgramForAgent(workspace, "Plan Execute Verify")?.id,
 		"plan-execute-verify",
 	);
-	assert.equal(getPipelineDefinitionForAgent(workspace, "missing"), null);
 	assert.equal(getPipelineProgramForAgent(workspace, "missing"), null);
 });
 
 test("workspace fixture loader ignores .acp/teams/*.yaml", () => {
 	const workspace = createTempWorkspace();
 	writeDefaultConfig(workspace);
-	writeDemoPipeline(workspace);
+	writePipelineFile(workspace, "demo.yaml", [
+		"version: 3",
+		"id: demo",
+		"title: Demo Pipeline",
+		"nodes:",
+		"  - id: planner",
+		"    agent: Codex CLI",
+		"    prompt: '{{userPrompt}}'",
+		"    output:",
+		"      name: plan",
+		"      type: acp.plan/v1",
+		"      format: markdown",
+		"",
+	]);
 	writeDemoTeam(workspace);
 
-	const definitions = loadWorkspacePipelineDefinitions(workspace, {
+	const result = loadWorkspacePipelinePrograms(workspace, {
 		"Codex CLI": { command: "codex" },
-		"Pi Agent": { command: "pi-acp" },
 	});
 
-	assert.deepEqual(
-		definitions.map((definition) => definition.title),
-		["Demo Pipeline"],
-	);
+	assert.deepEqual(result.programs.map((program) => program.title), ["Demo Pipeline"]);
 });
 
-test("loadWorkspacePipelineDefinitions logs invalid pipeline files and keeps valid ones", () => {
+test("loadWorkspacePipelinePrograms logs invalid pipeline files and keeps valid ones", () => {
 	const workspace = createTempWorkspace();
 	writeDefaultConfig(workspace);
-	writePipelineFile(workspace, "bad.yaml", ["version: 2", "id: bad", "title: Bad"]);
-	writeDemoPipeline(workspace);
+	writePipelineFile(workspace, "bad.yaml", ["version: 3", "id: bad", "title: Bad"]);
+	writePipelineFile(workspace, "good.yaml", [
+		"version: 3",
+		"id: good",
+		"title: Good",
+		"nodes:",
+		"  - id: planner",
+		"    agent: Codex CLI",
+		"    prompt: '{{userPrompt}}'",
+		"    output:",
+		"      name: plan",
+		"      type: acp.plan/v1",
+		"      format: markdown",
+		"",
+	]);
 	const errors: string[] = [];
 
-	const definitions = loadWorkspacePipelineDefinitions(
+	const result = loadWorkspacePipelinePrograms(
 		workspace,
-		{
-			"Codex CLI": { command: "codex" },
-			"Pi Agent": { command: "pi-acp" },
-		},
+		{ "Codex CLI": { command: "codex" } },
 		{
 			log: () => {},
-			error: (message) => errors.push(message),
+			error: (message: string) => errors.push(message),
 		},
 	);
 
-	assert.deepEqual(
-		definitions.map((definition) => definition.id),
-		["demo"],
-	);
+	assert.deepEqual(result.programs.map((program) => program.id), ["good"]);
 	assert.match(errors.join("\n"), /Ignoring invalid ACP pipeline/);
 });
 
-test("primitive requires either prompt or promptFile", () => {
-	const missing = parsePipelineYaml(
-		[
-			"version: 2",
-			"id: missing",
-			"title: Missing",
-			"primitives:",
-			"  planner:",
-			"    agent: Codex CLI",
-			"    output: proposed_plan",
-			"steps:",
-			"  - id: planner",
-			"    use: planner",
-			"",
-		].join("\n"),
-		"missing.yaml",
-		{ "Codex CLI": { command: "codex" } },
-	);
-
-	assert.match(
-		missing.errors.join("\n"),
-		/must define either prompt or promptFile/,
-	);
-	assert.equal(missing.definition, undefined);
-});
-
-test("promptFile can be resolved relative to the pipeline YAML file", () => {
+test("v3 promptFile paths resolve from workspace config root", () => {
 	const workspace = createTempWorkspace();
-	writeDefaultConfig(workspace);
-	writeFile(workspace, ".acp/pipelines/prompts/planner.md", "Relative plan.");
-	writePipelineFile(workspace, "plan.yaml", [
-		"version: 2",
-		"id: plan",
-		"title: Plan Pipeline",
-		"primitives:",
-		"  planner:",
-		"    agent: Codex CLI",
-		"    promptFile: prompts/planner.md",
-		"    output: proposed_plan",
-		"steps:",
-		"  - id: planner",
-		"    use: planner",
-		"",
-	]);
-
-	const definitions = loadWorkspacePipelineDefinitions(workspace, {
-		"Codex CLI": { command: "codex" },
-	});
-
-	assert.equal(definitions.length, 1);
-	assert.equal(definitions[0].primitives.planner.prompt, "Relative plan.");
-});
-
-test("promptFile loads and composes the prompt (promptFile + blank line + prompt)", () => {
-	const workspace = createTempWorkspace();
-	writeDefaultConfig(workspace);
-	writeFile(workspace, ".acp/agents/planner.md", "You are a careful planner.");
-	writePipelineFile(workspace, "plan.yaml", [
-		"version: 2",
-		"id: plan",
-		"title: Plan Pipeline",
-		"primitives:",
-		"  planner:",
-		"    agent: Codex CLI",
-		"    promptFile: .acp/agents/planner.md",
-		"    prompt: |",
-		"      User request:",
-		"      {{userPrompt}}",
-		"    output: proposed_plan",
-		"    sideEffects: none",
-		"steps:",
-		"  - id: planner",
-		"    use: planner",
-		"",
-	]);
-
-	const definitions = loadWorkspacePipelineDefinitions(workspace, {
-		"Codex CLI": { command: "codex" },
-	});
-
-	assert.equal(definitions.length, 1);
-	const prompt = definitions[0].primitives.planner.prompt;
-	if (typeof prompt !== "string") {
-		assert.fail("expected planner prompt to be resolved");
-	}
-	assertIncludes(prompt, "You are a careful planner.");
-	assertIncludes(prompt, "User request:");
-	assert.ok(
-		prompt.indexOf("You are a careful planner.") <
-			prompt.indexOf("User request:"),
-	);
-	// promptFile content and inline prompt separated by a blank line
-	assertIncludes(prompt, "careful planner.\n\nUser request:");
-	assert.equal(definitions[0].primitives.planner.promptFile, undefined);
-});
-
-test("pipeline primitive permissions accepts allowAll and defaults to ask", () => {
-	const workspace = createTempWorkspace();
-	writeDefaultConfig(workspace);
-	writePipelineFile(workspace, "permissions.yaml", [
-		"version: 2",
-		"id: permissions",
-		"title: Permissions",
-		"primitives:",
-		"  planner:",
-		"    agent: Codex CLI",
-		"    prompt: '{{userPrompt}}'",
-		"    output: proposed_plan",
-		"    sideEffects: none",
-		"    permissions: allowAll",
-		"  reviewer:",
-		"    agent: Codex CLI",
-		"    prompt: '{{steps.planner.output}}'",
-		"    output: markdown",
-		"    sideEffects: none",
-		"steps:",
-		"  - id: planner",
-		"    use: planner",
-		"  - id: reviewer",
-		"    use: reviewer",
-		"",
-	]);
-
-	const definitions = loadWorkspacePipelineDefinitions(workspace, {
-		"Codex CLI": { command: "codex" },
-	});
-
-	assert.equal(definitions.length, 1);
-	assert.equal(definitions[0].primitives.planner.permissions, "allowAll");
-	assert.equal(definitions[0].primitives.reviewer.permissions, "ask");
-});
-
-test("pipeline primitive permissions rejects invalid values", () => {
-	const workspace = createTempWorkspace();
-	writeDefaultConfig(workspace);
-	writePipelineFile(workspace, "permissions.yaml", [
-		"version: 2",
-		"id: permissions",
-		"title: Permissions",
-		"primitives:",
-		"  planner:",
-		"    agent: Codex CLI",
-		"    prompt: '{{userPrompt}}'",
-		"    output: proposed_plan",
-		"    sideEffects: none",
-		"    permissions: yolo",
-		"steps:",
-		"  - id: planner",
-		"    use: planner",
-		"",
-	]);
-
-	const definitions = loadWorkspacePipelineDefinitions(workspace, {
-		"Codex CLI": { command: "codex" },
-	});
-
-	assert.equal(definitions.length, 0);
-});
-
-test("embedded promptFile paths resolve from config root, not workspace root", () => {
-	const workspace = createTempWorkspace();
-	const pluginRoot = createTempWorkspace();
-	writeFile(pluginRoot, ".acp/agents/planner.md", "Embedded planner.");
 	writeFile(workspace, ".acp/agents/planner.md", "Workspace planner.");
 	writeFile(
-		pluginRoot,
-		".acp/pipelines/plan.yaml",
-		[
-			"version: 2",
-			"id: plan",
-			"title: Plan Pipeline",
-			"primitives:",
-			"  planner:",
-			"    agent: Codex CLI",
-			"    promptFile: .acp/agents/planner.md",
-			"    output: proposed_plan",
-			"steps:",
-			"  - id: planner",
-			"    use: planner",
-			"",
-		].join("\n"),
-	);
-
-	const definitions = loadPipelineDefinitionsFromRoot({
-		workspaceCwd: workspace,
-		configRoot: pluginRoot,
-		agentConfigs: { "Codex CLI": { command: "codex" } },
-	});
-
-	assert.equal(definitions.length, 1);
-	assert.equal(definitions[0].primitives.planner.prompt, "Embedded planner.");
-});
-
-test("v3 embedded promptFile paths resolve from config root", () => {
-	const workspace = createTempWorkspace();
-	const pluginRoot = createTempWorkspace();
-	writeFile(pluginRoot, ".acp/agents/planner.md", "Embedded planner.");
-	writeFile(workspace, ".acp/agents/planner.md", "Workspace planner.");
-	writeFile(
-		pluginRoot,
+		workspace,
 		".acp/pipelines/plan.yaml",
 		[
 			"version: 3",
@@ -755,189 +546,12 @@ test("v3 embedded promptFile paths resolve from config root", () => {
 
 	const result = loadPipelineProgramsFromRoot({
 		workspaceCwd: workspace,
-		configRoot: pluginRoot,
+		configRoot: workspace,
 		agentConfigs: { "Codex CLI": { command: "codex" } },
 	});
 
 	assert.deepEqual(result.errors, []);
-	assert.equal(result.programs[0].nodes[0].prompt, "Embedded planner.");
-});
-
-test("directory promptFile renders the pipeline invalid", () => {
-	const workspace = createTempWorkspace();
-	writeDefaultConfig(workspace);
-	writeFile(workspace, ".acp/agents/planner/.keep", "");
-	writePipelineFile(workspace, "plan.yaml", [
-		"version: 2",
-		"id: plan",
-		"title: Plan Pipeline",
-		"primitives:",
-		"  planner:",
-		"    agent: Codex CLI",
-		"    promptFile: .acp/agents/planner",
-		"    output: proposed_plan",
-		"steps:",
-		"  - id: planner",
-		"    use: planner",
-		"",
-	]);
-
-	const definitions = loadWorkspacePipelineDefinitions(workspace, {
-		"Codex CLI": { command: "codex" },
-	});
-
-	assert.equal(definitions.length, 0);
-});
-
-test("promptFile alone (no inline prompt) is accepted", () => {
-	const workspace = createTempWorkspace();
-	writeDefaultConfig(workspace);
-	writeFile(workspace, ".acp/agents/planner.md", "Plan: {{userPrompt}}");
-	writePipelineFile(workspace, "plan.yaml", [
-		"version: 2",
-		"id: plan",
-		"title: Plan Pipeline",
-		"primitives:",
-		"  planner:",
-		"    agent: Codex CLI",
-		"    promptFile: .acp/agents/planner.md",
-		"    output: proposed_plan",
-		"steps:",
-		"  - id: planner",
-		"    use: planner",
-		"",
-	]);
-
-	const definitions = loadWorkspacePipelineDefinitions(workspace, {
-		"Codex CLI": { command: "codex" },
-	});
-
-	assert.equal(definitions.length, 1);
-	assert.equal(
-		definitions[0].primitives.planner.prompt,
-		"Plan: {{userPrompt}}",
-	);
-});
-
-test("missing promptFile renders the pipeline invalid", () => {
-	const workspace = createTempWorkspace();
-	writeDefaultConfig(workspace);
-	writePipelineFile(workspace, "plan.yaml", [
-		"version: 2",
-		"id: plan",
-		"title: Plan Pipeline",
-		"primitives:",
-		"  planner:",
-		"    agent: Codex CLI",
-		"    promptFile: .acp/agents/missing.md",
-		"    output: proposed_plan",
-		"steps:",
-		"  - id: planner",
-		"    use: planner",
-		"",
-	]);
-
-	const definitions = loadWorkspacePipelineDefinitions(workspace, {
-		"Codex CLI": { command: "codex" },
-	});
-
-	assert.equal(definitions.length, 0);
-});
-
-test("oversized promptFile renders the pipeline invalid", () => {
-	const workspace = createTempWorkspace();
-	writeDefaultConfig(workspace);
-	writeFile(workspace, ".acp/agents/planner.md", "0123456789".repeat(100));
-	writePipelineFile(workspace, "plan.yaml", [
-		"version: 2",
-		"id: plan",
-		"title: Plan Pipeline",
-		"primitives:",
-		"  planner:",
-		"    agent: Codex CLI",
-		"    promptFile: .acp/agents/planner.md",
-		"    output: proposed_plan",
-		"steps:",
-		"  - id: planner",
-		"    use: planner",
-		"",
-	]);
-
-	// Force a tiny max bytes by calling the resolver directly.
-	const result = parsePipelineYaml(
-		[
-			"version: 2",
-			"id: plan",
-			"title: Plan Pipeline",
-			"primitives:",
-			"  planner:",
-			"    agent: Codex CLI",
-			"    promptFile: .acp/agents/planner.md",
-			"    output: proposed_plan",
-			"steps:",
-			"  - id: planner",
-			"    use: planner",
-			"",
-		].join("\n"),
-		`${workspace}/.acp/pipelines/plan.yaml`,
-		{ "Codex CLI": { command: "codex" } },
-	);
-
-	const resolved = resolvePipelinePromptFiles(result.definition!.primitives, {
-		workspaceCwd: workspace,
-		maxBytes: 4,
-		pipelineFilePath: `${workspace}/.acp/pipelines/plan.yaml`,
-	});
-
-	assert.equal(resolved.errors.length, 1);
-	assert.match(resolved.errors[0].error, /exceeds max size/);
-});
-
-test("promptFile outside the workspace is rejected", () => {
-	const workspace = createTempWorkspace();
-	writeDefaultConfig(workspace);
-	writePipelineFile(workspace, "plan.yaml", [
-		"version: 2",
-		"id: plan",
-		"title: Plan Pipeline",
-		"primitives:",
-		"  planner:",
-		"    agent: Codex CLI",
-		"    promptFile: ../../etc/passwd",
-		"    output: proposed_plan",
-		"steps:",
-		"  - id: planner",
-		"    use: planner",
-		"",
-	]);
-
-	const result = parsePipelineYaml(
-		[
-			"version: 2",
-			"id: plan",
-			"title: Plan Pipeline",
-			"primitives:",
-			"  planner:",
-			"    agent: Codex CLI",
-			"    promptFile: ../../etc/passwd",
-			"    output: proposed_plan",
-			"steps:",
-			"  - id: planner",
-			"    use: planner",
-			"",
-		].join("\n"),
-		`${workspace}/.acp/pipelines/plan.yaml`,
-		{ "Codex CLI": { command: "codex" } },
-	);
-
-	const resolved = resolvePipelinePromptFiles(result.definition!.primitives, {
-		workspaceCwd: workspace,
-		maxBytes: 262144,
-		pipelineFilePath: `${workspace}/.acp/pipelines/plan.yaml`,
-	});
-
-	assert.equal(resolved.errors.length, 1);
-	assert.match(resolved.errors[0].error, /stay within/);
+	assert.equal(result.programs[0].nodes[0].prompt, "Workspace planner.");
 });
 
 test("loadSkillCatalog parses frontmatter and flags disable-model-invocation", () => {

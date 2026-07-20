@@ -24,8 +24,8 @@ export class PipelineParser {
       description: 'Pipeline schema version',
       type: 'number',
       required: true,
-      enumValues: ['2'],
-      example: '2',
+      enumValues: ['3'],
+      example: '3',
     },
     'id': {
       description: 'Unique identifier for the pipeline',
@@ -40,7 +40,7 @@ export class PipelineParser {
       example: 'Plan Execute Verify',
     },
     'agent': {
-      description: 'AI agent to execute this step/primitive',
+      description: 'AI agent to execute this node',
       type: 'string',
       required: false,
       example: 'Vibe',
@@ -77,27 +77,29 @@ export class PipelineParser {
       required: false,
       example: 'Create a detailed plan for the task',
     },
-    'primitives': {
-      description: 'Reusable agent configurations',
-      type: 'object',
-      required: false,
-    },
-    'steps': {
-      description: 'Ordered list of pipeline steps',
+    'nodes': {
+      description: 'Pipeline nodes',
       type: 'array',
       required: true,
     },
-    'use': {
-      description: 'Reference to a primitive by ID',
-      type: 'string',
+    'needs': {
+      description: 'Node dependencies',
+      type: 'array',
       required: false,
-      example: 'planner',
+      example: '[plan]',
     },
     'type': {
-      description: 'Step type (primitive, approval, etc.)',
+      description: 'Node type',
       type: 'string',
       required: false,
-      enumValues: ['primitive', 'approval'],
+      enumValues: ['agent', 'pause'],
+      example: 'pause',
+    },
+    'pause': {
+      description: 'Pause type',
+      type: 'string',
+      required: false,
+      enumValues: ['approval', 'question', 'promotion'],
       example: 'approval',
     },
   };
@@ -181,36 +183,29 @@ export class PipelineParser {
       const title = doc.title || id;
       const version = doc.version || 1;
 
-      // Extract primitives
-      const primitives: Record<string, any> = doc.primitives || {};
-
-      // Extract and process steps
       const steps: PipelineStep[] = [];
-      const rawSteps = doc.steps || [];
+      const rawNodes = Array.isArray(doc.nodes) ? doc.nodes : [];
 
-      for (const stepDef of rawSteps) {
-        if (!stepDef || typeof stepDef !== 'object') {
+      for (const nodeDef of rawNodes) {
+        if (!nodeDef || typeof nodeDef !== 'object') {
           continue;
         }
 
+        const output = typeof nodeDef.output === 'object' && nodeDef.output !== null
+          ? nodeDef.output.name
+          : nodeDef.output;
         const step: PipelineStep = {
-          id: stepDef.id || `step-${steps.length}`,
-          type: stepDef.type || 'primitive',
-          use: stepDef.use,
+          id: nodeDef.id || `node-${steps.length}`,
+          type: nodeDef.type || 'agent',
           status: 'pending',
-          agent: this.resolveAgent(stepDef, primitives),
-          output: stepDef.output,
+          agent: nodeDef.agent,
+          output,
         };
 
         steps.push(step);
       }
 
-      // Try to find the primary agent from primitives
-      let agent: string | undefined;
-      if (Object.keys(primitives).length > 0) {
-        const firstPrimitive = primitives[Object.keys(primitives)[0]];
-        agent = firstPrimitive?.agent;
-      }
+      const firstAgentNode = rawNodes.find(node => node && typeof node === 'object' && typeof node.agent === 'string');
 
       return {
         id,
@@ -218,33 +213,13 @@ export class PipelineParser {
         version,
         filePath,
         status: 'idle',
-        agent,
+        agent: firstAgentNode?.agent,
         steps,
       };
     } catch (error) {
       console.error('Error parsing pipeline file:', filePath, error);
       return null;
     }
-  }
-
-  /**
-   * Resolve agent for a step (either directly on step or from referenced primitive)
-   */
-  private static resolveAgent(stepDef: Record<string, any>, primitives: Record<string, any>): string | undefined {
-    // Direct agent on step
-    if (stepDef.agent) {
-      return stepDef.agent;
-    }
-
-    // Agent from referenced primitive
-    if (stepDef.use) {
-      const primitive = primitives[stepDef.use];
-      if (primitive?.agent) {
-        return primitive.agent;
-      }
-    }
-
-    return undefined;
   }
 
   /**

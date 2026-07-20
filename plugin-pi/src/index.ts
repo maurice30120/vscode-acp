@@ -93,13 +93,11 @@ export {
 	parseSandcastleConfig,
 } from "./catalog/config.js";
 export {
-	getPipelineDefinitions,
-	getPipelineDefinitionForAgent,
-	loadPipelineDefinitionsFromRoot,
-	loadWorkspacePipelineDefinitions,
-	parsePipelineYaml,
+	getPipelineProgramForAgent,
+	getPipelinePrograms,
+	loadPipelineProgramsFromRoot,
+	loadWorkspacePipelinePrograms,
 } from "./catalog/pipelineCatalog.js";
-export { resolvePipelinePromptFiles } from "./catalog/promptFileResolver.js";
 export {
 	loadSkillCatalog,
 	renderSkillsCatalog,
@@ -108,7 +106,3 @@ export type {
 	SkillCatalogEntry,
 	SkillCatalogOptions,
 } from "./catalog/skillCatalog.js";
-export type {
-	PromptFileResolveError,
-	PromptFileResolveOptions,
-} from "./catalog/promptFileResolver.js";

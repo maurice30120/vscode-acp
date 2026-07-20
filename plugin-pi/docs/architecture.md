@@ -118,24 +118,19 @@ prompt agent.
 
 ## 5. Découverte de la configuration (`catalog/`)
 
-La configuration est **embarquée dans le package du plugin**, pas dans le
-workspace ouvert (ADR-0007). `src/catalog/pluginRoot.ts` résout la racine du
-package installé, et les chargeurs lisent à partir de là.
+La configuration est lue depuis la **racine du workspace courant**, comme dans
+le plugin VS Code. Le package Pi n'embarque plus de `.acp`, de pipelines, de
+prompts agents ni de skills.
 
-### Ce qui est embarqué (depuis la racine du plugin)
+### Ce qui est lu depuis la racine du workspace
 
 | Fichier / motif | Chargé par | Produit |
 | --- | --- | --- |
 | `.acp/acp-agents.json` | `config.ts` → `loadPiAcpConfig` | `PiAcpConfig` (agents natifs + `pipeline.enabled`, `instructionsMaxBytes`, `timeouts`) |
 | `.acp/.sandcastle/config.json` | `config.ts` → `loadSandcastleConfig` | `SandcastleConfig` (agents Sandcastle + `promotion`) |
-| `.acp/pipelines/*.yaml` (version 2) | `pipelineCatalog.ts` | `PipelineDefinition[]` |
-| `.acp/agents/*.md` | `promptFileResolver.ts` → `resolvePipelinePromptFiles` | Prompts composés (le `promptFile` est ajouté **avant** le `prompt` inline) |
-
-### Ce qui est lu dans le workspace
-
-| Fichier / motif | Chargé par | Produit |
-| --- | --- | --- |
-| `.agents/skills/<name>/SKILL.md` | `skillCatalog.ts` → `loadSkillCatalog` | `SkillCatalogEntry[]` (filtrées puis rendues par primitive via `renderSkillsCatalog`) |
+| `.acp/pipelines/*.yaml` (version 3) | `pipelineCatalog.ts` | `CompiledPipelineProgram[]` |
+| `.acp/agents/*.md` | `pipelineCatalog.ts` → `resolvePipelineV3PromptFiles` | Prompts composés (le `promptFile` est ajouté **avant** le `prompt` inline) |
+| `.agents/skills/<name>/SKILL.md` | `skillCatalog.ts` → `loadSkillCatalog` | `SkillCatalogEntry[]` workspace-only (filtrées puis rendues par node via `renderSkillsCatalog`) |
 
 ### Assemblage (`loadPiAgentCatalog`)
 
@@ -150,35 +145,33 @@ Règles de validation notables (dans `config.ts`) :
 - Providers Sandcastle acceptés : `codex`, `cursor`, `pi`, `vibe`. Efforts :
   `low`/`medium`/`high`/`xhigh`. Promotion : `ask`/`autoApply`/`autoReject`.
 
-### Limitation explicite (v1)
+### Isolation Pi / VS Code
 
-Les fichiers `<workspace>/.acp/...` ne sont **pas** lus comme surcharge en
-v1 (ADR-0007). La surcharge workspace est reportée à une v2. Les skills font
-exception : elles représentent les capacités du projet ouvert et restent chargées
-depuis `<workspace>/.agents/skills/`.
+Le plugin Pi et le plugin VS Code restent deux plugins séparés, mais ils lisent
+la même configuration workspace. Le starter VS Code peut créer des fichiers
+`.acp` et `.agents/skills`; Pi les consomme s'ils existent, sans embarquer de
+copie dans son propre package.
 
 ### Découverte (catalog)
 
 ```mermaid
 flowchart LR
-  Plugin[("Plugin package<br/>.acp")]
+  Workspace[("Workspace root")]
   Disk[("Workspace<br/>.agents/")]
   Cfg["config.ts"]
   Pipes["pipelineCatalog.ts"]
-  PromptFiles["promptFileResolver.ts"]
   Skills["skillCatalog.ts"]
-  Defs(["PipelineDefinition[]"])
+  Programs(["CompiledPipelineProgram[]"])
 
-  Plugin -->|".acp/acp-agents.json"| Cfg
-  Plugin -->|".acp/.sandcastle/config.json"| Cfg
-  Plugin -->|".acp/pipelines/*.yaml (v2)"| Pipes
-  Plugin -->|"promptFile *.md"| PromptFiles
+  Workspace -->|".acp/acp-agents.json"| Cfg
+  Workspace -->|".acp/.sandcastle/config.json"| Cfg
+  Workspace -->|".acp/pipelines/*.yaml (v3)"| Pipes
+  Workspace -->|"promptFile *.md"| Pipes
   Disk -->|"skills/*/SKILL.md"| Skills
 
-  Pipes --> Defs
-  PromptFiles -.->|"compose prompts"| Pipes
+  Pipes --> Programs
   Cfg -.->|"agents disponibles"| Pipes
-  Skills -.->|"filtre par primitive"| Defs
+  Skills -.->|"filtre par node workspace"| Programs
 ```
 
 ---
@@ -212,7 +205,7 @@ avec un `runner` basé sur `EphemeralAcpRunner`, et fournit au service des
 - `getAgentConfigs` → `loadPiAgentCatalog(cwd).agents`
 - `getSandcastlePromotion` → mode de promotion global
 - `requestSandcastlePromotion` → demande d'approbation UI
-- `getPipelineDefinitions` / `getPipelineDefinitionForAgent`
+- `getPipelinePrograms` / `getPipelineProgramForAgent`
 - `isAgentSandcastle` (dérivé local)
 - `getPermissionContext`, `isRunAbortedError`
 
@@ -482,12 +475,11 @@ En mode `ask` **sans UI Pi** (pipeline headless), le run s'arrête proprement su
 
 Synthèses courtes ; voir les ADR complets dans [`adr/`](../adr/).
 
-### ADR-0007 — Configuration Pi embarquée en v1
+### ADR-0007 — Configuration Pi embarquée en v1 (remplacée)
 
-Le runtime lit `.acp/` depuis la **racine du package plugin**, pas depuis le
-workspace. Un workspace vide peut utiliser les pipelines fournis sans créer de
-fichiers `.acp`. La surcharge workspace est reportée à une v2 ; les
-`promptFile` commençant par `.acp/` sont résolus depuis la racine du plugin.
+ADR-0007 décrivait l'ancien modèle où le runtime lisait `.acp/` depuis la
+racine du package plugin. Ce modèle est remplacé : Pi lit désormais `.acp/`
+depuis la racine du workspace, comme le plugin VS Code.
 → [`adr/0007-configuration-embarquee-v1.md`](../adr/0007-configuration-embarquee-v1.md)
 
 ### ADR-0008 — `plugin-pi` autonome, indépendant de `plugin-vscode`
@@ -502,9 +494,9 @@ reste `@acp-client/pipeline`. Chaque plugin évolue à son rythme (pi est
 
 Décisions corrélées difficiles à défaire : (1) runtime éphémère — on ne porte que
 `BridgeConfig`, garde Docker/worktree, `WorktreePromotion`, `PromotionPolicy`,
-`bridge.ts` ; (2) config séparée embarquée sous
-`plugin-pi/.acp/.sandcastle/config.json` (top-level `promotion` + agents
-Sandcastle-only) ; (3) `sideEffects` est une propriété du **run**, pas de l'agent ;
+`bridge.ts` ; (2) config séparée sous
+`<workspace>/.acp/.sandcastle/config.json` (top-level `promotion` + agents
+Sandcastle-only) ; (3) la policy est une propriété du **node**, pas de l'agent ;
 (4) `EphemeralAcpRunner` route selon `config.transport`, `sandcastleConnector`
 spawn `bridge.js` parlant ACP ; (5) outcomes `'applied' | 'no_changes' |
 'rejected' | 'cancelled'`, réutilisation du canal d'approbation ADR-0005 ; (6)
@@ -556,11 +548,10 @@ dans `ROADMAP.md`).
    élevé. Envisagé : limiter les exports publics au plugin par défaut + quelques
    types stables.
 
-5. **Bootstrap des pipelines (templates vs runtime).**
-   Le runtime lit `.acp/pipelines`. Des exemples vivent aussi sous
-   `plugin-pi/.acp/pipelines` (hors `.pi/`). Manque un seam clair de
-   bootstrap/copie. La roadmap doit rester alignée sur le catalogue canonique
-   pipeline v2 côté Pi.
+5. **Surface docs/ADR historiques.**
+   Plusieurs ADR et plans conservent l'historique des décisions remplacées
+   (configuration embarquée, DSL v2). La documentation runtime doit rester
+   alignée sur la source workspace et le catalogue v3.
 
 ---
 
@@ -593,7 +584,7 @@ Le build est obligatoire avant les tests : `npm run build` compile `src/` vers
 ## 14. Pour aller plus loin
 
 - [`README.md`](../README.md) — guide utilisateur : prérequis, configuration
-  embarquée, pipelines, skills, build, tests (ce document ne duplique pas ça).
+  workspace, pipelines, skills, build, tests (ce document ne duplique pas ça).
 - [`adr/`](../adr/) — décisions structurelles (0001 → 0009).
 - [`ROADMAP.md`](../ROADMAP.md) — direction et évolutions prévues.
 - [`CONTEXT.md`](../CONTEXT.md) — glossaire vivant (vocabulaire canonique, cette
