@@ -150,10 +150,16 @@ function parseSandcastleAgent(
   if (env === null) {
     return null;
   }
+
   const maxIterations = value.maxIterations;
   if (
     maxIterations !== undefined
-    && (!Number.isInteger(maxIterations) || Number(maxIterations) < 1 || Number(maxIterations) > 20)
+    && (
+      typeof maxIterations !== 'number'
+      || !Number.isInteger(maxIterations)
+      || maxIterations < 1
+      || maxIterations > 20
+    )
   ) {
     errors.push(`Agent "${name}" maxIterations must be an integer between 1 and 20.`);
     return null;
@@ -164,7 +170,7 @@ function parseSandcastleAgent(
     provider: provider as SandcastleAgentConfig['provider'],
     model,
     effort: effort as SandcastleAgentConfig['effort'],
-    maxIterations: maxIterations as number | undefined,
+    maxIterations,
     displayName: readOptionalString(value.displayName),
     env: env ?? undefined,
     skills: typeof value.skills === 'boolean' ? value.skills : undefined,
