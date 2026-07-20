@@ -3,7 +3,12 @@ import { EventEmitter } from 'node:events';
 import type { PipelineAgentRunner } from './PipelineAgentRunner';
 import { PipelineRuntime } from './PipelineRuntime';
 import { PipelineRuntimeAgentAdapter } from './PipelineRuntimeAgentAdapter';
-import type { CompiledPipelineProgram, PipelinePauseSnapshot, PipelineRuntimeResult } from './PipelineV3Types';
+import type {
+  CompiledPipelineProgram,
+  PipelinePauseSnapshot,
+  PipelineResumeDecision,
+  PipelineRuntimeResult,
+} from './PipelineV3Types';
 
 export type {
   PipelineStatus,
@@ -33,6 +38,10 @@ export class PipelineService extends EventEmitter {
   }
 
   async createPlan(sessionId: string, userPrompt: string, pipelineAgentName?: string): Promise<string> {
+    return stringifyServiceResult(await this.startPipeline(sessionId, userPrompt, pipelineAgentName));
+  }
+
+  async startPipeline(sessionId: string, userPrompt: string, pipelineAgentName?: string): Promise<PipelineRuntimeResult> {
     const program = this.readPipelineProgram(pipelineAgentName);
     if (!program) {
       throw new Error(
@@ -45,23 +54,39 @@ export class PipelineService extends EventEmitter {
   }
 
   async approvePlan(sessionId: string, approvedPlan: string): Promise<string> {
+    return stringifyServiceResult(await this.resumeCurrentPause(sessionId, "approve", approvedPlan.trim()));
+  }
+
+  async resumePipeline(sessionId: string, decision: PipelineResumeDecision): Promise<PipelineRuntimeResult> {
     const runtime = this.v3Runs.get(sessionId);
     if (runtime) {
-      const snapshot = await runtime.inspect(sessionId);
-      const pause = snapshot?.pendingPause;
-      if (!pause) {
-        throw new Error('No pending pipeline pause for this session.');
-      }
       return this.handleV3Result(
         sessionId,
-        await runtime.resume(sessionId, {
-          pauseId: pause.id,
-          kind: 'approve',
-          value: approvedPlan.trim(),
-        }),
+        await runtime.resume(sessionId, decision),
       );
     }
     throw new Error('No pending pipeline pause for this session.');
+  }
+
+  async resumeCurrentPause(
+    sessionId: string,
+    kind: PipelineResumeDecision["kind"],
+    value?: unknown,
+  ): Promise<PipelineRuntimeResult> {
+    const pause = await this.getPendingPause(sessionId);
+    if (!pause) {
+      throw new Error('No pending pipeline pause for this session.');
+    }
+    return this.resumePipeline(sessionId, { pauseId: pause.id, kind, value });
+  }
+
+  async getPendingPause(sessionId: string): Promise<PipelinePauseSnapshot | null> {
+    const runtime = this.v3Runs.get(sessionId);
+    if (!runtime) {
+      return null;
+    }
+    const snapshot = await runtime.inspect(sessionId);
+    return snapshot?.pendingPause ?? null;
   }
 
   rejectPlan(sessionId: string): void {
@@ -102,7 +127,7 @@ export class PipelineService extends EventEmitter {
     sessionId: string,
     program: CompiledPipelineProgram,
     userPrompt: string,
-  ): Promise<string> {
+  ): Promise<PipelineRuntimeResult> {
     if (!this.dependencies.runAgent) {
       throw new Error('PipelineService v3 execution requires runAgent dependency.');
     }
@@ -152,19 +177,19 @@ export class PipelineService extends EventEmitter {
     );
   }
 
-  private handleV3Result(sessionId: string, result: PipelineRuntimeResult): string {
+  private handleV3Result(sessionId: string, result: PipelineRuntimeResult): PipelineRuntimeResult {
     if (result.status === 'paused') {
       this.emitV3Pause(sessionId, result.pause);
-      return result.pause.content;
+      return result;
     }
     if (result.status === 'completed') {
       this.v3Runs.delete(sessionId);
-      return stringifyArtifactValue(result.artifact?.value);
+      return result;
     }
     if (result.status === 'cancelled') {
       this.v3Runs.delete(sessionId);
       this.v3RejectedRuns.delete(sessionId);
-      return '';
+      return result;
     }
     this.v3Runs.delete(sessionId);
     this.v3RejectedRuns.delete(sessionId);
@@ -177,6 +202,7 @@ export class PipelineService extends EventEmitter {
         sessionId,
         plan: pause.content,
         stepId: pause.nodeId,
+        pauseType: pause.type,
         role: pause.nodeId,
         revised: false,
         implementerUsesSandcastle: false,
@@ -188,6 +214,17 @@ export class PipelineService extends EventEmitter {
         stepId: pause.nodeId,
       });
       return;
+    }
+    if (pause.type === 'question') {
+      this.emit('plan-ready', {
+        sessionId,
+        plan: pause.content,
+        stepId: pause.nodeId,
+        pauseType: pause.type,
+        role: pause.nodeId,
+        revised: false,
+        implementerUsesSandcastle: false,
+      });
     }
     this.emit('status', {
       sessionId,
@@ -256,4 +293,17 @@ function stringifyArtifactValue(value: unknown): string {
     return value;
   }
   return JSON.stringify(value, null, 2);
+}
+
+function stringifyServiceResult(result: PipelineRuntimeResult): string {
+  if (result.status === 'paused') {
+    return result.pause.content;
+  }
+  if (result.status === 'completed') {
+    return stringifyArtifactValue(result.artifact?.value);
+  }
+  if (result.status === 'cancelled') {
+    return '';
+  }
+  throw new Error(result.error.message);
 }

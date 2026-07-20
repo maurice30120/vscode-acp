@@ -22,9 +22,12 @@ export interface PipelineStatusEvent {
   implementerUsesSandcastle?: boolean;
 }
 
-export interface PipelinePlanReadyEvent {
+export interface PipelinePauseEvent {
   sessionId: string;
-  plan: string;
+  pauseId: string;
+  pauseType: 'approval' | 'question' | 'promotion';
+  content: string;
+  format: 'text' | 'markdown' | 'json' | 'proposed-plan';
   stepId: string;
   role?: string;
   agentName?: string;

@@ -103,6 +103,61 @@ test("PipelineService projects v3 pause rejection as rejected", async () => {
   }
 });
 
+test("PipelineService exposes generic v3 question resume decisions", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "question-flow",
+    title: "Question Flow",
+    nodes: [
+      {
+        id: "question",
+        type: "pause",
+        pause: "question",
+        content: "Which API?",
+        output: { name: "answer", type: "acp.answer/v1", format: "text" },
+      },
+      {
+        id: "finish",
+        agent: "Codex",
+        prompt: "Use {{inputs.answer}}",
+        needs: ["question"],
+        inputs: [{ name: "answer", from: "question.answer", type: "acp.answer/v1", format: "text" }],
+        output: { name: "result", type: "text", format: "markdown" },
+      },
+    ],
+  }, { Codex: {} }).program!;
+  const service = new PipelineService(
+    () => "/workspace",
+    {
+      getPipelinePrograms: () => [program],
+      getPipelineProgramForAgent: name => name === program.title ? program : null,
+      getAgentConfigs: () => ({ Codex: {} }),
+      runAgent: async input => ({ text: `done: ${input.promptText}` }),
+    },
+  );
+  const pauseTypes: string[] = [];
+  service.on("plan-ready", (event: any) => pauseTypes.push(event.pauseType));
+
+  try {
+    const started = await service.startPipeline("session-question", "ship it", program.title);
+    assert.equal(started.status, "paused");
+    assert.equal(started.pause.type, "question");
+    assert.equal((await service.getPendingPause("session-question"))?.id, started.pause.id);
+    assert.deepEqual(pauseTypes, ["question"]);
+
+    const completed = await service.resumePipeline("session-question", {
+      pauseId: started.pause.id,
+      kind: "answer",
+      value: "public API",
+    });
+
+    assert.equal(completed.status, "completed");
+    assert.equal(completed.artifact?.value, "done: Use public API");
+  } finally {
+    await service.dispose();
+  }
+});
+
 function createTwoApprovalProgram(): CompiledPipelineProgram {
   return compilePipelineV3Definition({
     version: 3,

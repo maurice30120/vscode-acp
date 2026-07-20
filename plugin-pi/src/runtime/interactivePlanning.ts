@@ -1,6 +1,5 @@
 import {
   extractClarificationQuestion,
-  isProposedPlanAwaitingAnswer,
   type PipelinePlanReadyEvent,
   type PipelineService,
 } from '@acp-client/pipeline';
@@ -35,7 +34,7 @@ declare module './pipelineController.js' {
 
 PipelineController.prototype.isAwaitingAnswer = function isAwaitingAnswer(): boolean {
   const controller = this as unknown as InteractiveControllerInternals;
-  return Boolean(controller.pendingPlan && isProposedPlanAwaitingAnswer(controller.pendingPlan.plan));
+  return controller.pendingPlan?.pauseType === 'question';
 };
 
 PipelineController.prototype.answer = async function answer(
@@ -50,7 +49,8 @@ PipelineController.prototype.answer = async function answer(
   if (!controller.activeSessionId || !controller.pendingPlan) {
     throw new Error('No active planner interview.');
   }
-  if (!isProposedPlanAwaitingAnswer(controller.pendingPlan.plan)) {
+  const pause = await controller.service.getPendingPause(controller.activeSessionId);
+  if (pause?.type !== 'question') {
     throw new Error('The planner interview is already complete. Review or approve the plan.');
   }
 
@@ -59,10 +59,19 @@ PipelineController.prototype.answer = async function answer(
   controller.startHeartbeat(sessionId);
 
   try {
-    const plan = await controller.service.createPlan(sessionId, answer);
+    const result = await controller.service.resumePipeline(sessionId, {
+      pauseId: pause.id,
+      kind: answer === '/done' ? 'complete-interview' : 'answer',
+      ...(answer === '/done' ? {} : { value: answer }),
+    });
+    const plan = result.status === 'paused'
+      ? result.pause.content
+      : result.status === 'completed'
+        ? String(result.artifact?.value ?? '')
+        : '';
     return {
       plan,
-      awaitingAnswer: isProposedPlanAwaitingAnswer(plan),
+      awaitingAnswer: result.status === 'paused' && result.pause.type === 'question',
       question: extractClarificationQuestion(plan),
     };
   } finally {
