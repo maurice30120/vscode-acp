@@ -73,7 +73,7 @@ export function parseCliArgs(argv: string[], defaultCwd = process.cwd()): CliCom
   }
 
   if (positional.length < 2) {
-    throw new Error('Usage: acp-pipeline run <pipeline> <prompt...>');
+    throw new Error('Usage: acp-cli run <pipeline> <prompt...>');
   }
   const [pipelineName, ...promptParts] = positional;
   const prompt = promptParts.join(' ').trim();
@@ -85,18 +85,21 @@ export function parseCliArgs(argv: string[], defaultCwd = process.cwd()): CliCom
 
 export function formatHelp(): string {
   return [
-    'ACP Pipeline CLI',
+    'ACP CLI',
     '',
     'Usage:',
-    '  acp-pipeline list [--cwd <path>] [--json]',
-    '  acp-pipeline run <pipeline> <prompt...> [--cwd <path>] [--yes] [--verbose]',
+    '  acp-cli run <pipeline> <prompt...> [--cwd <path>] [--yes] [--verbose]',
+    '  acp-cli list [--cwd <path>] [--json]',
+    '',
+    'The pipeline selects its own agents. acp-cli loads them from',
+    '.acp/acp-agents.json and starts every process required by the DAG.',
     '',
     'Commands:',
-    '  list  List packaged ACP pipelines.',
-    '  run   Run one pipeline, including grill-me questions and plan approval.',
+    '  run   Run a workspace pipeline, including grill-me questions and approvals.',
+    '  list  List pipelines found in .acp/pipelines.',
     '',
     'Options:',
-    '  --cwd <path>  Workspace used by agents. Defaults to the current directory.',
+    '  --cwd <path>  Workspace containing .acp and .agents. Defaults to the current directory.',
     '  --yes, -y     Approve a decision-complete plan without a confirmation prompt.',
     '  --verbose     Stream agent updates and detailed runtime status to stderr.',
     '  --json        Emit machine-readable output for list and final run results.',
