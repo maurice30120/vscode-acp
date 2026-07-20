@@ -19,7 +19,7 @@
     "compile-tests": "npm run compile-tests -w acp-client",
     "test:pi": "npm run test -w @acp-client/pi-extension",
     "test:cli": "npm --prefix pipeline-cli test",
-    "pipeline": "npm --prefix pipeline-cli run build --silent && node pipeline-cli/dist/src/cli.js",
+    "acp-cli": "npm --prefix pipeline-cli run build --silent && node pipeline-cli/dist/src/cli.js",
     "vsx": "npm run vsx -w acp-client"
   },
   "engines": {
