@@ -23,6 +23,7 @@ export * from './PipelineV3Types';
 export * from './PipelineV3Compiler';
 export * from './PipelineV3Catalog';
 export * from './PipelineRuntime';
+export * from './PipelineRuntimeAgentAdapter';
 export * from './PipelineRunStore';
 export * from './MultiAgentArtifacts';
 export * from './PipelinePolicy';

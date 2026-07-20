@@ -17,6 +17,7 @@ import { loadPiAgentCatalog } from '../catalog/config.js';
 import {
   getPipelineDefinitionForAgent,
   getPipelineDefinitions,
+  getPipelinePrograms,
 } from '../catalog/pipelineCatalog.js';
 import type { Logger, PiPermissionContext } from '../types.js';
 
@@ -79,6 +80,7 @@ export class PipelineController {
         getPipelineDefinitions: () => getPipelineDefinitions(this.workspaceCwd, this.options.logger),
         getPipelineDefinitionForAgent: agentName =>
           getPipelineDefinitionForAgent(this.workspaceCwd, agentName, this.options.logger),
+        getPipelinePrograms: () => getPipelinePrograms(this.workspaceCwd, this.options.logger),
         getAgentConfigs: () => loadPiAgentCatalog(this.workspaceCwd).agents,
         isAgentSandcastle: (agentName, agentConfigs) =>
           (agentConfigs[agentName] as { transport?: string } | undefined)?.transport === 'sandcastle',

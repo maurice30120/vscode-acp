@@ -55,6 +55,97 @@ test("PipelineRuntime completes a linear pipeline with strict inputs and final a
   assert.equal(result.snapshot.nodeStates.second.status, "completed");
 });
 
+test("PipelineRuntime renders node prompts from start inputs and typed artifacts", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "render",
+    title: "Render",
+    nodes: [
+      {
+        id: "plan",
+        agent: "Codex",
+        prompt: "Plan {{userPrompt}}",
+        output: { name: "out", type: "text-note", format: "text" },
+      },
+      {
+        id: "implement",
+        agent: "Codex",
+        prompt: "Implement {{inputs.planText}} for {{userPrompt}}",
+        needs: ["plan"],
+        inputs: [{ name: "planText", from: "plan.out", type: "text-note", format: "text" }],
+        output: { name: "out", type: "text-note", format: "text" },
+      },
+    ],
+  }, agents).program!;
+  const prompts: string[] = [];
+  const adapter: PipelineRuntimeAdapter = {
+    async execute({ node, prompt }) {
+      prompts.push(prompt);
+      return {
+        artifact: {
+          name: "out",
+          type: "text-note",
+          format: "text",
+          value: node.id === "plan" ? "approved plan" : prompt,
+        },
+      };
+    },
+  };
+
+  const runtime = new PipelineRuntime(adapter, { runIdFactory: () => "run-render" });
+  const result = await runtime.start(program, { inputs: { userPrompt: "ship feature" } });
+
+  assert.equal(result.status, "completed");
+  assert.deepEqual(prompts, [
+    "Plan ship feature",
+    "Implement approved plan for ship feature",
+  ]);
+  assert.equal(result.snapshot.inputVariables?.userPrompt, "ship feature");
+});
+
+test("PipelineRuntime renders pause content from typed inputs", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "pause-render",
+    title: "Pause Render",
+    nodes: [
+      {
+        id: "plan",
+        agent: "Codex",
+        prompt: "Plan",
+        output: { name: "out", type: "text-note", format: "markdown" },
+      },
+      {
+        id: "approval",
+        type: "pause",
+        pause: "approval",
+        content: "Approve {{inputs.planText}} for {{userPrompt}}",
+        needs: ["plan"],
+        inputs: [{ name: "planText", from: "plan.out", type: "text-note", format: "markdown" }],
+        output: { name: "approved", type: "approval", format: "markdown" },
+      },
+    ],
+  }, agents).program!;
+  const adapter: PipelineRuntimeAdapter = {
+    async execute() {
+      return {
+        artifact: {
+          name: "out",
+          type: "text-note",
+          format: "markdown",
+          value: "the plan",
+        },
+      };
+    },
+  };
+
+  const runtime = new PipelineRuntime(adapter, { runIdFactory: () => "run-pause-render" });
+  const result = await runtime.start(program, { inputs: { userPrompt: "ship feature" } });
+
+  assert.equal(result.status, "paused");
+  assert.equal(result.pause.content, "Approve the plan for ship feature");
+});
+
 test("PipelineRuntime supports multiple stable pauses and rejects obsolete resumes", async () => {
   const program = compilePipelineV3Definition({
     version: 3,

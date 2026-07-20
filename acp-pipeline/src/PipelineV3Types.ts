@@ -118,6 +118,7 @@ export interface PipelineRuntimeSnapshot {
   runId: string;
   pipelineId: string;
   status: "running" | "paused" | "completed" | "failed" | "cancelled";
+  inputVariables?: Record<string, unknown>;
   nodeStates: Record<string, PipelineRuntimeNodeSnapshot>;
   artifacts: Record<string, PipelineArtifact>;
   pendingPause?: PipelinePauseSnapshot;
@@ -164,6 +165,7 @@ export interface PipelineResumeDecision {
 export interface PipelineNodeExecutionInput {
   runId: string;
   node: CompiledPipelineNode;
+  prompt: string;
   inputs: Record<string, PipelineArtifact>;
   signal: AbortSignal;
 }

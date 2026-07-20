@@ -41,6 +41,10 @@ export interface PipelineRuntimeEvent {
   at: string;
 }
 
+export interface PipelineRuntimeStartOptions {
+  inputs?: Record<string, unknown>;
+}
+
 export interface PipelineRunStore {
   create(snapshot: PipelineRuntimeSnapshot): Promise<void>;
   load(runId: string): Promise<PipelineRuntimeSnapshot | null>;
@@ -82,7 +86,10 @@ export class PipelineRuntime {
     }
   }
 
-  async start(program: CompiledPipelineProgram): Promise<PipelineRuntimeResult> {
+  async start(
+    program: CompiledPipelineProgram,
+    options: PipelineRuntimeStartOptions = {},
+  ): Promise<PipelineRuntimeResult> {
     this.programsById.set(program.id, program);
     const runId = this.runIdFactory();
     const at = this.isoNow();
@@ -90,6 +97,7 @@ export class PipelineRuntime {
       runId,
       pipelineId: program.id,
       status: "running",
+      inputVariables: cloneInputVariables(options.inputs),
       nodeStates: Object.fromEntries(program.nodes.map(node => [node.id, { status: "pending", attempts: 0 }])),
       artifacts: {},
       diagnostics: [],
@@ -209,6 +217,7 @@ export class PipelineRuntime {
   private async executeNode(active: ActiveRun, node: CompiledPipelineNode): Promise<PipelineRuntimeDiagnostic | { ok: true }> {
     const state = active.snapshot.nodeStates[node.id];
     const inputs = resolveInputs(node, active.snapshot.artifacts);
+    const prompt = renderRuntimeTemplate(node.prompt ?? "", active.snapshot.inputVariables ?? {}, inputs);
     const skillErrors = this.resolveNodeSkills ? await this.resolveNodeSkills(node) : [];
     if (skillErrors.length > 0) {
       active.snapshot.nodeStates[node.id] = {
@@ -254,6 +263,7 @@ export class PipelineRuntime {
       const result = await this.adapter.execute({
         runId: active.snapshot.runId,
         node,
+        prompt,
         inputs,
         signal: active.controller.signal,
       });
@@ -290,12 +300,13 @@ export class PipelineRuntime {
 
   private async pause(active: ActiveRun, node: CompiledPipelineNode): Promise<PipelineRuntimeResult> {
     const state = active.snapshot.nodeStates[node.id];
+    const inputs = resolveInputs(node, active.snapshot.artifacts);
     const pauseId = `${active.snapshot.runId}:${node.id}:${state.attempts + 1}`;
     const pause = {
       id: pauseId,
       nodeId: node.id,
       type: node.pause!,
-      content: node.pauseContent!,
+      content: renderRuntimeTemplate(node.pauseContent!, active.snapshot.inputVariables ?? {}, inputs),
       format: node.pauseFormat ?? "markdown",
     };
     active.snapshot.nodeStates[node.id] = {
@@ -389,6 +400,24 @@ function resolveInputs(node: CompiledPipelineNode, artifacts: Record<string, Pip
   return result;
 }
 
+export function renderRuntimeTemplate(
+  template: string,
+  inputVariables: Record<string, unknown>,
+  inputs: Record<string, PipelineArtifact>,
+): string {
+  return template.replace(/{{\s*([^}]+?)\s*}}/g, (_match, variable: string) => {
+    const key = variable.trim();
+    if (key === "userPrompt") {
+      return stringifyTemplateValue(inputVariables.userPrompt);
+    }
+    const inputMatch = /^inputs\.([A-Za-z][A-Za-z0-9_-]*)$/.exec(key);
+    if (inputMatch) {
+      return stringifyTemplateValue(inputs[inputMatch[1]]?.value);
+    }
+    return stringifyTemplateValue(inputVariables[key]);
+  });
+}
+
 function assertArtifact(node: CompiledPipelineNode, result: PipelineNodeExecutionResult): PipelineArtifact {
   if (!("artifact" in result)) {
     throw new Error("Expected successful node result.");
@@ -414,6 +443,26 @@ function artifactKey(nodeId: string, artifactName: string): string {
 
 function cloneSnapshot(snapshot: PipelineRuntimeSnapshot): PipelineRuntimeSnapshot {
   return JSON.parse(JSON.stringify(snapshot)) as PipelineRuntimeSnapshot;
+}
+
+function cloneInputVariables(inputs: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!inputs) {
+    return undefined;
+  }
+  return JSON.parse(JSON.stringify(inputs)) as Record<string, unknown>;
+}
+
+function stringifyTemplateValue(value: unknown): string {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  return JSON.stringify(value) ?? "";
 }
 
 function sleep(ms: number): Promise<void> {
