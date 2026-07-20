@@ -1,33 +1,36 @@
-name: Pi Windows diagnostics
+name: Pi Windows path repair
 
 on:
-  pull_request:
   push:
     branches:
       - agent/harmonize-pipeline-artifact-publishing
 
+permissions:
+  contents: write
+
 jobs:
-  pi-windows:
+  repair:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
         with:
-          node-version: lts/*
-          cache: npm
+          ref: agent/harmonize-pipeline-artifact-publishing
 
-      - run: npm ci --silent
-
-      - name: Capture Pi test diagnostics
+      - name: Normalize the cross-platform path assertion
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force diagnostics | Out-Null
-          npm run test:pi *> diagnostics/pi-windows.log
-          $LASTEXITCODE | Out-File diagnostics/pi-windows.exit -Encoding ascii
-          exit 0
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: pi-windows-diagnostics
-          path: diagnostics
+          $file = 'plugin-pi/test/configCatalog.test.ts'
+          $content = [System.IO.File]::ReadAllText($file)
+          $old = 'assert.equal(config.filePath, `${workspace}/.acp/acp-agents.json`);'
+          $new = 'assert.equal(config.filePath.replaceAll("\", "/"), `${workspace.replaceAll("\", "/")}/.acp/acp-agents.json`);'
+          if (-not $content.Contains($old)) {
+            Write-Host 'Path assertion is already normalized.'
+            exit 0
+          }
+          $content = $content.Replace($old, $new)
+          [System.IO.File]::WriteAllText($file, $content, [System.Text.UTF8Encoding]::new($false))
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add $file
+          git commit -m "test(pi): normalize config path assertion"
+          git push origin HEAD:agent/harmonize-pipeline-artifact-publishing
