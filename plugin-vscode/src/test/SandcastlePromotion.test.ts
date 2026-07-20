@@ -208,6 +208,10 @@ suite('SandcastlePromotion', () => {
   });
 
   test('promote returns rejected when the user rejects changes', async () => {
+    vscode.workspace.getConfiguration = () => ({
+      get: (key: string, defaultValue?: unknown) =>
+        key === 'sandcastle.promotion' ? 'ask' : defaultValue,
+    }) as vscode.WorkspaceConfiguration;
     vscode.window.showQuickPick = async (items: any) =>
       items.find((item: any) => item.choice === 'reject');
     const calls: string[] = [];
@@ -225,6 +229,10 @@ suite('SandcastlePromotion', () => {
   });
 
   test('promote returns cancelled without rejecting when the picker closes', async () => {
+    vscode.workspace.getConfiguration = () => ({
+      get: (key: string, defaultValue?: unknown) =>
+        key === 'sandcastle.promotion' ? 'ask' : defaultValue,
+    }) as vscode.WorkspaceConfiguration;
     vscode.window.showQuickPick = async () => undefined;
     const calls: string[] = [];
     const connection = {
