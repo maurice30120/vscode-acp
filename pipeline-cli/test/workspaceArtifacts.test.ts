@@ -47,22 +47,62 @@ test('ignores missing and escaping scratch references when rendering', () => {
 });
 
 test('validates the required number of existing workspace references', () => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'acp-cli-files-'));
-  const featureDir = path.join(cwd, '.scratch', 'file-backed-pipeline');
-  const issuesDir = path.join(featureDir, 'issues');
-  fs.mkdirSync(issuesDir, { recursive: true });
-  fs.writeFileSync(path.join(featureDir, 'plan.md'), '# Plan\n');
-  fs.writeFileSync(path.join(featureDir, 'spec.md'), '# Spec\n');
-  fs.writeFileSync(path.join(issuesDir, '01-ticket.md'), '# Ticket\n');
-
+  const cwd = createFeatureWorkspace();
   const content = [
     '<!-- acp-cli:require-workspace-files=3 -->',
+    '<!-- acp-cli:workspace-layout=delivery -->',
     '`.scratch/file-backed-pipeline/plan.md`',
     '`.scratch/file-backed-pipeline/spec.md`',
     '`.scratch/file-backed-pipeline/issues/`',
   ].join('\n');
 
   assert.equal(validateRequiredWorkspaceMarkdownReferences(cwd, content), undefined);
+});
+
+test('validates a plan handoff with only the preserved plan path', () => {
+  const cwd = createFeatureWorkspace();
+  const content = [
+    '<!-- acp-cli:require-workspace-files=1 -->',
+    '<!-- acp-cli:workspace-layout=plan -->',
+    '`.scratch/file-backed-pipeline/plan.md`',
+  ].join('\n');
+
+  assert.equal(validateRequiredWorkspaceMarkdownReferences(cwd, content), undefined);
+});
+
+test('rejects delivery references split across feature directories', () => {
+  const cwd = createFeatureWorkspace();
+  const otherDir = path.join(cwd, '.scratch', 'other-effort');
+  fs.mkdirSync(otherDir, { recursive: true });
+  fs.writeFileSync(path.join(otherDir, 'spec.md'), '# Wrong spec\n');
+
+  const content = [
+    '<!-- acp-cli:require-workspace-files=3 -->',
+    '<!-- acp-cli:workspace-layout=delivery -->',
+    '`.scratch/file-backed-pipeline/plan.md`',
+    '`.scratch/other-effort/spec.md`',
+    '`.scratch/file-backed-pipeline/issues/`',
+  ].join('\n');
+
+  assert.match(
+    validateRequiredWorkspaceMarkdownReferences(cwd, content) ?? '',
+    /preserve one feature directory/,
+  );
+});
+
+test('rejects a delivery missing the spec derived from the plan path', () => {
+  const cwd = createFeatureWorkspace();
+  const content = [
+    '<!-- acp-cli:require-workspace-files=2 -->',
+    '<!-- acp-cli:workspace-layout=delivery -->',
+    '`.scratch/file-backed-pipeline/plan.md`',
+    '`.scratch/file-backed-pipeline/issues/`',
+  ].join('\n');
+
+  assert.match(
+    validateRequiredWorkspaceMarkdownReferences(cwd, content) ?? '',
+    /must reference the specification derived from the plan/,
+  );
 });
 
 test('rejects a required file handoff with missing references', () => {
@@ -116,3 +156,14 @@ test('rejects missing, escaping, non-Markdown, and empty directory references', 
     /contains no Markdown files/,
   );
 });
+
+function createFeatureWorkspace(): string {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'acp-cli-files-'));
+  const featureDir = path.join(cwd, '.scratch', 'file-backed-pipeline');
+  const issuesDir = path.join(featureDir, 'issues');
+  fs.mkdirSync(issuesDir, { recursive: true });
+  fs.writeFileSync(path.join(featureDir, 'plan.md'), '# Plan\n');
+  fs.writeFileSync(path.join(featureDir, 'spec.md'), '# Spec\n');
+  fs.writeFileSync(path.join(issuesDir, '01-ticket.md'), '# Ticket\n');
+  return cwd;
+}
