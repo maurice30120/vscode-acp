@@ -4,10 +4,15 @@
 
 **Blocked by:** 03 — Maintenir une AgentNodeSession pendant un Entretien agent multi-tour; 04 — Persister l'Historique ACP de nœud comme vérité de replay.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Une décision `complete-interview` utilise la session courante et n'ouvre pas une reconnexion normale.
-- [ ] Après `complete-interview`, une nouvelle question agent est refusée comme violation de protocole.
-- [ ] Seul un artifact final conforme à la déclaration de sortie peut terminer le nœud avec succès.
-- [ ] Si la sortie finale attendue manque ou est invalide, le Runtime partagé envoie exactement une demande explicite de sortie finale normalisée.
-- [ ] Une seconde absence ou invalidité échoue avec diagnostic structuré et fermeture de session.
+- [x] Une décision `complete-interview` utilise la session courante et n'ouvre pas une reconnexion normale.
+- [x] Après `complete-interview`, une nouvelle question agent est refusée comme violation de protocole.
+- [x] Seul un artifact final conforme à la déclaration de sortie peut terminer le nœud avec succès.
+- [x] Si la sortie finale attendue manque ou est invalide, le Runtime partagé envoie exactement une demande explicite de sortie finale normalisée.
+- [x] Une seconde absence ou invalidité échoue avec diagnostic structuré et fermeture de session.
+
+## Comments
+
+- Implémenté dans `PipelineRuntime`: après `complete-interview`, le runtime réutilise la session d'entretien active, demande au plus une sortie finale normalisée, puis échoue avec `malformed_interview_output` en fermant la session si la réponse reste invalide.
+- Couvert par `PipelineRuntime.test.ts` sur le seam public `start`/`resume`.

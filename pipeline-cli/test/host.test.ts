@@ -4,7 +4,11 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import test from 'node:test';
 
-import type { PipelineAgentRunInput } from '@acp-client/pipeline';
+import type {
+  AgentNodeSessionFactory,
+  AgentNodeSessionTurnInput,
+  PipelineAgentRunInput,
+} from '@acp-client/pipeline';
 import type { PiPermissionContext } from '@acp-client/pi-extension/host';
 
 import { CliPipelineHost } from '../src/host.js';
@@ -104,7 +108,7 @@ test('runs workspace-root v3 pipelines and forwards the node agent and skills', 
 test('does not provide a packaged fallback when workspace ACP config is missing', () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'acp-cli-empty-'));
   assert.throws(
-    () => new CliPipelineHost(cwd, { terminal: new FakeTerminal(), runAgent: async () => '' }),
+    () => new CliPipelineHost(cwd, { terminal: new FakeTerminal(), createSession: createSessionFromRunner(async () => '') }),
     /Missing Pi ACP config at workspace root/,
   );
 });
@@ -113,7 +117,7 @@ test('loads the checked-in workspace configuration used by the CLI script', () =
   const workspaceRoot = path.resolve(import.meta.dirname, '..', '..', '..');
   const host = new CliPipelineHost(workspaceRoot, {
     terminal: new FakeTerminal(),
-    runAgent: async () => '',
+    createSession: createSessionFromRunner(async () => ''),
   });
 
   assert.ok(
@@ -263,7 +267,7 @@ test('lists workspace pipelines with stable CLI metadata', () => {
   const cwd = createWorkspace();
   const host = new CliPipelineHost(cwd, {
     terminal: new FakeTerminal(),
-    runAgent: async () => '',
+    createSession: createSessionFromRunner(async () => ''),
   });
 
   assert.deepEqual(host.listPipelines(), [
@@ -279,7 +283,7 @@ test('rejects resume and cancel calls for unknown runs', async () => {
   const cwd = createWorkspace();
   const host = new CliPipelineHost(cwd, {
     terminal: new FakeTerminal(),
-    runAgent: async () => '',
+    createSession: createSessionFromRunner(async () => ''),
   });
 
   await assert.rejects(
@@ -291,3 +295,50 @@ test('rejects resume and cancel calls for unknown runs', async () => {
     /Unknown active ACP pipeline run "missing-run"/,
   );
 });
+
+function createSessionFromRunner(
+  runner: (input: PipelineAgentRunInput) => Promise<{ text: string } | string>,
+): AgentNodeSessionFactory {
+  return async ({ runId, node }) => {
+    let activityHandler: ((activity: { kind: 'message' | 'thought' | 'status'; content: string }) => void) | undefined;
+    return {
+    runId,
+    nodeId: node.id,
+    onActivity(handler) {
+      activityHandler = handler;
+      return () => {
+        activityHandler = undefined;
+      };
+    },
+    async send(input: AgentNodeSessionTurnInput) {
+      const result = await runner({
+        workspaceCwd: input.inputs.__workspace?.value as string || '',
+        agentName: input.node.agent ?? '',
+        promptText: input.prompt,
+        signal: input.signal,
+        skills: [...input.node.skills],
+        onSessionUpdate: update => {
+          const data = update.update;
+          if (data.sessionUpdate === 'agent_message_chunk' && data.content.type === 'text') {
+            activityHandler?.({ kind: 'message', content: data.content.text });
+          } else if (data.sessionUpdate === 'agent_thought_chunk' && data.content.type === 'text') {
+            activityHandler?.({ kind: 'thought', content: data.content.text });
+          } else {
+            activityHandler?.({ kind: 'status', content: data.sessionUpdate });
+          }
+        },
+      });
+      return {
+        artifact: {
+          name: input.node.output!.name,
+          type: input.node.output!.type,
+          format: input.node.output!.format,
+          value: typeof result === 'string' ? result : result.text,
+        },
+      };
+    },
+    async cancel() {},
+    async close() {},
+    };
+  };
+}

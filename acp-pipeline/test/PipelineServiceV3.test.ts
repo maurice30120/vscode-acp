@@ -54,8 +54,8 @@ test("PipelineService runs a v3 program through PipelineRuntime with two approva
   }
 });
 
-test("PipelineService v3 execution requires createSession or runAgent", async () => {
-  const program = createTwoApprovalProgram();
+test("PipelineService v3 execution requires AgentNodeSession and exposes no runAgent fallback", async () => {
+  const program = createSingleAgentProgram();
   const service = new PipelineService(
     () => "/workspace",
     {
@@ -67,7 +67,7 @@ test("PipelineService v3 execution requires createSession or runAgent", async ()
 
   await assert.rejects(
     () => service.createPlan("session-v3-no-session", "ship it", program.title),
-    /requires createSession or runAgent dependency/,
+    /requires an AgentNodeSession createSession dependency/,
   );
 });
 

@@ -40,6 +40,7 @@ interface BridgeSession {
   history: PromptHistoryEntry[];
   activeRun?: AbortController;
   activeMessageId?: string;
+  agentClosed?: boolean;
   notifications: Promise<void>;
 }
 
@@ -160,6 +161,9 @@ export class SandcastleAcpAgent implements Agent {
    */
   async prompt(params: PromptRequest): Promise<PromptResponse> {
     const session = this.requireSession(params.sessionId);
+    if (session.agentClosed) {
+      throw new Error(`Sandcastle agent session is closed: ${session.id}`);
+    }
     if (session.activeRun) {
       throw new Error(`Session ${session.id} already has a prompt in progress.`);
     }
@@ -286,8 +290,15 @@ export class SandcastleAcpAgent implements Agent {
           baseRef: session.baseRef,
           active: Boolean(session.sandbox),
           running: Boolean(session.activeRun),
+          agentClosed: Boolean(session.agentClosed),
           worktreePath: session.sandbox?.worktreePath,
         };
+      case 'sandcastle/close-agent-session':
+        session.activeRun?.abort(new Error('Sandcastle agent session closed.'));
+        session.activeRun = undefined;
+        session.activeMessageId = undefined;
+        session.agentClosed = true;
+        return { success: true };
       case 'sandcastle/preview': {
         const sandbox = await this.ensureSandbox(session);
         return {
@@ -347,6 +358,7 @@ export class SandcastleAcpAgent implements Agent {
     session.baseRef = (await runGit(session.cwd, ['rev-parse', 'HEAD'])).trim();
     session.branch = `sandcastle/acp/${this.config.provider}/${crypto.randomUUID()}`;
     session.history = [];
+    session.agentClosed = false;
     session.sandbox = await this.runtime.createSandbox({
       cwd: session.cwd,
       branch: session.branch,

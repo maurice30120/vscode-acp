@@ -19,6 +19,8 @@ export interface EphemeralRunSandboxContext {
     extMethod(method: string, params: Record<string, unknown>): Promise<Record<string, unknown>>;
   };
   sessionId: string;
+  /** Close the prompt-capable agent session while keeping Sandcastle promotion methods available. */
+  closeAgentSession: () => Promise<void>;
   /** Tear down the bridge process after Sandcastle promotion finishes. */
   dispose: () => void;
 }
@@ -179,6 +181,9 @@ export async function runEphemeralRun(input: EphemeralRunInput): Promise<Ephemer
       result.sandbox = {
         connection: connInfo.connection,
         sessionId,
+        closeAgentSession: async () => {
+          await connInfo?.connection.extMethod('sandcastle/close-agent-session', { sessionId });
+        },
         dispose: disposeRun,
       };
     }

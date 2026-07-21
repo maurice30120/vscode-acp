@@ -1,13 +1,12 @@
 import { EventEmitter } from 'node:events';
 
-import type { PipelineAgentRunner } from './PipelineAgentRunner';
 import {
   publishPipelineArtifacts,
   type PipelineArtifactPublisher,
 } from './PipelineArtifactPublisher';
 import { PipelineRuntime } from './PipelineRuntime';
-import { PipelineRuntimeAgentAdapter } from './PipelineRuntimeAgentAdapter';
 import type {
+  AgentNodeSessionFactory,
   CompiledPipelineProgram,
   PipelinePauseSnapshot,
   PipelineResumeDecision,
@@ -25,7 +24,7 @@ export interface PipelineServiceDependencies {
   getPipelinePrograms?: () => CompiledPipelineProgram[];
   getPipelineProgramForAgent?: (agentName: string) => CompiledPipelineProgram | null;
   getAgentConfigs?: () => Record<string, unknown>;
-  runAgent?: PipelineAgentRunner;
+  createSession?: AgentNodeSessionFactory;
   onPipelineStart?: (input: { sessionId: string; program: CompiledPipelineProgram; workspaceCwd: string }) => void;
   isAgentSandcastle?: (agentName: string, agentConfigs: Record<string, unknown>) => boolean;
   isRunAbortedError?: (error: unknown) => boolean;
@@ -134,8 +133,8 @@ export class PipelineService extends EventEmitter {
     program: CompiledPipelineProgram,
     userPrompt: string,
   ): Promise<PipelineRuntimeResult> {
-    if (!this.dependencies.runAgent) {
-      throw new Error('PipelineService v3 execution requires runAgent dependency.');
+    if (!this.dependencies.createSession) {
+      throw new Error('PipelineService v3 execution requires an AgentNodeSession createSession dependency.');
     }
     this.dependencies.onPipelineStart?.({
       sessionId,
@@ -143,30 +142,7 @@ export class PipelineService extends EventEmitter {
       workspaceCwd: this.workspaceCwd(),
     });
     const runtime = new PipelineRuntime(
-      new PipelineRuntimeAgentAdapter({
-        workspaceCwd: this.workspaceCwd,
-        runAgent: this.dependencies.runAgent,
-        onSessionUpdate: (runId, node, update) => {
-          this.emit('session-update', {
-            sessionId: runId,
-            phase: node.id,
-            update,
-            stepId: node.id,
-            role: node.id,
-            agentName: node.agent,
-          });
-        },
-        onStatus: (runId, node, update) => {
-          this.emit('status', {
-            sessionId: runId,
-            status: update.status,
-            message: update.message,
-            stepId: node.id,
-            role: node.id,
-            agentName: node.agent,
-          });
-        },
-      }),
+      { createSession: this.dependencies.createSession },
       {
         runIdFactory: () => sessionId,
         programs: [program],

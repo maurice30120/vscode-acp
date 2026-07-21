@@ -4,9 +4,15 @@
 
 **Blocked by:** 06 — Fermer les sessions sur annulation, rejet et états terminaux; 09 — Migrer les Adapters hôtes CLI, Pi et VS Code vers la fabrique AgentNodeSession.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Une exécution agent Sandcastle reste sous `AgentNodeSession` jusqu'à production du diff ou de l'artifact attendu.
-- [ ] La session est fermée avant toute décision ou exécution de promotion Apply/Reject.
-- [ ] Une annulation ferme la session Sandcastle active et ne lance aucune promotion.
-- [ ] Le comportement Sandcastle respecte les mêmes transitions Pipeline V3 que les autres adapters.
+- [x] Une exécution agent Sandcastle reste sous `AgentNodeSession` jusqu'à production du diff ou de l'artifact attendu.
+- [x] La session est fermée avant toute décision ou exécution de promotion Apply/Reject.
+- [x] Une annulation ferme la session Sandcastle active et ne lance aucune promotion.
+- [x] Le comportement Sandcastle respecte les mêmes transitions Pipeline V3 que les autres adapters.
+
+## Comments
+
+- Implémenté côté VS Code Sandcastle : `finishEphemeralSandcastleRun` ferme désormais obligatoirement la session agent Sandcastle avant toute promotion, et la promotion est sautée si la fermeture échoue.
+- Le bridge Sandcastle expose `sandcastle/close-agent-session`, refuse les prompts après fermeture, mais conserve les méthodes de promotion `preview`/`apply`/`reject` disponibles sur le worktree.
+- Vérifié par `npm run compile-tests -w acp-client`, `npm run lint -w acp-client` et `npm run test:common`.
