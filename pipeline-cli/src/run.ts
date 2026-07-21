@@ -7,6 +7,7 @@ import type {
 import type { CliRunCommand } from './args.js';
 import type { CliPipelineHost, CliPipelineListEntry } from './host.js';
 import type { CliTerminal } from './terminal.js';
+import { expandWorkspaceMarkdownReferences } from './workspaceArtifacts.js';
 
 export interface CliRunResult {
   status: 'completed' | 'cancelled' | 'failed';
@@ -25,7 +26,10 @@ export async function runPipelineInteractive(
   while (result.status === 'paused') {
     const pause = result.pause;
     if (!command.json) {
-      terminal.write(formatPause(pause));
+      terminal.write(formatPause({
+        ...pause,
+        content: expandWorkspaceMarkdownReferences(command.cwd, pause.content),
+      }));
     }
 
     if (pause.type === 'question') {
