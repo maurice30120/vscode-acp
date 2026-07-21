@@ -6,8 +6,8 @@
 
 **Status:** ready-for-agent
 
-- [ ] L'annulation du run propage le signal à chaque `AgentNodeSession` active puis ferme les ressources.
-- [ ] Un `reject` sur une question d'entretien annule le run entier et suit le même chemin de fermeture que `cancel`.
-- [ ] Aucun artifact final n'est demandé après `cancel` ou `reject`.
-- [ ] Une session est fermée après succès et persistance de l'artifact final.
-- [ ] Une session est fermée après échec technique ou violation de protocole terminale.
+- [x] L'annulation du run propage le signal à chaque `AgentNodeSession` active puis ferme les ressources.
+- [x] Un `reject` sur une question d'entretien annule le run entier et suit le même chemin de fermeture que `cancel`.
+- [x] Aucun artifact final n'est demandé après `cancel` ou `reject`.
+- [x] Une session est fermée après succès et persistance de l'artifact final.
+- [x] Une session est fermée après échec technique ou violation de protocole terminale.

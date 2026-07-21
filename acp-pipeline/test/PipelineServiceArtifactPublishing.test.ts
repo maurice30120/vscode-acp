@@ -7,6 +7,8 @@ import { test } from 'node:test';
 import {
   PipelineService,
   compilePipelineV3Definition,
+  type AgentNodeSessionFactory,
+  type AgentNodeSessionTurnInput,
 } from '../dist/index.js';
 
 test('PipelineService materializes planning artifacts before delivery approval', async () => {
@@ -79,8 +81,8 @@ test('PipelineService materializes planning artifacts before delivery approval',
     {
       getPipelinePrograms: () => [program],
       getPipelineProgramForAgent: name => name === program.title ? program : null,
-      runAgent: async input => ({
-        text: input.promptText === 'Write specification'
+      createSession: createFakeSessionFactory(async input => (
+        input.prompt === 'Write specification'
           ? '# Spécification — Publication partagée\n\nThe spec body.'
           : [
               '# Ordered Tracer-Bullet Task Plan',
@@ -90,8 +92,8 @@ test('PipelineService materializes planning artifacts before delivery approval',
               '**Blocked by:** None — can start immediately',
               '',
               '- [ ] spec.md exists',
-            ].join('\n'),
-      }),
+            ].join('\n')
+      )),
     },
   );
 
@@ -124,3 +126,24 @@ test('PipelineService materializes planning artifacts before delivery approval',
     fs.rmSync(workspace, { recursive: true, force: true });
   }
 });
+
+function createFakeSessionFactory(
+  handler: (input: AgentNodeSessionTurnInput) => string | Promise<string>,
+): AgentNodeSessionFactory {
+  return async ({ runId, node }) => ({
+    runId,
+    nodeId: node.id,
+    async send(input) {
+      return {
+        artifact: {
+          name: input.node.output!.name,
+          type: input.node.output!.type,
+          format: input.node.output!.format,
+          value: await handler(input),
+        },
+      };
+    },
+    async cancel() {},
+    async close() {},
+  });
+}

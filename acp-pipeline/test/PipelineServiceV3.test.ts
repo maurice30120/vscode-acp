@@ -5,25 +5,26 @@ import {
   PipelineService,
   compilePipelineV3Definition,
   type CompiledPipelineProgram,
-  type PipelineAgentRunInput,
+  type AgentNodeSessionFactory,
+  type AgentNodeSessionTurnInput,
 } from "../dist/index.js";
 
 test("PipelineService runs a v3 program through PipelineRuntime with two approvals", async () => {
   const program = createTwoApprovalProgram();
-  const calls: PipelineAgentRunInput[] = [];
+  const calls: AgentNodeSessionTurnInput[] = [];
   const service = new PipelineService(
     () => "/workspace",
     {
       getPipelinePrograms: () => [program],
       getPipelineProgramForAgent: name => name === program.title ? program : null,
       getAgentConfigs: () => ({ Codex: {}, "Vibe Sandcastle": {} }),
-      runAgent: async input => {
+      createSession: createFakeSessionFactory(async input => {
         calls.push(input);
-        if (input.agentName === "Codex") {
-          return { text: "spec artifact" };
+        if (input.node.agent === "Codex") {
+          return "spec artifact";
         }
-        return { text: "implementation complete" };
-      },
+        return "implementation complete";
+      }),
     },
   );
   const pauses: string[] = [];
@@ -43,11 +44,71 @@ test("PipelineService runs a v3 program through PipelineRuntime with two approva
 
     const output = await service.approvePlan("session-v3", "approved delivery");
     assert.equal(output, "implementation complete");
-    assert.deepEqual(calls.map(call => call.promptText), [
+    assert.deepEqual(calls.map(call => call.prompt), [
       "Write spec for approved plan",
       "Implement approved delivery",
     ]);
-    assert.deepEqual(calls.map(call => call.agentName), ["Codex", "Vibe Sandcastle"]);
+    assert.deepEqual(calls.map(call => call.node.agent), ["Codex", "Vibe Sandcastle"]);
+  } finally {
+    await service.dispose();
+  }
+});
+
+test("PipelineService v3 execution requires createSession or runAgent", async () => {
+  const program = createTwoApprovalProgram();
+  const service = new PipelineService(
+    () => "/workspace",
+    {
+      getPipelinePrograms: () => [program],
+      getPipelineProgramForAgent: name => name === program.title ? program : null,
+      getAgentConfigs: () => ({ Codex: {}, "Vibe Sandcastle": {} }),
+    },
+  );
+
+  await assert.rejects(
+    () => service.createPlan("session-v3-no-session", "ship it", program.title),
+    /requires createSession or runAgent dependency/,
+  );
+});
+
+test("PipelineService accepts an AgentNodeSession factory for v3 agent nodes", async () => {
+  const program = createSingleAgentProgram();
+  const sessions: string[] = [];
+  const createSession: AgentNodeSessionFactory = async ({ runId, node }) => {
+    sessions.push(`${runId}:${node.id}`);
+    return {
+      runId,
+      nodeId: node.id,
+      async send(input) {
+        return {
+          artifact: {
+            name: input.node.output!.name,
+            type: input.node.output!.type,
+            format: input.node.output!.format,
+            value: `session handled ${input.prompt}`,
+          },
+        };
+      },
+      async cancel() {},
+      async close() {},
+    };
+  };
+  const service = new PipelineService(
+    () => "/workspace",
+    {
+      getPipelinePrograms: () => [program],
+      getPipelineProgramForAgent: name => name === program.title ? program : null,
+      getAgentConfigs: () => ({ Codex: {} }),
+      createSession,
+    },
+  );
+
+  try {
+    const result = await service.startPipeline("session-factory", "ship it", program.title);
+
+    assert.equal(result.status, "completed");
+    assert.equal(result.status === "completed" ? result.artifact?.value : "", "session handled Build ship it");
+    assert.deepEqual(sessions, ["session-factory:build"]);
   } finally {
     await service.dispose();
   }
@@ -61,7 +122,7 @@ test("PipelineService cancel clears active v3 runtime sessions", async () => {
       getPipelinePrograms: () => [program],
       getPipelineProgramForAgent: name => name === program.title ? program : null,
       getAgentConfigs: () => ({ Codex: {}, "Vibe Sandcastle": {} }),
-      runAgent: async () => ({ text: "spec artifact" }),
+      createSession: createFakeSessionFactory(async () => "spec artifact"),
     },
   );
 
@@ -87,12 +148,12 @@ test("PipelineService calls onPipelineStart only for a new v3 pipeline run", asy
       getPipelineProgramForAgent: name => name === program.title ? program : null,
       getAgentConfigs: () => ({ Codex: {}, "Vibe Sandcastle": {} }),
       onPipelineStart: input => starts.push(`${input.sessionId}:${input.program.id}:${input.workspaceCwd}`),
-      runAgent: async input => {
-        if (input.agentName === "Codex") {
-          return { text: "spec artifact" };
+      createSession: createFakeSessionFactory(async input => {
+        if (input.node.agent === "Codex") {
+          return "spec artifact";
         }
-        return { text: "implementation complete" };
-      },
+        return "implementation complete";
+      }),
     },
   );
 
@@ -115,7 +176,7 @@ test("PipelineService projects v3 pause rejection as rejected", async () => {
       getPipelinePrograms: () => [program],
       getPipelineProgramForAgent: name => name === program.title ? program : null,
       getAgentConfigs: () => ({ Codex: {}, "Vibe Sandcastle": {} }),
-      runAgent: async () => ({ text: "spec artifact" }),
+      createSession: createFakeSessionFactory(async () => "spec artifact"),
     },
   );
   const statuses: string[] = [];
@@ -162,7 +223,7 @@ test("PipelineService exposes generic v3 question resume decisions", async () =>
       getPipelinePrograms: () => [program],
       getPipelineProgramForAgent: name => name === program.title ? program : null,
       getAgentConfigs: () => ({ Codex: {} }),
-      runAgent: async input => ({ text: `done: ${input.promptText}` }),
+      createSession: createFakeSessionFactory(async input => `done: ${input.prompt}`),
     },
   );
   const pauseTypes: string[] = [];
@@ -234,4 +295,41 @@ function createTwoApprovalProgram(): CompiledPipelineProgram {
       },
     ],
   }, { Codex: {}, "Vibe Sandcastle": {} }).program!;
+}
+
+function createSingleAgentProgram(): CompiledPipelineProgram {
+  return compilePipelineV3Definition({
+    version: 3,
+    id: "single-agent",
+    title: "Single Agent",
+    nodes: [
+      {
+        id: "build",
+        agent: "Codex",
+        prompt: "Build {{userPrompt}}",
+        output: { name: "result", type: "text", format: "markdown" },
+      },
+    ],
+  }, { Codex: {} }).program!;
+}
+
+function createFakeSessionFactory(
+  handler: (input: AgentNodeSessionTurnInput) => string | Promise<string>,
+): AgentNodeSessionFactory {
+  return async ({ runId, node }) => ({
+    runId,
+    nodeId: node.id,
+    async send(input) {
+      return {
+        artifact: {
+          name: input.node.output!.name,
+          type: input.node.output!.type,
+          format: input.node.output!.format,
+          value: await handler(input),
+        },
+      };
+    },
+    async cancel() {},
+    async close() {},
+  });
 }

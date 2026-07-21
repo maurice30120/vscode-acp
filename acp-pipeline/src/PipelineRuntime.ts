@@ -69,7 +69,13 @@ interface ActiveRun {
   controller: AbortController;
   sessions: Map<string, AgentNodeSession>;
   activityUnsubscribers: Map<AgentNodeSession, () => void>;
+  closedSessions: WeakSet<AgentNodeSession>;
+  nodeTasks: Map<string, Promise<NodeTaskResult>>;
 }
+
+type NodeTaskResult =
+  | { nodeId: string; result: PipelineRuntimeDiagnostic | { ok: true } | { paused: PipelineRuntimeResult } }
+  | { nodeId: string; thrown: unknown };
 
 export class PipelineRuntime {
   private readonly runs = new Map<string, ActiveRun>();
@@ -122,6 +128,8 @@ export class PipelineRuntime {
       controller: new AbortController(),
       sessions: new Map(),
       activityUnsubscribers: new Map(),
+      closedSessions: new WeakSet(),
+      nodeTasks: new Map(),
     };
     this.runs.set(runId, active);
     await this.store?.create(cloneSnapshot(snapshot));
@@ -232,7 +240,7 @@ export class PipelineRuntime {
   private async advance(active: ActiveRun): Promise<PipelineRuntimeResult> {
     while (active.snapshot.status === "running") {
       const ready = this.readyNodes(active);
-      if (ready.length === 0) {
+      if (ready.length === 0 && active.nodeTasks.size === 0) {
         if (this.isComplete(active)) {
           return this.complete(active);
         }
@@ -250,18 +258,57 @@ export class PipelineRuntime {
         node.kind === "agent"
         && (!node.interaction || node.id === firstInterview?.id)
       );
-      const results = await Promise.all(batch.map(node => this.executeNode(active, node)));
-      const failure = results.find(result => "code" in result) as PipelineRuntimeDiagnostic | undefined;
+      for (const node of batch) {
+        this.startNodeTask(active, node);
+      }
+      if (active.nodeTasks.size === 0) {
+        continue;
+      }
+
+      const completed = await Promise.race(active.nodeTasks.values());
+      active.nodeTasks.delete(completed.nodeId);
+      if ("thrown" in completed) {
+        throw completed.thrown;
+      }
+      const result = completed.result;
+      const failure = "code" in result ? result : undefined;
       if (failure) {
         active.controller.abort();
         return this.fail(active, failure);
       }
-      const paused = results.find((result): result is { paused: PipelineRuntimeResult } => "paused" in result);
-      if (paused) {
-        return paused.paused;
+      if ("paused" in result) {
+        return result.paused;
+      }
+      const pendingPause = active.snapshot.pendingPause;
+      if (pendingPause) {
+        return {
+          status: "paused",
+          runId: active.snapshot.runId,
+          pause: pendingPause,
+          snapshot: cloneSnapshot(active.snapshot),
+        };
       }
     }
+    const pendingPause = active.snapshot.pendingPause;
+    if (pendingPause) {
+      return {
+        status: "paused",
+        runId: active.snapshot.runId,
+        pause: pendingPause,
+        snapshot: cloneSnapshot(active.snapshot),
+      };
+    }
     return { status: "cancelled", runId: active.snapshot.runId, snapshot: cloneSnapshot(active.snapshot) };
+  }
+
+  private startNodeTask(active: ActiveRun, node: CompiledPipelineNode): void {
+    if (active.nodeTasks.has(node.id)) {
+      return;
+    }
+    const task = this.executeNode(active, node)
+      .then(result => ({ nodeId: node.id, result }))
+      .catch((thrown: unknown) => ({ nodeId: node.id, thrown }));
+    active.nodeTasks.set(node.id, task);
   }
 
   private readyNodes(active: ActiveRun): CompiledPipelineNode[] {
@@ -333,6 +380,9 @@ export class PipelineRuntime {
           inputs,
           signal: active.controller.signal,
         });
+        if (active.controller.signal.aborted) {
+          return { ok: true };
+        }
         if ("artifact" in result) {
           const artifact = assertArtifact(node, result);
           active.snapshot.artifacts[artifactKey(node.id, artifact.name)] = artifact;
@@ -461,7 +511,6 @@ export class PipelineRuntime {
             };
             active.snapshot.updatedAt = this.isoNow();
             await this.persist(active.snapshot);
-            await this.closeInterviewSession(active, node.id);
             return { nodeId: node.id, attempt, code: result.code, message: result.message };
           }
           await this.closeInterviewSession(active, node.id);
@@ -505,7 +554,6 @@ export class PipelineRuntime {
           active.snapshot.updatedAt = this.isoNow();
           await this.persist(active.snapshot);
           await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "node_completed", nodeId: node.id, at: active.snapshot.updatedAt });
-          await this.closeInterviewSession(active, node.id);
           return { ok: true };
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
@@ -516,6 +564,23 @@ export class PipelineRuntime {
             this.recordInterviewHistory(active, interview);
             await this.persist(active.snapshot);
             continue;
+          }
+          if (interview.completionRequested) {
+            active.snapshot.diagnostics.push({
+              nodeId: node.id,
+              attempt,
+              code: "malformed_interview_output",
+              message,
+            });
+            active.snapshot.nodeStates[node.id] = {
+              ...active.snapshot.nodeStates[node.id],
+              status: "failed",
+              completedAt: this.isoNow(),
+            };
+            active.snapshot.updatedAt = this.isoNow();
+            this.recordInterviewHistory(active, interview);
+            await this.persist(active.snapshot);
+            return { nodeId: node.id, attempt, code: "malformed_interview_output", message };
           }
           if (interview.repairAttemptsUsed < node.interaction.repairAttempts) {
             interview.repairAttemptsUsed += 1;
@@ -538,7 +603,6 @@ export class PipelineRuntime {
           };
           active.snapshot.updatedAt = this.isoNow();
           await this.persist(active.snapshot);
-          await this.closeInterviewSession(active, node.id);
           return { nodeId: node.id, attempt, code: "malformed_interview_output", message };
         }
       }
@@ -605,6 +669,7 @@ export class PipelineRuntime {
     active.snapshot.updatedAt = this.isoNow();
     await this.persist(active.snapshot);
     await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "completed", at: active.snapshot.updatedAt });
+    await this.closeActiveSessions(active);
     this.runs.delete(active.snapshot.runId);
     return {
       status: "completed",
@@ -615,7 +680,6 @@ export class PipelineRuntime {
   }
 
   private async fail(active: ActiveRun, diagnostic: PipelineRuntimeDiagnostic): Promise<PipelineRuntimeResult> {
-    await this.closeActiveSessions(active);
     active.snapshot.status = "failed";
     active.snapshot.diagnostics.push(diagnostic);
     for (const [nodeId, state] of Object.entries(active.snapshot.nodeStates)) {
@@ -626,6 +690,7 @@ export class PipelineRuntime {
     active.snapshot.updatedAt = this.isoNow();
     await this.persist(active.snapshot);
     await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "failed", nodeId: diagnostic.nodeId, message: diagnostic.message, at: active.snapshot.updatedAt });
+    await this.closeActiveSessions(active);
     this.runs.delete(active.snapshot.runId);
     return { status: "failed", runId: active.snapshot.runId, error: diagnostic, snapshot: cloneSnapshot(active.snapshot) };
   }
@@ -648,6 +713,8 @@ export class PipelineRuntime {
         controller: new AbortController(),
         sessions: new Map<string, AgentNodeSession>(),
         activityUnsubscribers: new Map<AgentNodeSession, () => void>(),
+        closedSessions: new WeakSet<AgentNodeSession>(),
+        nodeTasks: new Map<string, Promise<NodeTaskResult>>(),
       };
       this.runs.set(runId, restored);
       return restored;
@@ -678,6 +745,7 @@ export class PipelineRuntime {
     const session = await this.adapter.createSession({ runId: active.snapshot.runId, node, signal: active.controller.signal });
     await assertSessionBoundary(active.snapshot.runId, node.id, session);
     this.subscribeSessionActivity(active, session);
+    active.sessions.set(node.id, session);
     return session;
   }
 
@@ -705,6 +773,7 @@ export class PipelineRuntime {
   private async cancelActiveSessions(active: ActiveRun): Promise<void> {
     await Promise.all([...active.sessions.values()].map(async session => {
       this.unsubscribeSessionActivity(active, session);
+      active.closedSessions.add(session);
       await session.cancel();
       await session.close();
     }));
@@ -739,6 +808,15 @@ export class PipelineRuntime {
   }
 
   private async closeSessionForRun(active: ActiveRun, session: AgentNodeSession): Promise<void> {
+    if (active.closedSessions.has(session)) {
+      return;
+    }
+    active.closedSessions.add(session);
+    for (const [nodeId, activeSession] of active.sessions) {
+      if (activeSession === session) {
+        active.sessions.delete(nodeId);
+      }
+    }
     this.unsubscribeSessionActivity(active, session);
     await session.close();
   }
