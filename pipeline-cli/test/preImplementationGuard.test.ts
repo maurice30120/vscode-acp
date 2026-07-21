@@ -19,12 +19,12 @@ test('recognizes documentation-only approval markers', () => {
   assert.equal(requiresDocumentationOnlyGuard('ordinary approval'), false);
 });
 
-test('allows scratch documentation changes before implementation', () => {
+test('allows scratch specification changes before implementation', () => {
   const cwd = createRepository();
   const before = capturePreImplementationWorkspaceState(cwd);
-  const featureDir = path.join(cwd, '.scratch', 'pipeline-agent-reflection-activity');
+  const featureDir = path.join(cwd, '.scratch', 'french-poem');
   fs.mkdirSync(featureDir, { recursive: true });
-  fs.writeFileSync(path.join(featureDir, 'plan.md'), '# Plan\n');
+  fs.writeFileSync(path.join(featureDir, 'spec.md'), '# Spec\n');
   const after = capturePreImplementationWorkspaceState(cwd);
 
   assert.equal(validateNoPreImplementationWorkspaceChanges(before, after), undefined);
