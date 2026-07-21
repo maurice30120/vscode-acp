@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { PipelineService } from '@acp-client/pipeline';
+import { PipelineRuntimeAgentAdapter, PipelineService } from '@acp-client/pipeline';
+import { clearSandcastleLogs } from '@acp-client/sandcastle';
 
 import {
   getAgentConfigs,
@@ -11,8 +12,8 @@ import {
   getPipelinePrograms,
 } from '../../config/PipelineCatalog';
 import { isPipelineEnabled } from '../../config/PipelineConfig';
-import type { SessionManager } from '../../core/SessionManager';
 import { DefaultEphemeralAgentRunner } from '../../core/EphemeralAgentRunner';
+import type { SessionManager } from '../../core/SessionManager';
 import { isRunAbortedError } from '../../core/RunAbortedError';
 import type { SandcastlePromotion } from '../../sandcastle/SandcastlePromotion';
 import type { ChatWebviewController } from '../../ui/ChatWebviewController';
@@ -37,18 +38,45 @@ export class OrchestrationPlugin implements FeaturePlugin<OrchestrationPluginCon
     const { sessionManager, sessionTreeProvider, chatController, sandcastlePromotion } = context;
     const ephemeralRunner = new DefaultEphemeralAgentRunner(sandcastlePromotion);
     const readAgentConfigs = () => getAgentConfigs(context.workspaceCwd());
+    const serviceRef: { current?: PipelineService } = {};
+    const createSession = new PipelineRuntimeAgentAdapter({
+      workspaceCwd: context.workspaceCwd,
+      runAgent: input => ephemeralRunner.run(input),
+      onSessionUpdate: (runId, node, update) => {
+        serviceRef.current?.emit('session-update', {
+          sessionId: runId,
+          phase: node.id,
+          update,
+          stepId: node.id,
+          role: node.id,
+          agentName: node.agent,
+        });
+      },
+      onStatus: (runId, node, update) => {
+        serviceRef.current?.emit('status', {
+          sessionId: runId,
+          status: update.status,
+          message: update.message,
+          stepId: node.id,
+          role: node.id,
+          agentName: node.agent,
+        });
+      },
+    }).asSessionFactory();
     const pipelineService = new PipelineService(context.workspaceCwd, {
       getPipelinePrograms: () => getPipelinePrograms(context.workspaceCwd(), readAgentConfigs()),
       getPipelineProgramForAgent: agentName =>
         getPipelineProgramForAgent(agentName, context.workspaceCwd(), readAgentConfigs()),
       getAgentConfigs: readAgentConfigs,
-      runAgent: input => ephemeralRunner.run(input),
       isAgentSandcastle: (agentName, agentConfigs) => {
         const config = agentConfigs[agentName] as AgentConfigEntry | undefined;
         return config ? isSandcastleAgentConfig(config) : false;
       },
+      createSession,
       isRunAbortedError,
+      onPipelineStart: ({ workspaceCwd }) => clearSandcastleLogs(workspaceCwd),
     });
+    serviceRef.current = pipelineService;
     const runtime = new OrchestrationRuntime(pipelineService, sessionManager, chatController);
     const disposables: vscode.Disposable[] = [];
     disposables.push(runtime.activate());

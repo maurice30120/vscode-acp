@@ -46,6 +46,13 @@ suite('SkillsPromptBuilder', () => {
       '---\nname: hidden\ndescription: Hidden skill.\ndisable-model-invocation: true\n---\n\n# Hidden\n\nExplicit only.\n',
       'utf8',
     );
+    const implementDir = path.join(root, '.agents', 'skills', 'implement');
+    fs.mkdirSync(implementDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(implementDir, 'SKILL.md'),
+      '---\nname: implement\ndescription: Implement work.\ndisable-model-invocation: true\n---\n\n# Implement\n\nWrite the requested files.\n',
+      'utf8',
+    );
   });
 
   teardown(() => {
@@ -105,6 +112,49 @@ suite('SkillsPromptBuilder', () => {
     assert.match(result.text, /Explicit only/);
     assert.match(result.text, /use the explicit-only path/);
     assert.doesNotMatch(result.text, /<available_skills>/);
+  });
+
+  test('injects explicitly requested pipeline skills before the prompt', () => {
+    const result = buildPromptWithSkills({
+      agentName: 'Vibe Sandcastle',
+      workspaceCwd: root,
+      text: 'Implement the approved plan',
+      skillsBootstrapped: false,
+      skills: ['implement'],
+    });
+
+    assert.match(result.text, /<skill name="implement">/);
+    assert.match(result.text, /Write the requested files/);
+    assert.match(result.text, /Implement the approved plan/);
+    assert.doesNotMatch(result.text, /<available_skills>/);
+    assert.strictEqual(result.skillsBootstrapped, true);
+  });
+
+  test('injects explicit-only pipeline skills', () => {
+    const result = buildPromptWithSkills({
+      agentName: 'Vibe Sandcastle',
+      workspaceCwd: root,
+      text: 'Use hidden workflow',
+      skillsBootstrapped: false,
+      skills: ['hidden'],
+    });
+
+    assert.match(result.text, /<skill name="hidden">/);
+    assert.match(result.text, /Explicit only/);
+    assert.doesNotMatch(result.text, /<available_skills>/);
+  });
+
+  test('throws when an explicit pipeline skill cannot be resolved', () => {
+    assert.throws(
+      () => buildPromptWithSkills({
+        agentName: 'Vibe Sandcastle',
+        workspaceCwd: root,
+        text: 'Implement',
+        skillsBootstrapped: false,
+        skills: ['missing'],
+      }),
+      /Pipeline node references missing skill "missing"/,
+    );
   });
 
   test('leaves prompt unchanged for non-skills agents', () => {

@@ -1,17 +1,24 @@
 import { parseArtifactProducer } from "./PipelineV3Compiler";
 import { validateAdapterSupportsPolicy } from "./PipelinePolicy";
 import { getPipelineInterviewProtocol } from "./PipelineInterviewProtocol";
+import {
+  PIPELINE_NODE_ACP_HISTORY_ARTIFACT_NAME,
+  PIPELINE_NODE_ACP_HISTORY_ARTIFACT_TYPE,
+} from "./PipelineV3Types";
 import type { PipelineAdapterPolicyCapabilities } from "./PipelinePolicy";
 import type {
+  AgentNodeSessionActivity,
   CompiledPipelineNode,
   CompiledPipelineProgram,
   PipelineArtifact,
+  PipelineNodeExecutionFailure,
   PipelineNodeExecutionResult,
   PipelineResumeDecision,
   PipelineRuntimeAdapter,
   PipelineRuntimeDiagnostic,
   PipelineRuntimeResult,
   PipelineRuntimeSnapshot,
+  AgentNodeSession,
 } from "./PipelineV3Types";
 
 export interface PipelineRuntimeOptions {
@@ -32,6 +39,8 @@ export interface PipelineRuntimeEvent {
     | "node_started"
     | "node_completed"
     | "node_failed"
+    | "node_replayed"
+    | "agent_activity"
     | "paused"
     | "resumed"
     | "completed"
@@ -39,6 +48,7 @@ export interface PipelineRuntimeEvent {
     | "cancelled";
   nodeId?: string;
   message?: string;
+  activity?: AgentNodeSessionActivity;
   at: string;
 }
 
@@ -58,7 +68,15 @@ interface ActiveRun {
   program: CompiledPipelineProgram;
   snapshot: PipelineRuntimeSnapshot;
   controller: AbortController;
+  sessions: Map<string, AgentNodeSession>;
+  activityUnsubscribers: Map<AgentNodeSession, () => void>;
+  closedSessions: WeakSet<AgentNodeSession>;
+  nodeTasks: Map<string, Promise<NodeTaskResult>>;
 }
+
+type NodeTaskResult =
+  | { nodeId: string; result: PipelineRuntimeDiagnostic | { ok: true } | { paused: PipelineRuntimeResult } }
+  | { nodeId: string; thrown: unknown };
 
 export class PipelineRuntime {
   private readonly runs = new Map<string, ActiveRun>();
@@ -105,7 +123,15 @@ export class PipelineRuntime {
       createdAt: at,
       updatedAt: at,
     };
-    const active: ActiveRun = { program, snapshot, controller: new AbortController() };
+    const active: ActiveRun = {
+      program,
+      snapshot,
+      controller: new AbortController(),
+      sessions: new Map(),
+      activityUnsubscribers: new Map(),
+      closedSessions: new WeakSet(),
+      nodeTasks: new Map(),
+    };
     this.runs.set(runId, active);
     await this.store?.create(cloneSnapshot(snapshot));
     await this.emitRuntimeEvent({ runId, type: "run_started", at });
@@ -123,13 +149,14 @@ export class PipelineRuntime {
       return { status: "failed", runId, error: diagnostic, snapshot: cloneSnapshot(active.snapshot) };
     }
     if (decision.kind === "reject") {
+      await this.cancelActiveSessions(active);
       active.snapshot.status = "cancelled";
       active.snapshot.pendingPause = undefined;
-    active.snapshot.updatedAt = this.isoNow();
-    await this.persist(active.snapshot);
-    await this.emitRuntimeEvent({ runId, type: "cancelled", nodeId: pause.nodeId, message: "Pause rejected.", at: active.snapshot.updatedAt });
-    this.runs.delete(runId);
-    return { status: "cancelled", runId, snapshot: cloneSnapshot(active.snapshot) };
+      active.snapshot.updatedAt = this.isoNow();
+      await this.persist(active.snapshot);
+      await this.emitRuntimeEvent({ runId, type: "cancelled", nodeId: pause.nodeId, message: "Pause rejected.", at: active.snapshot.updatedAt });
+      this.runs.delete(runId);
+      return { status: "cancelled", runId, snapshot: cloneSnapshot(active.snapshot) };
     }
 
     const node = active.program.nodesById.get(pause.nodeId);
@@ -145,9 +172,11 @@ export class PipelineRuntime {
         active.snapshot.activeInterview.turns.push({ role: "user", content: value });
       } else if (decision.kind === "complete-interview") {
         active.snapshot.activeInterview.completionRequested = true;
+        active.snapshot.activeInterview.finalOutputRequestsUsed ??= 0;
       } else {
         return this.fail(active, { code: "invalid_resume", message: `Decision "${decision.kind}" cannot resume an interview question.` });
       }
+      this.recordInterviewHistory(active, active.snapshot.activeInterview);
       active.snapshot.pendingPause = undefined;
       active.snapshot.status = "running";
       active.snapshot.nodeStates[node.id] = {
@@ -186,6 +215,7 @@ export class PipelineRuntime {
   async cancel(runId: string): Promise<PipelineRuntimeResult> {
     const active = await this.requireActiveRun(runId);
     active.controller.abort();
+    await this.cancelActiveSessions(active);
     for (const [nodeId, state] of Object.entries(active.snapshot.nodeStates)) {
       if (state.status === "pending" || state.status === "running" || state.status === "paused") {
         active.snapshot.nodeStates[nodeId] = { ...state, status: "cancelled" };
@@ -211,7 +241,7 @@ export class PipelineRuntime {
   private async advance(active: ActiveRun): Promise<PipelineRuntimeResult> {
     while (active.snapshot.status === "running") {
       const ready = this.readyNodes(active);
-      if (ready.length === 0) {
+      if (ready.length === 0 && active.nodeTasks.size === 0) {
         if (this.isComplete(active)) {
           return this.complete(active);
         }
@@ -229,18 +259,57 @@ export class PipelineRuntime {
         node.kind === "agent"
         && (!node.interaction || node.id === firstInterview?.id)
       );
-      const results = await Promise.all(batch.map(node => this.executeNode(active, node)));
-      const failure = results.find(result => "code" in result) as PipelineRuntimeDiagnostic | undefined;
+      for (const node of batch) {
+        this.startNodeTask(active, node);
+      }
+      if (active.nodeTasks.size === 0) {
+        continue;
+      }
+
+      const completed = await Promise.race(active.nodeTasks.values());
+      active.nodeTasks.delete(completed.nodeId);
+      if ("thrown" in completed) {
+        throw completed.thrown;
+      }
+      const result = completed.result;
+      const failure = "code" in result ? result : undefined;
       if (failure) {
         active.controller.abort();
         return this.fail(active, failure);
       }
-      const paused = results.find((result): result is { paused: PipelineRuntimeResult } => "paused" in result);
-      if (paused) {
-        return paused.paused;
+      if ("paused" in result) {
+        return result.paused;
+      }
+      const pendingPause = active.snapshot.pendingPause;
+      if (pendingPause) {
+        return {
+          status: "paused",
+          runId: active.snapshot.runId,
+          pause: pendingPause,
+          snapshot: cloneSnapshot(active.snapshot),
+        };
       }
     }
+    const pendingPause = active.snapshot.pendingPause;
+    if (pendingPause) {
+      return {
+        status: "paused",
+        runId: active.snapshot.runId,
+        pause: pendingPause,
+        snapshot: cloneSnapshot(active.snapshot),
+      };
+    }
     return { status: "cancelled", runId: active.snapshot.runId, snapshot: cloneSnapshot(active.snapshot) };
+  }
+
+  private startNodeTask(active: ActiveRun, node: CompiledPipelineNode): void {
+    if (active.nodeTasks.has(node.id)) {
+      return;
+    }
+    const task = this.executeNode(active, node)
+      .then(result => ({ nodeId: node.id, result }))
+      .catch((thrown: unknown) => ({ nodeId: node.id, thrown }));
+    active.nodeTasks.set(node.id, task);
   }
 
   private readyNodes(active: ActiveRun): CompiledPipelineNode[] {
@@ -298,38 +367,51 @@ export class PipelineRuntime {
       await this.persist(active.snapshot);
       await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "node_started", nodeId: node.id, at: active.snapshot.updatedAt });
 
-      const result = await this.adapter.execute({
-        runId: active.snapshot.runId,
-        node,
-        prompt,
-        inputs,
-        signal: active.controller.signal,
-      });
-      if ("artifact" in result) {
-        const artifact = assertArtifact(node, result);
-        active.snapshot.artifacts[artifactKey(node.id, artifact.name)] = artifact;
-        active.snapshot.nodeStates[node.id] = {
-          ...active.snapshot.nodeStates[node.id],
-          status: "completed",
-          completedAt: this.isoNow(),
-        };
-        active.snapshot.updatedAt = this.isoNow();
-        await this.persist(active.snapshot);
-        await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "node_completed", nodeId: node.id, at: active.snapshot.updatedAt });
-        return { ok: true };
+      let session: AgentNodeSession;
+      try {
+        session = await this.openAttemptSession(active, node);
+      } catch (error: unknown) {
+        return sessionBoundaryDiagnostic(active, node, state.attempts + 1, error);
       }
+      try {
+        const result = await session.send({
+          runId: active.snapshot.runId,
+          node,
+          prompt,
+          inputs,
+          signal: active.controller.signal,
+        });
+        if (active.controller.signal.aborted) {
+          return { ok: true };
+        }
+        if ("artifact" in result) {
+          const artifact = assertArtifact(node, result);
+          active.snapshot.artifacts[artifactKey(node.id, artifact.name)] = artifact;
+          active.snapshot.nodeStates[node.id] = {
+            ...active.snapshot.nodeStates[node.id],
+            status: "completed",
+            completedAt: this.isoNow(),
+          };
+          active.snapshot.updatedAt = this.isoNow();
+          await this.persist(active.snapshot);
+          await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "node_completed", nodeId: node.id, at: active.snapshot.updatedAt });
+          return { ok: true };
+        }
 
-      active.snapshot.diagnostics.push({ nodeId: node.id, attempt, code: result.code, message: result.message });
-      if (!result.retryable || attempt >= node.retry.maxAttempts) {
-        active.snapshot.nodeStates[node.id] = {
-          ...active.snapshot.nodeStates[node.id],
-          status: "failed",
-          completedAt: this.isoNow(),
-        };
-        active.snapshot.updatedAt = this.isoNow();
-        await this.persist(active.snapshot);
-        await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "node_failed", nodeId: node.id, message: result.message, at: active.snapshot.updatedAt });
-        return { nodeId: node.id, attempt, code: result.code, message: result.message };
+        active.snapshot.diagnostics.push({ nodeId: node.id, attempt, code: result.code, message: result.message });
+        if (!result.retryable || attempt >= node.retry.maxAttempts) {
+          active.snapshot.nodeStates[node.id] = {
+            ...active.snapshot.nodeStates[node.id],
+            status: "failed",
+            completedAt: this.isoNow(),
+          };
+          active.snapshot.updatedAt = this.isoNow();
+          await this.persist(active.snapshot);
+          await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "node_failed", nodeId: node.id, message: result.message, at: active.snapshot.updatedAt });
+          return { nodeId: node.id, attempt, code: result.code, message: result.message };
+        }
+      } finally {
+        await this.closeSessionForRun(active, session);
       }
       await sleep(node.retry.backoffMs ?? 0);
     }
@@ -369,20 +451,25 @@ export class PipelineRuntime {
       active.snapshot.activeInterview = {
         nodeId: node.id,
         protocol: node.interaction.protocol,
+        originalPrompt,
         state: "question",
         completionRequested: false,
         turns: [],
         repairAttemptsUsed: 0,
+        finalOutputRequestsUsed: 0,
       };
     }
     const interview = active.snapshot.activeInterview!;
+    interview.originalPrompt ??= originalPrompt;
+    interview.finalOutputRequestsUsed ??= 0;
     interview.repairAttemptsUsed = 0;
     let prompt = protocol.renderReplay({
-      originalPrompt,
+      originalPrompt: interview.originalPrompt,
       turns: interview.turns,
       completionRequested: interview.completionRequested,
     });
     const firstAttempt = fixedAttempt ?? active.snapshot.nodeStates[node.id].attempts + 1;
+    let replayNextAttempt = Boolean(existing) && !active.sessions.has(node.id);
 
     for (let attempt = firstAttempt; attempt <= node.retry.maxAttempts; attempt++) {
       active.snapshot.nodeStates[node.id] = {
@@ -393,15 +480,28 @@ export class PipelineRuntime {
       };
       active.snapshot.updatedAt = this.isoNow();
       await this.persist(active.snapshot);
-      await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "node_started", nodeId: node.id, at: active.snapshot.updatedAt });
+      const isReplay = replayNextAttempt;
+      replayNextAttempt = false;
+      if (isReplay) {
+        await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "node_replayed", nodeId: node.id, message: "Interview replayed from node ACP history.", at: active.snapshot.updatedAt });
+      } else if (!existing && attempt === firstAttempt) {
+        await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "node_started", nodeId: node.id, at: active.snapshot.updatedAt });
+      }
 
       for (;;) {
-        const result = await this.adapter.execute({
+        let session: AgentNodeSession;
+        try {
+          session = await this.openInterviewSession(active, node);
+        } catch (error: unknown) {
+          return sessionBoundaryDiagnostic(active, node, attempt, error);
+        }
+        const result = await session.send({
           runId: active.snapshot.runId,
           node,
           prompt,
           inputs,
           signal: active.controller.signal,
+          replay: isReplay,
         });
         if (!("artifact" in result)) {
           active.snapshot.diagnostics.push({ nodeId: node.id, attempt, code: result.code, message: result.message });
@@ -415,6 +515,9 @@ export class PipelineRuntime {
             await this.persist(active.snapshot);
             return { nodeId: node.id, attempt, code: result.code, message: result.message };
           }
+          const shouldReplayTransportLoss = isInterviewTransportLoss(result);
+          await this.closeInterviewSession(active, node.id);
+          replayNextAttempt = shouldReplayTransportLoss;
           await sleep(node.retry.backoffMs ?? 0);
           break;
         }
@@ -427,9 +530,14 @@ export class PipelineRuntime {
               throw new Error("Expected ready after complete-interview, but the agent returned question.");
             }
             interview.turns.push({ role: "agent", content: parsed.content });
-            return this.pauseInterview(active, node, parsed.question);
+            this.recordInterviewHistory(active, interview);
+            return this.pauseInterview(active, node, parsed.question, parsed.recommendedAnswer);
           }
 
+          interview.structuredOutputs = [
+            ...(interview.structuredOutputs ?? []),
+            { state: "ready", content: stringifyTemplateValue(parsed.content) },
+          ];
           const finalResult: PipelineNodeExecutionResult = {
             artifact: {
               name: node.output.name,
@@ -440,6 +548,7 @@ export class PipelineRuntime {
           };
           const artifact = assertArtifact(node, finalResult);
           active.snapshot.artifacts[artifactKey(node.id, artifact.name)] = artifact;
+          this.recordInterviewHistory(active, interview);
           active.snapshot.activeInterview = undefined;
           active.snapshot.nodeStates[node.id] = {
             ...active.snapshot.nodeStates[node.id],
@@ -452,10 +561,36 @@ export class PipelineRuntime {
           return { ok: true };
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
+          if (interview.completionRequested && interview.finalOutputRequestsUsed < 1) {
+            interview.finalOutputRequestsUsed += 1;
+            prompt = protocol.renderFinalOutputRequest({ prompt, diagnostic: message });
+            active.snapshot.updatedAt = this.isoNow();
+            this.recordInterviewHistory(active, interview);
+            await this.persist(active.snapshot);
+            continue;
+          }
+          if (interview.completionRequested) {
+            active.snapshot.diagnostics.push({
+              nodeId: node.id,
+              attempt,
+              code: "malformed_interview_output",
+              message,
+            });
+            active.snapshot.nodeStates[node.id] = {
+              ...active.snapshot.nodeStates[node.id],
+              status: "failed",
+              completedAt: this.isoNow(),
+            };
+            active.snapshot.updatedAt = this.isoNow();
+            this.recordInterviewHistory(active, interview);
+            await this.persist(active.snapshot);
+            return { nodeId: node.id, attempt, code: "malformed_interview_output", message };
+          }
           if (interview.repairAttemptsUsed < node.interaction.repairAttempts) {
             interview.repairAttemptsUsed += 1;
             prompt = protocol.renderRepair({ prompt, diagnostic: message });
             active.snapshot.updatedAt = this.isoNow();
+            this.recordInterviewHistory(active, interview);
             await this.persist(active.snapshot);
             continue;
           }
@@ -479,7 +614,7 @@ export class PipelineRuntime {
     return { nodeId: node.id, code: "retry_exhausted", message: `Node "${node.id}" exhausted retries.` };
   }
 
-  private async pauseInterview(active: ActiveRun, node: CompiledPipelineNode, question: string): Promise<{ paused: PipelineRuntimeResult }> {
+  private async pauseInterview(active: ActiveRun, node: CompiledPipelineNode, question: string, recommendation?: string): Promise<{ paused: PipelineRuntimeResult }> {
     const state = active.snapshot.nodeStates[node.id];
     const turn = active.snapshot.activeInterview?.turns.filter(entry => entry.role === "agent").length ?? state.attempts;
     const pause = {
@@ -487,6 +622,7 @@ export class PipelineRuntime {
       nodeId: node.id,
       type: "question" as const,
       content: question,
+      ...(recommendation ? { recommendation } : {}),
       format: "markdown" as const,
     };
     active.snapshot.nodeStates[node.id] = {
@@ -537,6 +673,7 @@ export class PipelineRuntime {
     active.snapshot.updatedAt = this.isoNow();
     await this.persist(active.snapshot);
     await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "completed", at: active.snapshot.updatedAt });
+    await this.closeActiveSessions(active);
     this.runs.delete(active.snapshot.runId);
     return {
       status: "completed",
@@ -557,6 +694,7 @@ export class PipelineRuntime {
     active.snapshot.updatedAt = this.isoNow();
     await this.persist(active.snapshot);
     await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "failed", nodeId: diagnostic.nodeId, message: diagnostic.message, at: active.snapshot.updatedAt });
+    await this.closeActiveSessions(active);
     this.runs.delete(active.snapshot.runId);
     return { status: "failed", runId: active.snapshot.runId, error: diagnostic, snapshot: cloneSnapshot(active.snapshot) };
   }
@@ -573,7 +711,15 @@ export class PipelineRuntime {
       if (!snapshot || !program) {
         throw new Error(`Unknown active pipeline run "${runId}".`);
       }
-      const restored = { program, snapshot, controller: new AbortController() };
+      const restored = {
+        program,
+        snapshot,
+        controller: new AbortController(),
+        sessions: new Map<string, AgentNodeSession>(),
+        activityUnsubscribers: new Map<AgentNodeSession, () => void>(),
+        closedSessions: new WeakSet<AgentNodeSession>(),
+        nodeTasks: new Map<string, Promise<NodeTaskResult>>(),
+      };
       this.runs.set(runId, restored);
       return restored;
     }
@@ -584,8 +730,106 @@ export class PipelineRuntime {
     await this.store?.save(cloneSnapshot(snapshot));
   }
 
+  private recordInterviewHistory(active: ActiveRun, interview: NonNullable<PipelineRuntimeSnapshot["activeInterview"]>): void {
+    const history = cloneJson(interview);
+    active.snapshot.nodeInterviewHistories = {
+      ...active.snapshot.nodeInterviewHistories,
+      [interview.nodeId]: history,
+    };
+    active.snapshot.artifacts[artifactKey(interview.nodeId, PIPELINE_NODE_ACP_HISTORY_ARTIFACT_NAME)] = {
+      name: PIPELINE_NODE_ACP_HISTORY_ARTIFACT_NAME,
+      type: PIPELINE_NODE_ACP_HISTORY_ARTIFACT_TYPE,
+      format: "json",
+      value: history,
+      producerNodeId: interview.nodeId,
+    };
+  }
+
+  private async openAttemptSession(active: ActiveRun, node: CompiledPipelineNode): Promise<AgentNodeSession> {
+    const session = await this.adapter.createSession({ runId: active.snapshot.runId, node, signal: active.controller.signal });
+    await assertSessionBoundary(active.snapshot.runId, node.id, session);
+    this.subscribeSessionActivity(active, session);
+    active.sessions.set(node.id, session);
+    return session;
+  }
+
+  private async openInterviewSession(active: ActiveRun, node: CompiledPipelineNode): Promise<AgentNodeSession> {
+    const existing = active.sessions.get(node.id);
+    if (existing) {
+      return existing;
+    }
+    const session = await this.adapter.createSession({ runId: active.snapshot.runId, node, signal: active.controller.signal });
+    await assertSessionBoundary(active.snapshot.runId, node.id, session);
+    this.subscribeSessionActivity(active, session);
+    active.sessions.set(node.id, session);
+    return session;
+  }
+
+  private async closeInterviewSession(active: ActiveRun, nodeId: string): Promise<void> {
+    const session = active.sessions.get(nodeId);
+    if (!session) {
+      return;
+    }
+    active.sessions.delete(nodeId);
+    await this.closeSessionForRun(active, session);
+  }
+
+  private async cancelActiveSessions(active: ActiveRun): Promise<void> {
+    await Promise.all([...active.sessions.values()].map(async session => {
+      this.unsubscribeSessionActivity(active, session);
+      active.closedSessions.add(session);
+      await session.cancel();
+      await session.close();
+    }));
+    active.sessions.clear();
+  }
+
+  private async closeActiveSessions(active: ActiveRun): Promise<void> {
+    await Promise.all([...active.sessions.values()].map(session => this.closeSessionForRun(active, session)));
+    active.sessions.clear();
+  }
+
+  private subscribeSessionActivity(active: ActiveRun, session: AgentNodeSession): void {
+    if (!session.onActivity || active.activityUnsubscribers.has(session)) {
+      return;
+    }
+    const unsubscribe = session.onActivity(activity => {
+      void this.emitRuntimeEvent({
+        runId: active.snapshot.runId,
+        type: "agent_activity",
+        nodeId: session.nodeId,
+        activity,
+        message: activity.content,
+        at: this.isoNow(),
+      });
+    });
+    active.activityUnsubscribers.set(session, unsubscribe);
+  }
+
+  private unsubscribeSessionActivity(active: ActiveRun, session: AgentNodeSession): void {
+    active.activityUnsubscribers.get(session)?.();
+    active.activityUnsubscribers.delete(session);
+  }
+
+  private async closeSessionForRun(active: ActiveRun, session: AgentNodeSession): Promise<void> {
+    if (active.closedSessions.has(session)) {
+      return;
+    }
+    active.closedSessions.add(session);
+    for (const [nodeId, activeSession] of active.sessions) {
+      if (activeSession === session) {
+        active.sessions.delete(nodeId);
+      }
+    }
+    this.unsubscribeSessionActivity(active, session);
+    await session.close();
+  }
+
   private async emitRuntimeEvent(event: PipelineRuntimeEvent): Promise<void> {
     await this.onEvent?.(event);
+    if (event.type === "agent_activity") {
+      return;
+    }
     await this.store?.appendEvent(event.runId, event);
   }
 
@@ -644,8 +888,50 @@ function artifactKey(nodeId: string, artifactName: string): string {
   return `${nodeId}.${artifactName}`;
 }
 
+function isInterviewTransportLoss(result: PipelineNodeExecutionFailure): boolean {
+  return result.retryable === true && result.code === "transport_lost";
+}
+
+class InvalidAgentNodeSessionError extends Error {
+  readonly code = "invalid_agent_node_session";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidAgentNodeSessionError";
+  }
+}
+
+async function assertSessionBoundary(runId: string, nodeId: string, session: AgentNodeSession): Promise<void> {
+  if (session.runId === runId && session.nodeId === nodeId) {
+    return;
+  }
+  await session.close();
+  throw new InvalidAgentNodeSessionError(
+    `AgentNodeSession for run "${session.runId}" and node "${session.nodeId}" cannot be used for run "${runId}" and node "${nodeId}".`,
+  );
+}
+
+function sessionBoundaryDiagnostic(
+  active: ActiveRun,
+  node: CompiledPipelineNode,
+  attempt: number,
+  error: unknown,
+): PipelineRuntimeDiagnostic {
+  const message = error instanceof Error && error.message ? error.message : String(error);
+  return {
+    nodeId: node.id,
+    attempt,
+    code: error instanceof InvalidAgentNodeSessionError ? error.code : "agent_session_open_failed",
+    message,
+  };
+}
+
 function cloneSnapshot(snapshot: PipelineRuntimeSnapshot): PipelineRuntimeSnapshot {
-  return JSON.parse(JSON.stringify(snapshot)) as PipelineRuntimeSnapshot;
+  return cloneJson(snapshot);
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 function cloneInputVariables(inputs: Record<string, unknown> | undefined): Record<string, unknown> | undefined {

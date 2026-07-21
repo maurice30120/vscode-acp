@@ -1,9 +1,12 @@
 import { EventEmitter } from 'node:events';
 
-import type { PipelineAgentRunner } from './PipelineAgentRunner';
+import {
+  publishPipelineArtifacts,
+  type PipelineArtifactPublisher,
+} from './PipelineArtifactPublisher';
 import { PipelineRuntime } from './PipelineRuntime';
-import { PipelineRuntimeAgentAdapter } from './PipelineRuntimeAgentAdapter';
 import type {
+  AgentNodeSessionFactory,
   CompiledPipelineProgram,
   PipelinePauseSnapshot,
   PipelineResumeDecision,
@@ -21,9 +24,11 @@ export interface PipelineServiceDependencies {
   getPipelinePrograms?: () => CompiledPipelineProgram[];
   getPipelineProgramForAgent?: (agentName: string) => CompiledPipelineProgram | null;
   getAgentConfigs?: () => Record<string, unknown>;
-  runAgent?: PipelineAgentRunner;
+  createSession?: AgentNodeSessionFactory;
+  onPipelineStart?: (input: { sessionId: string; program: CompiledPipelineProgram; workspaceCwd: string }) => void;
   isAgentSandcastle?: (agentName: string, agentConfigs: Record<string, unknown>) => boolean;
   isRunAbortedError?: (error: unknown) => boolean;
+  artifactPublisher?: PipelineArtifactPublisher;
 }
 
 export class PipelineService extends EventEmitter {
@@ -128,34 +133,16 @@ export class PipelineService extends EventEmitter {
     program: CompiledPipelineProgram,
     userPrompt: string,
   ): Promise<PipelineRuntimeResult> {
-    if (!this.dependencies.runAgent) {
-      throw new Error('PipelineService v3 execution requires runAgent dependency.');
+    if (!this.dependencies.createSession) {
+      throw new Error('PipelineService v3 execution requires an AgentNodeSession createSession dependency.');
     }
+    this.dependencies.onPipelineStart?.({
+      sessionId,
+      program,
+      workspaceCwd: this.workspaceCwd(),
+    });
     const runtime = new PipelineRuntime(
-      new PipelineRuntimeAgentAdapter({
-        workspaceCwd: this.workspaceCwd,
-        runAgent: this.dependencies.runAgent,
-        onSessionUpdate: (runId, node, update) => {
-          this.emit('session-update', {
-            sessionId: runId,
-            phase: node.id,
-            update,
-            stepId: node.id,
-            role: node.id,
-            agentName: node.agent,
-          });
-        },
-        onStatus: (runId, node, update) => {
-          this.emit('status', {
-            sessionId: runId,
-            status: update.status,
-            message: update.message,
-            stepId: node.id,
-            role: node.id,
-            agentName: node.agent,
-          });
-        },
-      }),
+      { createSession: this.dependencies.createSession },
       {
         runIdFactory: () => sessionId,
         programs: [program],
@@ -180,9 +167,11 @@ export class PipelineService extends EventEmitter {
   private handleV3Result(sessionId: string, result: PipelineRuntimeResult): PipelineRuntimeResult {
     if (result.status === 'paused') {
       this.emitV3Pause(sessionId, result.pause);
+      this.publishV3Artifacts(result);
       return result;
     }
     if (result.status === 'completed') {
+      this.publishV3Artifacts(result);
       this.v3Runs.delete(sessionId);
       return result;
     }
@@ -194,6 +183,13 @@ export class PipelineService extends EventEmitter {
     this.v3Runs.delete(sessionId);
     this.v3RejectedRuns.delete(sessionId);
     throw new Error(result.error.message);
+  }
+
+  private publishV3Artifacts(
+    result: Extract<PipelineRuntimeResult, { status: 'paused' | 'completed' }>,
+  ): void {
+    const publisher = this.dependencies.artifactPublisher ?? publishPipelineArtifacts;
+    publisher(this.workspaceCwd(), result.snapshot);
   }
 
   private emitV3Pause(sessionId: string, pause: PipelinePauseSnapshot): void {

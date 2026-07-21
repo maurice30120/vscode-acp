@@ -6,12 +6,15 @@ import type { SessionNotification } from '@agentclientprotocol/sdk';
 import {
   PipelineRuntime,
   PipelineRuntimeAgentAdapter,
+  resolvePipelineStepText,
+  type AgentNodeSessionFactory,
   type CompiledPipelineProgram,
   type CompiledPipelineNode,
   type PipelineAgentRunner,
   type PipelineResumeDecision,
   type PipelineRuntimeResult,
 } from '@acp-client/pipeline';
+import { clearSandcastleLogs } from '@acp-client/sandcastle';
 import {
   EphemeralAcpRunner,
   getPipelinePrograms,
@@ -30,6 +33,7 @@ export interface CliPipelineListEntry {
 export interface CliPipelineHostOptions {
   terminal: CliTerminal;
   verbose?: boolean;
+  createSession?: AgentNodeSessionFactory;
   runAgent?: PipelineAgentRunner;
   runIdFactory?: () => string;
 }
@@ -37,7 +41,7 @@ export interface CliPipelineHostOptions {
 export class CliPipelineHost {
   private readonly programs: CompiledPipelineProgram[];
   private readonly runtimes = new Map<string, PipelineRuntime>();
-  private readonly runner: PipelineAgentRunner;
+  private readonly createSession: AgentNodeSessionFactory;
   private readonly logger: Logger;
   private readonly runLogs = new Map<string, PipelineRunLog>();
   private readonly activeAgentNodes = new Map<string, CompiledPipelineNode>();
@@ -70,70 +74,7 @@ export class CliPipelineHost {
     }
 
     this.programs = getPipelinePrograms(this.workspaceCwd, this.logger);
-    const ephemeral = new EphemeralAcpRunner(this.workspaceCwd, {
-      getPermissionContext: () => this.options.terminal.asPermissionContext(),
-      getAgentConfigs: () => catalog.agents,
-      timeouts: catalog.native.pipeline.timeouts,
-      getSandcastlePromotion: () => catalog.sandcastle.promotion,
-      requestSandcastlePromotion: async request => {
-        const selected = await this.options.terminal.select(
-          [
-            `Sandcastle promotion for ${request.agentName}`,
-            `Files changed: ${request.preview.filesChanged}`,
-            `Branch: ${request.preview.branch || '(unknown)'}`,
-            `Base: ${request.preview.baseRef || '(unknown)'}`,
-          ].join('\n'),
-          ['Apply Sandcastle changes', 'Reject Sandcastle changes'],
-        );
-        if (selected === 'Apply Sandcastle changes') {
-          return 'approve';
-        }
-        if (selected === 'Reject Sandcastle changes') {
-          return 'reject';
-        }
-        return 'cancelled';
-      },
-      logger: this.logger,
-    });
-    const runner = this.options.runAgent ?? ephemeral.run;
-    this.runner = async input => {
-      const runLog = this.findRunLog(input);
-      const activeNode = this.activeAgentNodes.get(input.agentName);
-      const skills = this.options.verbose
-        ? ` (skills=${input.skills?.join(',') || 'none'})`
-        : '';
-      this.options.terminal.writeError(
-        `[acp-cli] Starting node agent "${input.agentName}"${skills}`,
-      );
-      runLog?.appendForNode(activeNode, 'agent_started', {
-        agentName: input.agentName,
-        workspaceCwd: input.workspaceCwd,
-        sideEffects: input.sideEffects,
-        permissions: input.permissions,
-        promotion: input.promotion,
-        skills: input.skills ?? [],
-        promptBytes: Buffer.byteLength(input.promptText, 'utf8'),
-      });
-      try {
-        const result = await runner(input);
-        runLog?.appendForNode(activeNode, 'agent_completed', {
-          agentName: input.agentName,
-          textBytes: Buffer.byteLength(resolveResultText(result), 'utf8'),
-          promotion: typeof result === 'object' ? result.promotion : undefined,
-        });
-        if (this.options.verbose) {
-          this.options.terminal.writeError(`[acp-cli] Agent "${input.agentName}" completed.`);
-        }
-        return result;
-      } catch (error: unknown) {
-        runLog?.appendForNode(activeNode, 'agent_failed', {
-          agentName: input.agentName,
-          error: serializeError(error),
-        });
-        this.logger.error(`Agent "${input.agentName}" failed`, error);
-        throw error;
-      }
-    };
+    this.createSession = this.options.createSession ?? this.createDefaultSessionFactory(catalog);
   }
 
   listPipelines(): CliPipelineListEntry[] {
@@ -154,6 +95,7 @@ export class CliPipelineHost {
 
     const runId = this.options.runIdFactory?.() ?? randomUUID();
     PipelineRunLog.clear(this.workspaceCwd);
+    clearSandcastleLogs(this.workspaceCwd);
     const runLog = PipelineRunLog.create(this.workspaceCwd, runId, program.id);
     this.runLogs.set(runId, runLog);
     runLog.append('run_started', {
@@ -162,23 +104,7 @@ export class CliPipelineHost {
       pipelineTitle: program.title,
       promptBytes: Buffer.byteLength(prompt, 'utf8'),
     });
-    const adapter = new PipelineRuntimeAgentAdapter({
-      workspaceCwd: () => this.workspaceCwd,
-      runAgent: this.runner,
-      onSessionUpdate: (activeRunId, node, update) => {
-        this.runLogs.get(activeRunId)?.appendNode(node, 'session_update', sanitizeSessionNotification(update));
-        this.reportSessionUpdate(activeRunId, node, update);
-      },
-      onStatus: (_activeRunId, node, update) => {
-        this.runLogs.get(_activeRunId)?.appendNode(node, 'status', update);
-        if (this.options.verbose) {
-          this.options.terminal.writeError(
-            `[${node.id}:${node.agent ?? 'pause'}] ${update.status}: ${update.message}`,
-          );
-        }
-      },
-    });
-    const runtime = new PipelineRuntime(adapter, {
+    const runtime = new PipelineRuntime({ createSession: this.createSession }, {
       runIdFactory: () => runId,
       programs: [program],
       onEvent: event => {
@@ -274,6 +200,86 @@ export class CliPipelineHost {
         log.appendNode(node, event, data);
       }
     }
+  }
+
+  private createDefaultSessionFactory(catalog: ReturnType<typeof loadPiAgentCatalog>): AgentNodeSessionFactory {
+    const ephemeral = new EphemeralAcpRunner(this.workspaceCwd, {
+      getPermissionContext: () => this.options.terminal.asPermissionContext(),
+      getAgentConfigs: () => catalog.agents,
+      timeouts: catalog.native.pipeline.timeouts,
+      getSandcastlePromotion: () => catalog.sandcastle.promotion,
+      requestSandcastlePromotion: async request => {
+        const selected = await this.options.terminal.select(
+          [
+            `Sandcastle promotion for ${request.agentName}`,
+            `Files changed: ${request.preview.filesChanged}`,
+            `Branch: ${request.preview.branch || '(unknown)'}`,
+            `Base: ${request.preview.baseRef || '(unknown)'}`,
+          ].join('\n'),
+          ['Apply Sandcastle changes', 'Reject Sandcastle changes'],
+        );
+        if (selected === 'Apply Sandcastle changes') {
+          return 'approve';
+        }
+        if (selected === 'Reject Sandcastle changes') {
+          return 'reject';
+        }
+        return 'cancelled';
+      },
+      logger: this.logger,
+    });
+    const runner = this.options.runAgent ?? ((input) => ephemeral.run(input));
+    return new PipelineRuntimeAgentAdapter({
+      workspaceCwd: () => this.workspaceCwd,
+      runAgent: async input => {
+        const runLog = this.findRunLog(input);
+        const activeNode = this.activeAgentNodes.get(input.agentName);
+        const skills = this.options.verbose
+          ? ` (skills=${input.skills?.join(',') || 'none'})`
+          : '';
+        this.options.terminal.writeError(`[acp-cli] Starting node agent "${input.agentName}"${skills}`);
+        runLog?.appendForNode(activeNode, 'agent_started', {
+          agentName: input.agentName,
+          workspaceCwd: input.workspaceCwd,
+          sideEffects: input.sideEffects,
+          permissions: input.permissions,
+          promotion: input.promotion,
+          skills: input.skills ?? [],
+          promptBytes: Buffer.byteLength(input.promptText, 'utf8'),
+        });
+        try {
+          const result = await runner(input);
+          runLog?.appendForNode(activeNode, 'agent_completed', {
+            agentName: input.agentName,
+            textBytes: Buffer.byteLength(resolvePipelineStepText(result), 'utf8'),
+            promotion: typeof result === 'object' ? result.promotion : undefined,
+          });
+          if (this.options.verbose) {
+            this.options.terminal.writeError(`[acp-cli] Agent "${input.agentName}" completed.`);
+          }
+          return result;
+        } catch (error: unknown) {
+          runLog?.appendForNode(activeNode, 'agent_failed', {
+            agentName: input.agentName,
+            error: serializeError(error),
+          });
+          this.logger.error(`Agent "${input.agentName}" failed`, error);
+          throw error;
+        }
+      },
+      onSessionUpdate: (activeRunId, node, update) => {
+        this.runLogs.get(activeRunId)?.appendNode(node, 'session_update', sanitizeSessionNotification(update));
+        this.reportSessionUpdate(activeRunId, node, update);
+      },
+      onStatus: (activeRunId, node, update) => {
+        this.runLogs.get(activeRunId)?.appendNode(node, 'status', update);
+        if (this.options.verbose) {
+          this.options.terminal.writeError(
+            `[${node.id}:${node.agent ?? 'pause'}] ${update.status}: ${update.message}`,
+          );
+        }
+      },
+    }).asSessionFactory();
   }
 
   private reportSessionUpdate(runId: string, node: CompiledPipelineNode, notification: SessionNotification): void {
@@ -424,16 +430,6 @@ function summarizeRuntimeResult(result: PipelineRuntimeResult): unknown {
         }
       : undefined,
   };
-}
-
-function resolveResultText(result: Awaited<ReturnType<PipelineAgentRunner>>): string {
-  if (typeof result === 'string') {
-    return result;
-  }
-  if (typeof result === 'object' && 'text' in result && typeof result.text === 'string') {
-    return result.text;
-  }
-  return JSON.stringify(result);
 }
 
 function serializeError(error: unknown): unknown {

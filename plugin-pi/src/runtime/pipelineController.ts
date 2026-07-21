@@ -1,14 +1,17 @@
 import { randomUUID } from 'node:crypto';
 
 import {
-  PipelineService,
-  type PipelineAgentRunner,
-  type PipelinePlanReadyEvent,
-  type PipelineSessionUpdateEvent,
-  type PipelineStatusEvent,
+	PipelineService,
+	PipelineRuntimeAgentAdapter,
+	type AgentNodeSessionFactory,
+	type PipelineAgentRunner,
+	type PipelinePlanReadyEvent,
+	type PipelineSessionUpdateEvent,
+	type PipelineStatusEvent,
 } from '@acp-client/pipeline';
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from '@earendil-works/pi-coding-agent';
 import type { SessionNotification } from '@agentclientprotocol/sdk';
+import { clearSandcastleLogs } from '@acp-client/sandcastle';
 
 import { EphemeralAcpRunner } from '../acp/ephemeralRunner.js';
 import { RunAbortedError } from '../acp/runAbortedError.js';
@@ -21,6 +24,7 @@ import type { Logger, PiPermissionContext } from '../types.js';
 
 export interface PipelineControllerOptions {
   logger?: Logger;
+  createSession?: AgentNodeSessionFactory;
   runner?: { run: PipelineAgentRunner };
   heartbeatIntervalMs?: number;
   streamFlushDelayMs?: number;
@@ -40,7 +44,6 @@ export interface PipelineListEntry {
 
 export class PipelineController {
   private readonly service: PipelineService;
-  private readonly runner: { run: PipelineAgentRunner };
   private readonly heartbeatIntervalMs: number;
   private readonly streamFlushDelayMs: number;
   private permissionContext: PiPermissionContext | undefined;
@@ -69,14 +72,6 @@ export class PipelineController {
   ) {
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? 15_000;
     this.streamFlushDelayMs = options.streamFlushDelayMs ?? 350;
-    this.runner = options.runner ?? new EphemeralAcpRunner(workspaceCwd, {
-      getPermissionContext: () => this.permissionContext,
-      getAgentConfigs: () => loadPiAgentCatalog(this.workspaceCwd).agents,
-      timeouts: loadPiAgentCatalog(this.workspaceCwd).native.pipeline.timeouts,
-      getSandcastlePromotion: () => loadPiAgentCatalog(this.workspaceCwd).sandcastle.promotion,
-      requestSandcastlePromotion: request => this.requestSandcastlePromotion(request),
-      logger: options.logger,
-    });
     this.service = new PipelineService(
       () => this.workspaceCwd,
       {
@@ -86,8 +81,9 @@ export class PipelineController {
         getAgentConfigs: () => loadPiAgentCatalog(this.workspaceCwd).agents,
         isAgentSandcastle: (agentName, agentConfigs) =>
           (agentConfigs[agentName] as { transport?: string } | undefined)?.transport === 'sandcastle',
-        runAgent: this.runner.run,
+        createSession: options.createSession ?? this.createDefaultSessionFactory(options.runner),
         isRunAbortedError: error => error instanceof RunAbortedError,
+        onPipelineStart: ({ workspaceCwd }) => clearSandcastleLogs(workspaceCwd),
       },
     );
 
@@ -112,6 +108,41 @@ export class PipelineController {
     this.service.on('session-update', event => {
       this.handleSessionUpdateEvent(event);
     });
+  }
+
+  private createDefaultSessionFactory(runnerOption: { run: PipelineAgentRunner } | undefined): AgentNodeSessionFactory {
+    const runner = runnerOption ?? new EphemeralAcpRunner(this.workspaceCwd, {
+      getPermissionContext: () => this.permissionContext,
+      getAgentConfigs: () => loadPiAgentCatalog(this.workspaceCwd).agents,
+      timeouts: loadPiAgentCatalog(this.workspaceCwd).native.pipeline.timeouts,
+      getSandcastlePromotion: () => loadPiAgentCatalog(this.workspaceCwd).sandcastle.promotion,
+      requestSandcastlePromotion: request => this.requestSandcastlePromotion(request),
+      logger: this.options.logger,
+    });
+    return new PipelineRuntimeAgentAdapter({
+      workspaceCwd: () => this.workspaceCwd,
+      runAgent: runner.run,
+      onSessionUpdate: (runId, node, update) => {
+        this.service.emit('session-update', {
+          sessionId: runId,
+          phase: node.id,
+          update,
+          stepId: node.id,
+          role: node.id,
+          agentName: node.agent,
+        });
+      },
+      onStatus: (runId, node, update) => {
+        this.service.emit('status', {
+          sessionId: runId,
+          status: update.status,
+          message: update.message,
+          stepId: node.id,
+          role: node.id,
+          agentName: node.agent,
+        });
+      },
+    }).asSessionFactory();
   }
 
   listPipelines(): PipelineListEntry[] {

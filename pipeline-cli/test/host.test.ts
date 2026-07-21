@@ -4,7 +4,11 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import test from 'node:test';
 
-import type { PipelineAgentRunInput } from '@acp-client/pipeline';
+import type {
+  AgentNodeSessionFactory,
+  AgentNodeSessionTurnInput,
+  PipelineAgentRunInput,
+} from '@acp-client/pipeline';
 import type { PiPermissionContext } from '@acp-client/pi-extension/host';
 
 import { CliPipelineHost } from '../src/host.js';
@@ -104,7 +108,7 @@ test('runs workspace-root v3 pipelines and forwards the node agent and skills', 
 test('does not provide a packaged fallback when workspace ACP config is missing', () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'acp-cli-empty-'));
   assert.throws(
-    () => new CliPipelineHost(cwd, { terminal: new FakeTerminal(), runAgent: async () => '' }),
+    () => new CliPipelineHost(cwd, { terminal: new FakeTerminal(), createSession: createSessionFromRunner(async () => '') }),
     /Missing Pi ACP config at workspace root/,
   );
 });
@@ -113,7 +117,7 @@ test('loads the checked-in workspace configuration used by the CLI script', () =
   const workspaceRoot = path.resolve(import.meta.dirname, '..', '..', '..');
   const host = new CliPipelineHost(workspaceRoot, {
     terminal: new FakeTerminal(),
-    runAgent: async () => '',
+    createSession: createSessionFromRunner(async () => ''),
   });
 
   assert.ok(
@@ -191,8 +195,27 @@ test('prints compact agent activity for CLI session updates without thought text
 test('writes fresh JSONL logs for each pipeline run', async () => {
   const cwd = createWorkspace();
   const logsDir = path.join(cwd, '.acp', 'logs');
+  const sandcastleLogsDir = path.join(cwd, '.sandcastle', 'logs');
+  const vibeSessionLogsDir = path.join(cwd, '.sandcastle', 'vibe-home', 'logs', 'session');
+  const vibeHomeDir = path.join(cwd, '.sandcastle', 'vibe-home');
+  const worktreeDir = path.join(cwd, '.sandcastle', 'worktrees', 'active');
+  const gitOverrideDir = path.join(cwd, '.sandcastle', 'git-overrides');
+  const codexHomeDir = path.join(cwd, '.sandcastle', 'codex-home');
   fs.mkdirSync(logsDir, { recursive: true });
+  fs.mkdirSync(sandcastleLogsDir, { recursive: true });
+  fs.mkdirSync(vibeSessionLogsDir, { recursive: true });
+  fs.mkdirSync(worktreeDir, { recursive: true });
+  fs.mkdirSync(gitOverrideDir, { recursive: true });
+  fs.mkdirSync(codexHomeDir, { recursive: true });
   fs.writeFileSync(path.join(logsDir, 'stale.jsonl'), '{}\n');
+  fs.writeFileSync(path.join(sandcastleLogsDir, 'stale.log'), 'stale\n');
+  fs.writeFileSync(path.join(vibeSessionLogsDir, 'messages.jsonl'), '{}\n');
+  fs.writeFileSync(path.join(cwd, '.sandcastle', '.env'), 'TOKEN=kept\n');
+  fs.writeFileSync(path.join(vibeHomeDir, 'config.toml'), 'kept = true\n');
+  fs.writeFileSync(path.join(vibeHomeDir, '.env'), 'VIBE=kept\n');
+  fs.writeFileSync(path.join(worktreeDir, 'file.txt'), 'kept\n');
+  fs.writeFileSync(path.join(gitOverrideDir, 'override.git'), 'kept\n');
+  fs.writeFileSync(path.join(codexHomeDir, 'config.toml'), 'kept\n');
 
   const host = new CliPipelineHost(cwd, {
     terminal: new FakeTerminal(),
@@ -230,13 +253,21 @@ test('writes fresh JSONL logs for each pipeline run', async () => {
   assert.match(agentLog, /"event":"agent_started"/);
   assert.match(agentLog, /Visible answer/);
   assert.doesNotMatch(log, /stale/);
+  assert.deepEqual(fs.readdirSync(sandcastleLogsDir), []);
+  assert.deepEqual(fs.readdirSync(vibeSessionLogsDir), []);
+  assert.equal(fs.readFileSync(path.join(cwd, '.sandcastle', '.env'), 'utf8'), 'TOKEN=kept\n');
+  assert.equal(fs.readFileSync(path.join(vibeHomeDir, 'config.toml'), 'utf8'), 'kept = true\n');
+  assert.equal(fs.readFileSync(path.join(vibeHomeDir, '.env'), 'utf8'), 'VIBE=kept\n');
+  assert.equal(fs.readFileSync(path.join(worktreeDir, 'file.txt'), 'utf8'), 'kept\n');
+  assert.equal(fs.readFileSync(path.join(gitOverrideDir, 'override.git'), 'utf8'), 'kept\n');
+  assert.equal(fs.readFileSync(path.join(codexHomeDir, 'config.toml'), 'utf8'), 'kept\n');
 });
 
 test('lists workspace pipelines with stable CLI metadata', () => {
   const cwd = createWorkspace();
   const host = new CliPipelineHost(cwd, {
     terminal: new FakeTerminal(),
-    runAgent: async () => '',
+    createSession: createSessionFromRunner(async () => ''),
   });
 
   assert.deepEqual(host.listPipelines(), [
@@ -252,7 +283,7 @@ test('rejects resume and cancel calls for unknown runs', async () => {
   const cwd = createWorkspace();
   const host = new CliPipelineHost(cwd, {
     terminal: new FakeTerminal(),
-    runAgent: async () => '',
+    createSession: createSessionFromRunner(async () => ''),
   });
 
   await assert.rejects(
@@ -264,3 +295,50 @@ test('rejects resume and cancel calls for unknown runs', async () => {
     /Unknown active ACP pipeline run "missing-run"/,
   );
 });
+
+function createSessionFromRunner(
+  runner: (input: PipelineAgentRunInput) => Promise<{ text: string } | string>,
+): AgentNodeSessionFactory {
+  return async ({ runId, node }) => {
+    let activityHandler: ((activity: { kind: 'message' | 'thought' | 'status'; content: string }) => void) | undefined;
+    return {
+    runId,
+    nodeId: node.id,
+    onActivity(handler) {
+      activityHandler = handler;
+      return () => {
+        activityHandler = undefined;
+      };
+    },
+    async send(input: AgentNodeSessionTurnInput) {
+      const result = await runner({
+        workspaceCwd: input.inputs.__workspace?.value as string || '',
+        agentName: input.node.agent ?? '',
+        promptText: input.prompt,
+        signal: input.signal,
+        skills: [...input.node.skills],
+        onSessionUpdate: update => {
+          const data = update.update;
+          if (data.sessionUpdate === 'agent_message_chunk' && data.content.type === 'text') {
+            activityHandler?.({ kind: 'message', content: data.content.text });
+          } else if (data.sessionUpdate === 'agent_thought_chunk' && data.content.type === 'text') {
+            activityHandler?.({ kind: 'thought', content: data.content.text });
+          } else {
+            activityHandler?.({ kind: 'status', content: data.sessionUpdate });
+          }
+        },
+      });
+      return {
+        artifact: {
+          name: input.node.output!.name,
+          type: input.node.output!.type,
+          format: input.node.output!.format,
+          value: typeof result === 'string' ? result : result.text,
+        },
+      };
+    },
+    async cancel() {},
+    async close() {},
+    };
+  };
+}

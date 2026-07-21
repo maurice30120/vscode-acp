@@ -112,7 +112,10 @@ function formatPause(pause: PipelinePauseSnapshot): string {
     : pause.type === 'promotion'
       ? 'Pipeline promotion'
       : 'Pipeline approval';
-  return `\n## ${title}\n\n${pause.content}\n`;
+  const recommendation = pause.type === 'question' && pause.recommendation
+    ? `\n\nRecommended answer\n\n${pause.recommendation}`
+    : '';
+  return `\n## ${title}\n\n${pause.content}${recommendation}\n`;
 }
 
 async function askForAnswer(terminal: CliTerminal): Promise<string> {

@@ -25,6 +25,7 @@ export async function finishEphemeralSandcastleRun(
     return { text: run.text };
   }
 
+  await run.sandbox.closeAgentSession();
   const promotionOutcome = await promotion.finishEphemeralRun(
     run.sandbox.connection,
     run.sandbox.sessionId,

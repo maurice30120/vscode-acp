@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   assertSingleProposedPlan,
   extractClarificationQuestion,
+  extractRecommendedAnswer,
   getProposedPlanInterviewState,
   isProposedPlanAwaitingAnswer,
 } from '../dist/index.js';
@@ -26,6 +27,10 @@ test('interactive proposed plans expose their pending question', () => {
   assert.equal(
     extractClarificationQuestion(QUESTION_PLAN),
     'Which public seam should own persistence?',
+  );
+  assert.equal(
+    extractRecommendedAnswer(QUESTION_PLAN),
+    'Use a repository interface.',
   );
 });
 

@@ -207,6 +207,31 @@ suite('SandcastleAcpAgent', () => {
     await agent.dispose();
   });
 
+  test('closes the prompt-capable agent session while keeping promotion available', async () => {
+    const connection = new FakeConnection();
+    const runtime = new FakeRuntime();
+    const agent = new SandcastleAcpAgent(connection as unknown as AgentSideConnection, {
+      provider: 'codex', model: 'test', imageName: 'fake', maxIterations: 1,
+    }, runtime);
+    const { sessionId } = await agent.newSession({ cwd: repo, mcpServers: [] });
+
+    await agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'make a change' }] });
+    await agent.extMethod('sandcastle/close-agent-session', { sessionId });
+
+    const status = await agent.extMethod('sandcastle/status', { sessionId });
+    assert.strictEqual(status.agentClosed, true);
+    await assert.rejects(
+      () => agent.prompt({ sessionId, prompt: [{ type: 'text', text: 'second prompt' }] }),
+      /agent session is closed/,
+    );
+
+    const preview = await agent.extMethod('sandcastle/preview', { sessionId });
+    assert.strictEqual(preview.filesChanged, 1);
+    const rejected = await agent.extMethod('sandcastle/reject', { sessionId });
+    assert.strictEqual(rejected.success, true);
+    await agent.dispose();
+  });
+
   test('emits Sandcastle status before provider text and terminal completion', async () => {
     const connection = new FakeConnection();
     const runtime = new FakeRuntime();

@@ -8,6 +8,7 @@ export interface SkillsPromptInput {
   workspaceCwd: string;
   text: string;
   skillsBootstrapped: boolean;
+  skills?: readonly string[];
 }
 
 export interface SkillsPromptResult {
@@ -36,12 +37,44 @@ function expandSkillInvocation(
   return parts.join('\n');
 }
 
+function expandExplicitSkills(
+  catalog: SkillsCatalog,
+  skillNames: readonly string[] | undefined,
+  text: string,
+): string | null {
+  if (!skillNames || skillNames.length === 0) {
+    return null;
+  }
+
+  const resolved = catalog.resolveExplicitSkills(skillNames);
+  if (resolved.errors.length > 0) {
+    throw new Error(resolved.errors.join('\n'));
+  }
+  if (resolved.skills.length === 0) {
+    return null;
+  }
+
+  return [
+    renderExplicitPipelineSkills(resolved.skills),
+    '',
+    text,
+  ].join('\n');
+}
+
 export function buildPromptWithSkills(input: SkillsPromptInput): SkillsPromptResult {
   if (!isSkillsEnabledAgent(input.agentName)) {
     return { text: input.text, skillsBootstrapped: input.skillsBootstrapped };
   }
 
   const catalog = new SkillsCatalog(input.workspaceCwd);
+  const explicitSkills = expandExplicitSkills(catalog, input.skills, input.text);
+  if (explicitSkills) {
+    return {
+      text: explicitSkills,
+      skillsBootstrapped: true,
+    };
+  }
+
   const trimmed = input.text.trim();
   const skillMatch = trimmed.match(SKILL_INVOCATION_PATTERN);
 
