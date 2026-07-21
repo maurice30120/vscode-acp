@@ -11,6 +11,11 @@ import {
   requiresDocumentationOnlyGuard,
   validateNoPreImplementationWorkspaceChanges,
 } from './preImplementationGuard.js';
+import {
+  prepareSequentialDelivery,
+  runSequentialDelivery,
+  SEQUENTIAL_DELIVERY_ARTIFACT_TYPE,
+} from './sequentialDelivery.js';
 import type { CliTerminal } from './terminal.js';
 import {
   expandWorkspaceMarkdownReferences,
@@ -96,6 +101,33 @@ export async function runPipelineInteractive(
     result = await host.resume(result.runId, approved
       ? { pauseId: pause.id, kind: 'approve', value: pause.content }
       : { pauseId: pause.id, kind: 'reject' });
+  }
+
+  if (result.status === 'completed' && result.artifact?.type === SEQUENTIAL_DELIVERY_ARTIFACT_TYPE) {
+    let plan;
+    try {
+      plan = prepareSequentialDelivery(command.cwd, result.artifact);
+    } catch (error: unknown) {
+      return failInteractiveRun(
+        terminal,
+        command.json,
+        result.runId,
+        'invalid_sequential_delivery',
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+
+    try {
+      result = await runSequentialDelivery(host, terminal, command, plan);
+    } catch (error: unknown) {
+      return failInteractiveRun(
+        terminal,
+        command.json,
+        result.runId,
+        'sequential_delivery_failed',
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   const final = normalizeResult(result);
