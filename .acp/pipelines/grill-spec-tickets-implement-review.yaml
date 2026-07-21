@@ -145,7 +145,7 @@ nodes:
     policy:
       filesystem: workspace-write
       terminal: workspace-write
-      network: disabled
+      network: enabled
       promotion: auto-apply
     output:
       name: result
