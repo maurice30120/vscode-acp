@@ -42,6 +42,7 @@ export interface EphemeralRunInput extends EphemeralRunOptions {
   agentName: string;
   promptText: string;
   permissions?: PipelinePermissions;
+  skills?: readonly string[];
 }
 
 export function handleEphemeralSessionUpdate(
@@ -65,12 +66,22 @@ export function handleEphemeralSessionUpdate(
   onSessionUpdate?.(update);
 }
 
+export function buildEphemeralRunPrompt(input: Pick<EphemeralRunInput, 'agentName' | 'workspaceCwd' | 'promptText' | 'skills'>): string {
+  return buildPromptWithSkills({
+    agentName: input.agentName,
+    workspaceCwd: input.workspaceCwd,
+    text: input.promptText,
+    skillsBootstrapped: false,
+    skills: input.skills,
+  }).text;
+}
+
 /**
  * Short-lived ACP run for PipelineStep and InlineEdit — spawn, prompt, teardown.
  * Does not register a ConnectedAgent or SessionRecord.
  */
 export async function runEphemeralRun(input: EphemeralRunInput): Promise<EphemeralRunResult> {
-  const { workspaceCwd: cwd, agentName, promptText, permissions, onSessionUpdate, signal } = input;
+  const { workspaceCwd: cwd, agentName, permissions, onSessionUpdate, signal } = input;
   if (signal?.aborted) {
     throw new RunAbortedError();
   }
@@ -150,16 +161,9 @@ export async function runEphemeralRun(input: EphemeralRunInput): Promise<Ephemer
       log(`EphemeralRun: discovered ${skills.length} skill(s) for "${agentName}"`);
     }
 
-    const skillsResult = buildPromptWithSkills({
-      agentName,
-      workspaceCwd: cwd,
-      text: promptText,
-      skillsBootstrapped: false,
-    });
-
     await connInfo.connection.prompt({
       sessionId,
-      prompt: [{ type: 'text', text: skillsResult.text }],
+      prompt: [{ type: 'text', text: buildEphemeralRunPrompt(input) }],
     });
 
     if (signal?.aborted) {

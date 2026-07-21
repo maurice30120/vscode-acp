@@ -311,42 +311,43 @@ export class PipelineRuntime {
       } catch (error: unknown) {
         return sessionBoundaryDiagnostic(active, node, state.attempts + 1, error);
       }
-      const result = await session.send({
-        runId: active.snapshot.runId,
-        node,
-        prompt,
-        inputs,
-        signal: active.controller.signal,
-      });
-      if ("artifact" in result) {
-        const artifact = assertArtifact(node, result);
-        active.snapshot.artifacts[artifactKey(node.id, artifact.name)] = artifact;
-        active.snapshot.nodeStates[node.id] = {
-          ...active.snapshot.nodeStates[node.id],
-          status: "completed",
-          completedAt: this.isoNow(),
-        };
-        active.snapshot.updatedAt = this.isoNow();
-        await this.persist(active.snapshot);
-        await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "node_completed", nodeId: node.id, at: active.snapshot.updatedAt });
-        await this.closeSession(session);
-        return { ok: true };
-      }
+      try {
+        const result = await session.send({
+          runId: active.snapshot.runId,
+          node,
+          prompt,
+          inputs,
+          signal: active.controller.signal,
+        });
+        if ("artifact" in result) {
+          const artifact = assertArtifact(node, result);
+          active.snapshot.artifacts[artifactKey(node.id, artifact.name)] = artifact;
+          active.snapshot.nodeStates[node.id] = {
+            ...active.snapshot.nodeStates[node.id],
+            status: "completed",
+            completedAt: this.isoNow(),
+          };
+          active.snapshot.updatedAt = this.isoNow();
+          await this.persist(active.snapshot);
+          await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "node_completed", nodeId: node.id, at: active.snapshot.updatedAt });
+          return { ok: true };
+        }
 
-      active.snapshot.diagnostics.push({ nodeId: node.id, attempt, code: result.code, message: result.message });
-      if (!result.retryable || attempt >= node.retry.maxAttempts) {
-        active.snapshot.nodeStates[node.id] = {
-          ...active.snapshot.nodeStates[node.id],
-          status: "failed",
-          completedAt: this.isoNow(),
-        };
-        active.snapshot.updatedAt = this.isoNow();
-        await this.persist(active.snapshot);
-        await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "node_failed", nodeId: node.id, message: result.message, at: active.snapshot.updatedAt });
+        active.snapshot.diagnostics.push({ nodeId: node.id, attempt, code: result.code, message: result.message });
+        if (!result.retryable || attempt >= node.retry.maxAttempts) {
+          active.snapshot.nodeStates[node.id] = {
+            ...active.snapshot.nodeStates[node.id],
+            status: "failed",
+            completedAt: this.isoNow(),
+          };
+          active.snapshot.updatedAt = this.isoNow();
+          await this.persist(active.snapshot);
+          await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "node_failed", nodeId: node.id, message: result.message, at: active.snapshot.updatedAt });
+          return { nodeId: node.id, attempt, code: result.code, message: result.message };
+        }
+      } finally {
         await this.closeSession(session);
-        return { nodeId: node.id, attempt, code: result.code, message: result.message };
       }
-      await this.closeSession(session);
       await sleep(node.retry.backoffMs ?? 0);
     }
     return { nodeId: node.id, code: "retry_exhausted", message: `Node "${node.id}" exhausted retries.` };

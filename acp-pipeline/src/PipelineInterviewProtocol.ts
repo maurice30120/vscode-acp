@@ -22,6 +22,10 @@ export interface PipelineInterviewProtocol {
     prompt: string;
     diagnostic: string;
   }): string;
+  renderFinalOutputRequest(context: {
+    prompt: string;
+    diagnostic: string;
+  }): string;
 }
 
 export const PROPOSED_PLAN_PROTOCOL_ID = "proposed-plan";
@@ -82,6 +86,17 @@ const proposedPlanProtocol: PipelineInterviewProtocol = {
       "Your previous response did not satisfy the proposed-plan protocol.",
       `Protocol error: ${diagnostic}`,
       "Return only one valid <proposed_plan> block. Use <interview_state>question</interview_state> with a non-empty <clarification_question>, or <interview_state>ready</interview_state> for the final plan.",
+    ].join("\n");
+  },
+
+  renderFinalOutputRequest({ prompt, diagnostic }): string {
+    return [
+      prompt,
+      "",
+      "The user has requested to complete the interview now.",
+      `Final output error: ${diagnostic}`,
+      "Return only one valid <proposed_plan> block with <interview_state>ready</interview_state>.",
+      "Do not ask another question.",
     ].join("\n");
   },
 };

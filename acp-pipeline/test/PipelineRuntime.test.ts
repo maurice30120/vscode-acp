@@ -991,6 +991,43 @@ test("PipelineRuntime opens and closes one AgentNodeSession per non-interactive 
   assert.deepEqual(events, ["open:work", "send:work", "close:work", "open:work", "send:work", "close:work"]);
 });
 
+test("PipelineRuntime closes a non-interactive AgentNodeSession when send throws", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "attempt-session-throw",
+    title: "Attempt Session Throw",
+    nodes: [{
+      id: "work",
+      agent: "Codex",
+      prompt: "work",
+      output: { name: "out", type: "note", format: "text" },
+    }],
+  }, agents).program!;
+  const events: string[] = [];
+  const runtime = new PipelineRuntime({
+    async createSession({ runId, node }) {
+      events.push("open");
+      return {
+        runId,
+        nodeId: node.id,
+        async send() {
+          events.push("send");
+          throw new Error("transport exploded");
+        },
+        async cancel() {
+          events.push("cancel");
+        },
+        async close() {
+          events.push("close");
+        },
+      };
+    },
+  }, { runIdFactory: () => "run-attempt-session-throw" });
+
+  await assert.rejects(() => runtime.start(program), /transport exploded/);
+  assert.deepEqual(events, ["open", "send", "close"]);
+});
+
 test("PipelineRuntime keeps an interview AgentNodeSession open across user answers and closes it on final artifact", async () => {
   const program = compilePipelineV3Definition({
     version: 3,
