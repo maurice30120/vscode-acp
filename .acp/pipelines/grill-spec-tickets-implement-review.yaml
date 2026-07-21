@@ -1,6 +1,6 @@
 version: 3
 id: grill-spec-tickets-implement-review
-title: Grill with Docs → Spec Docs → Ticket Docs → Implement → Review
+title: Grill with Docs → Spec Docs → Ticket Docs → Sequential Implement → Review
 
 nodes:
   - id: plan
@@ -129,7 +129,6 @@ nodes:
 
   - id: implementation
     agent: Vibe
-    skills: [implement]
     promptFile: ../agents/matt-implementer.md
     prompt: |
       User request:
@@ -146,11 +145,11 @@ nodes:
     policy:
       filesystem: workspace-write
       terminal: workspace-write
-      network: enabled
+      network: disabled
       promotion: auto-apply
     output:
       name: result
-      type: acp.implementation-result/v1
+      type: acp.ticket-sequence-result/v1
       format: markdown
 
   - id: review
