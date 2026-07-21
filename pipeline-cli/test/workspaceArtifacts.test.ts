@@ -57,7 +57,7 @@ test('validates the required number of existing workspace references', () => {
 
   const content = [
     '<!-- acp-cli:require-workspace-files=3 -->',
-    '` .scratch/file-backed-pipeline/plan.md`'.replace('` ', '`'),
+    '`.scratch/file-backed-pipeline/plan.md`',
     '`.scratch/file-backed-pipeline/spec.md`',
     '`.scratch/file-backed-pipeline/issues/`',
   ].join('\n');
