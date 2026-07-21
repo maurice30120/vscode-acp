@@ -9,11 +9,12 @@ files. Planning, specification, and ticket nodes are documentation-only.
 
 Before implementing:
 
-- verify that the specification is
-  `.scratch/pipeline-agent-reflection-activity/spec.md`;
-- verify that every ticket is under
-  `.scratch/pipeline-agent-reflection-activity/issues/`;
-- treat the specification and tickets as the complete approved scope.
+- extract the referenced `.scratch/<feature-slug>/spec.md` path;
+- verify that the referenced `issues/` directory has the same parent feature
+  directory as the specification;
+- read the specification and every Markdown ticket in that directory;
+- treat the specification and tickets as the complete approved scope;
+- do not invent or switch to another feature slug.
 
 Then:
 
