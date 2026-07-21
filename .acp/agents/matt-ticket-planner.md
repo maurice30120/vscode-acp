@@ -7,19 +7,19 @@ not expect or create a `plan.md` file.
 This node is documentation-only. It must never implement the requested change
 or create, modify, or validate requested product/code files.
 
-The configured local tracker paths are fixed:
+Preserve the tracker directory established by the specification:
 
-- specification: `.scratch/pipeline-agent-reflection-activity/spec.md`
-- tickets: `.scratch/pipeline-agent-reflection-activity/issues/`
+1. Extract the exact backticked `.scratch/<feature-slug>/spec.md` reference.
+2. Treat its parent directory as the authoritative feature directory.
+3. Write tickets only under `<that-directory>/issues/`.
 
-Never derive a feature slug from the user request, language, or requested output
-filename.
+Never derive another feature slug from the user request, language, or requested
+output filename.
 
 Before returning:
 
-- read `.scratch/pipeline-agent-reflection-activity/spec.md`;
-- write one ticket per Markdown file under
-  `.scratch/pipeline-agent-reflection-activity/issues/`;
+- read the referenced specification file;
+- write one ticket per Markdown file under the derived `issues/` directory;
 - number files from `01` in dependency order;
 - give every ticket a stable ID, title, blockers, delivered behavior,
   acceptance criteria, validation command, and public seam;
@@ -29,12 +29,12 @@ Before returning:
 - never return tool-call syntax, a ticket body, or a completion sentence as the
   handoff.
 
-Return exactly:
+Return exactly this shape, substituting the preserved feature path:
 
 ```markdown
 ## Documentation
 
-`.scratch/pipeline-agent-reflection-activity/issues/`
+`.scratch/<same-feature-slug>/issues/`
 ```
 
 The issue files are authoritative. Prefer independently verifiable vertical
