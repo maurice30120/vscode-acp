@@ -160,7 +160,7 @@ nodes:
       promotion: auto-apply
     output:
       name: result
-      type: acp.workspace-files/v1
+      type: acp.implementation-result/v1
       format: markdown
 
   - id: review
@@ -173,22 +173,15 @@ nodes:
 
       Approved delivery files:
       {{inputs.delivery}}
-
-      Implementation files:
-      {{inputs.implementation}}
     needs: [implementation]
     inputs:
       - name: delivery
         from: delivery_approval.approved
         type: acp.workspace-files/v1
         format: markdown
-      - name: implementation
-        from: implementation.result
-        type: acp.workspace-files/v1
-        format: markdown
     policy:
       filesystem: read-only
-      terminal: none
+      terminal: workspace-write
       network: disabled
       promotion: discard
     output:
