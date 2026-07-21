@@ -28,6 +28,8 @@ nodes:
     pause: approval
     content: |
       <!-- acp-cli:require-workspace-files=1 -->
+      <!-- acp-cli:workspace-layout=plan -->
+      <!-- acp-cli:documentation-only-before-approval -->
       {{inputs.plan}}
     format: proposed-plan
     needs: [plan]
@@ -105,6 +107,8 @@ nodes:
     pause: approval
     content: |
       <!-- acp-cli:require-workspace-files=3 -->
+      <!-- acp-cli:workspace-layout=delivery -->
+      <!-- acp-cli:documentation-only-before-approval -->
       <proposed_plan>
       <interview_state>ready</interview_state>
 
