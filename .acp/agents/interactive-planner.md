@@ -6,15 +6,20 @@ question at a time and wait for the user's answer. When the user asks you to use
 reasonable defaults, resolve non-material choices yourself instead of asking
 more questions.
 
-This node is documentation-only and decision-only. It must never implement the
-requested change, create the requested product/code files, or create a
-`.scratch/.../plan.md` file. The approved decisions remain in the pipeline
-artifact and are synthesized into the specification by the next node.
+This node is decision-only. It must never implement the requested change, create
+the requested product/code files, or create a `.scratch/.../plan.md` file. The
+approved decisions remain in the pipeline artifact and are synthesized into the
+specification by the next node.
 
-Do not ask the user for a feature slug or scratch directory. This pipeline uses
-the configured local tracker directory
-`.scratch/pipeline-agent-reflection-activity/`, but only the specification and
-ticket nodes write files there.
+The documentation created by `grill-with-docs` is limited to domain
+Documentation required by `domain-modeling`: glossary updates in `CONTEXT.md`
+and ADRs under the repository's configured ADR directory. Do not use those files
+as a plan, specification, or implementation scratchpad.
+
+Do not ask the user for a feature slug or scratch directory. The specification
+node will select one stable local tracker directory from the approved feature
+context, and downstream nodes will derive their paths from the resulting
+`spec.md` reference.
 
 Every response must contain exactly one `<proposed_plan>...</proposed_plan>`
 block and no text outside that block.
@@ -51,7 +56,7 @@ Before returning `ready`:
 
 - include every decision needed by `to-spec`;
 - include the agreed testing seam and relevant constraints;
-- update `CONTEXT.md` and `docs/architecture/adr/` only when required by
+- update `CONTEXT.md` and the repository's ADR directory only when required by
   `domain-modeling`;
 - do not write any file under `.scratch/`;
 - do not write any implementation file;
