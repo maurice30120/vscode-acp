@@ -3,6 +3,7 @@ import { validateAdapterSupportsPolicy } from "./PipelinePolicy";
 import { getPipelineInterviewProtocol } from "./PipelineInterviewProtocol";
 import type { PipelineAdapterPolicyCapabilities } from "./PipelinePolicy";
 import type {
+  AgentNodeSessionActivity,
   CompiledPipelineNode,
   CompiledPipelineProgram,
   PipelineArtifact,
@@ -34,6 +35,7 @@ export interface PipelineRuntimeEvent {
     | "node_completed"
     | "node_failed"
     | "node_replayed"
+    | "agent_activity"
     | "paused"
     | "resumed"
     | "completed"
@@ -41,6 +43,7 @@ export interface PipelineRuntimeEvent {
     | "cancelled";
   nodeId?: string;
   message?: string;
+  activity?: AgentNodeSessionActivity;
   at: string;
 }
 
@@ -61,6 +64,7 @@ interface ActiveRun {
   snapshot: PipelineRuntimeSnapshot;
   controller: AbortController;
   sessions: Map<string, AgentNodeSession>;
+  activityUnsubscribers: Map<AgentNodeSession, () => void>;
 }
 
 export class PipelineRuntime {
@@ -108,7 +112,13 @@ export class PipelineRuntime {
       createdAt: at,
       updatedAt: at,
     };
-    const active: ActiveRun = { program, snapshot, controller: new AbortController(), sessions: new Map() };
+    const active: ActiveRun = {
+      program,
+      snapshot,
+      controller: new AbortController(),
+      sessions: new Map(),
+      activityUnsubscribers: new Map(),
+    };
     this.runs.set(runId, active);
     await this.store?.create(cloneSnapshot(snapshot));
     await this.emitRuntimeEvent({ runId, type: "run_started", at });
@@ -346,7 +356,7 @@ export class PipelineRuntime {
           return { nodeId: node.id, attempt, code: result.code, message: result.message };
         }
       } finally {
-        await this.closeSession(session);
+        await this.closeSessionForRun(active, session);
       }
       await sleep(node.retry.backoffMs ?? 0);
     }
@@ -624,7 +634,13 @@ export class PipelineRuntime {
       if (!snapshot || !program) {
         throw new Error(`Unknown active pipeline run "${runId}".`);
       }
-      const restored = { program, snapshot, controller: new AbortController(), sessions: new Map<string, AgentNodeSession>() };
+      const restored = {
+        program,
+        snapshot,
+        controller: new AbortController(),
+        sessions: new Map<string, AgentNodeSession>(),
+        activityUnsubscribers: new Map<AgentNodeSession, () => void>(),
+      };
       this.runs.set(runId, restored);
       return restored;
     }
@@ -645,6 +661,7 @@ export class PipelineRuntime {
   private async openAttemptSession(active: ActiveRun, node: CompiledPipelineNode): Promise<AgentNodeSession> {
     const session = await this.adapter.createSession({ runId: active.snapshot.runId, node, signal: active.controller.signal });
     await assertSessionBoundary(active.snapshot.runId, node.id, session);
+    this.subscribeSessionActivity(active, session);
     return session;
   }
 
@@ -655,6 +672,7 @@ export class PipelineRuntime {
     }
     const session = await this.adapter.createSession({ runId: active.snapshot.runId, node, signal: active.controller.signal });
     await assertSessionBoundary(active.snapshot.runId, node.id, session);
+    this.subscribeSessionActivity(active, session);
     active.sessions.set(node.id, session);
     return session;
   }
@@ -665,15 +683,13 @@ export class PipelineRuntime {
       return;
     }
     active.sessions.delete(nodeId);
-    await this.closeSession(session);
-  }
-
-  private async closeSession(session: AgentNodeSession): Promise<void> {
-    await session.close();
+    await this.closeSessionForRun(active, session);
   }
 
   private async cancelActiveSessions(active: ActiveRun): Promise<void> {
     await Promise.all([...active.sessions.values()].map(async session => {
+      active.activityUnsubscribers.get(session)?.();
+      active.activityUnsubscribers.delete(session);
       await session.cancel();
       await session.close();
     }));
@@ -681,8 +697,31 @@ export class PipelineRuntime {
   }
 
   private async closeActiveSessions(active: ActiveRun): Promise<void> {
-    await Promise.all([...active.sessions.values()].map(session => session.close()));
+    await Promise.all([...active.sessions.values()].map(session => this.closeSessionForRun(active, session)));
     active.sessions.clear();
+  }
+
+  private subscribeSessionActivity(active: ActiveRun, session: AgentNodeSession): void {
+    if (!session.onActivity || active.activityUnsubscribers.has(session)) {
+      return;
+    }
+    const unsubscribe = session.onActivity(activity => {
+      void this.emitRuntimeEvent({
+        runId: active.snapshot.runId,
+        type: "agent_activity",
+        nodeId: session.nodeId,
+        activity,
+        message: activity.content,
+        at: this.isoNow(),
+      });
+    });
+    active.activityUnsubscribers.set(session, unsubscribe);
+  }
+
+  private async closeSessionForRun(active: ActiveRun, session: AgentNodeSession): Promise<void> {
+    active.activityUnsubscribers.get(session)?.();
+    active.activityUnsubscribers.delete(session);
+    await session.close();
   }
 
   private async emitRuntimeEvent(event: PipelineRuntimeEvent): Promise<void> {

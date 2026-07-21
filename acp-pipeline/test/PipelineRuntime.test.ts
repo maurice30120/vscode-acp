@@ -1095,6 +1095,75 @@ test("PipelineRuntime keeps an interview AgentNodeSession open across user answe
   assert.equal(runtimeEvents.filter(type => type === "node_replayed").length, 0);
 });
 
+test("PipelineRuntime projects temporary agent activity without publishing node artifacts", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "interview-activity",
+    title: "Interview Activity",
+    nodes: [{
+      id: "plan",
+      agent: "Codex",
+      prompt: "Plan",
+      interaction: { protocol: "proposed-plan", repairAttempts: 0 },
+      output: { name: "plan", type: "acp.grill-decision/v1", format: "markdown" },
+    }],
+  }, agents).program!;
+  const runtimeEvents: { type: string; nodeId?: string; message?: string; activity?: unknown }[] = [];
+  let activityHandler: ((activity: { kind: "status"; content: string }) => void) | undefined;
+  let unsubscribed = false;
+  const runtime = new PipelineRuntime({
+    async createSession({ node }) {
+      return {
+        runId: "run-interview-activity",
+        nodeId: node.id,
+        onActivity(handler) {
+          activityHandler = handler;
+          return () => {
+            unsubscribed = true;
+          };
+        },
+        async send() {
+          activityHandler?.({ kind: "status", content: "thinking about constraints" });
+          return {
+            artifact: {
+              name: "plan",
+              type: "acp.grill-decision/v1",
+              format: "markdown",
+              value: proposedQuestion("Continue?"),
+            },
+          };
+        },
+        async cancel() {},
+        async close() {},
+      };
+    },
+  }, {
+    runIdFactory: () => "run-interview-activity",
+    now: () => new Date("2026-07-21T00:00:00.000Z"),
+    onEvent: event => {
+      runtimeEvents.push(event);
+    },
+  });
+
+  const paused = await runtime.start(program);
+
+  assert.equal(paused.status, "paused");
+  const activity = runtimeEvents.find(event => event.type === "agent_activity");
+  assert.deepEqual(activity, {
+    runId: "run-interview-activity",
+    type: "agent_activity",
+    nodeId: "plan",
+    activity: { kind: "status", content: "thinking about constraints" },
+    message: "thinking about constraints",
+    at: "2026-07-21T00:00:00.000Z",
+  });
+  assert.equal(paused.snapshot.artifacts["plan.plan"], undefined);
+  assert.equal(paused.snapshot.pendingPause?.content, "Continue?");
+
+  await runtime.cancel(paused.runId);
+  assert.equal(unsubscribed, true);
+});
+
 test("PipelineRuntime rejects an AgentNodeSession bound to another run or node", async () => {
   const program = compilePipelineV3Definition({
     version: 3,
