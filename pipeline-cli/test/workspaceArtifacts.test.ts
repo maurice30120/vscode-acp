@@ -11,10 +11,10 @@ import {
 
 test('expands referenced scratch Markdown files without changing the handoff text', () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'acp-cli-files-'));
-  const featureDir = path.join(cwd, '.scratch', 'file-backed-pipeline');
+  const featureDir = path.join(cwd, '.scratch', 'pipeline-agent-reflection-activity');
   const issuesDir = path.join(featureDir, 'issues');
   fs.mkdirSync(issuesDir, { recursive: true });
-  fs.writeFileSync(path.join(featureDir, 'plan.md'), '# Plan\n\nUse files as context.\n');
+  fs.writeFileSync(path.join(featureDir, 'spec.md'), '# Spec\n\nUse files as context.\n');
   fs.writeFileSync(path.join(issuesDir, '02-second.md'), '# Second ticket\n');
   fs.writeFileSync(path.join(issuesDir, '01-first.md'), '# First ticket\n');
   fs.writeFileSync(path.join(issuesDir, 'notes.txt'), 'ignored\n');
@@ -22,15 +22,15 @@ test('expands referenced scratch Markdown files without changing the handoff tex
   const handoff = [
     '## Documentation',
     '',
-    '- `.scratch/file-backed-pipeline/plan.md`',
-    '- `.scratch/file-backed-pipeline/issues/`',
+    '- `.scratch/pipeline-agent-reflection-activity/spec.md`',
+    '- `.scratch/pipeline-agent-reflection-activity/issues/`',
   ].join('\n');
 
   const rendered = expandWorkspaceMarkdownReferences(cwd, handoff);
 
   assert.match(rendered, /^## Documentation/m);
   assert.match(rendered, /## Workspace documents/);
-  assert.match(rendered, /### `\.scratch\/file-backed-pipeline\/plan\.md`/);
+  assert.match(rendered, /### `\.scratch\/pipeline-agent-reflection-activity\/spec\.md`/);
   assert.match(rendered, /Use files as context\./);
   assert.ok(rendered.indexOf('# First ticket') < rendered.indexOf('# Second ticket'));
   assert.doesNotMatch(rendered, /ignored/);
@@ -46,25 +46,14 @@ test('ignores missing and escaping scratch references when rendering', () => {
   assert.equal(expandWorkspaceMarkdownReferences(cwd, content), content);
 });
 
-test('validates the required number of existing workspace references', () => {
+test('validates spec and ticket references under the configured workspace root', () => {
   const cwd = createFeatureWorkspace();
   const content = [
-    '<!-- acp-cli:require-workspace-files=3 -->',
+    '<!-- acp-cli:require-workspace-files=2 -->',
     '<!-- acp-cli:workspace-layout=delivery -->',
-    '`.scratch/file-backed-pipeline/plan.md`',
-    '`.scratch/file-backed-pipeline/spec.md`',
-    '`.scratch/file-backed-pipeline/issues/`',
-  ].join('\n');
-
-  assert.equal(validateRequiredWorkspaceMarkdownReferences(cwd, content), undefined);
-});
-
-test('validates a plan handoff with only the preserved plan path', () => {
-  const cwd = createFeatureWorkspace();
-  const content = [
-    '<!-- acp-cli:require-workspace-files=1 -->',
-    '<!-- acp-cli:workspace-layout=plan -->',
-    '`.scratch/file-backed-pipeline/plan.md`',
+    '<!-- acp-cli:workspace-root=.scratch/pipeline-agent-reflection-activity -->',
+    '`.scratch/pipeline-agent-reflection-activity/spec.md`',
+    '`.scratch/pipeline-agent-reflection-activity/issues/`',
   ].join('\n');
 
   assert.equal(validateRequiredWorkspaceMarkdownReferences(cwd, content), undefined);
@@ -72,16 +61,15 @@ test('validates a plan handoff with only the preserved plan path', () => {
 
 test('rejects delivery references split across feature directories', () => {
   const cwd = createFeatureWorkspace();
-  const otherDir = path.join(cwd, '.scratch', 'other-effort');
-  fs.mkdirSync(otherDir, { recursive: true });
-  fs.writeFileSync(path.join(otherDir, 'spec.md'), '# Wrong spec\n');
+  const otherIssues = path.join(cwd, '.scratch', 'other-effort', 'issues');
+  fs.mkdirSync(otherIssues, { recursive: true });
+  fs.writeFileSync(path.join(otherIssues, '01-ticket.md'), '# Wrong ticket\n');
 
   const content = [
-    '<!-- acp-cli:require-workspace-files=3 -->',
+    '<!-- acp-cli:require-workspace-files=2 -->',
     '<!-- acp-cli:workspace-layout=delivery -->',
-    '`.scratch/file-backed-pipeline/plan.md`',
-    '`.scratch/other-effort/spec.md`',
-    '`.scratch/file-backed-pipeline/issues/`',
+    '`.scratch/pipeline-agent-reflection-activity/spec.md`',
+    '`.scratch/other-effort/issues/`',
   ].join('\n');
 
   assert.match(
@@ -90,18 +78,40 @@ test('rejects delivery references split across feature directories', () => {
   );
 });
 
-test('rejects a delivery missing the spec derived from the plan path', () => {
+test('rejects an invented feature root such as french-poem', () => {
   const cwd = createFeatureWorkspace();
+  const wrongRoot = path.join(cwd, '.scratch', 'french-poem');
+  const wrongIssues = path.join(wrongRoot, 'issues');
+  fs.mkdirSync(wrongIssues, { recursive: true });
+  fs.writeFileSync(path.join(wrongRoot, 'spec.md'), '# Wrong spec\n');
+  fs.writeFileSync(path.join(wrongIssues, '01-ticket.md'), '# Wrong ticket\n');
+
   const content = [
     '<!-- acp-cli:require-workspace-files=2 -->',
     '<!-- acp-cli:workspace-layout=delivery -->',
-    '`.scratch/file-backed-pipeline/plan.md`',
-    '`.scratch/file-backed-pipeline/issues/`',
+    '<!-- acp-cli:workspace-root=.scratch/pipeline-agent-reflection-activity -->',
+    '`.scratch/french-poem/spec.md`',
+    '`.scratch/french-poem/issues/`',
   ].join('\n');
 
-  assert.match(
-    validateRequiredWorkspaceMarkdownReferences(cwd, content) ?? '',
-    /must reference the specification derived from the plan/,
+  assert.equal(
+    validateRequiredWorkspaceMarkdownReferences(cwd, content),
+    'Workspace handoff must use the configured root .scratch/pipeline-agent-reflection-activity, but found .scratch/french-poem.',
+  );
+});
+
+test('rejects a delivery missing the specification', () => {
+  const cwd = createFeatureWorkspace();
+  const content = [
+    '<!-- acp-cli:require-workspace-files=1 -->',
+    '<!-- acp-cli:workspace-layout=delivery -->',
+    '<!-- acp-cli:workspace-root=.scratch/pipeline-agent-reflection-activity -->',
+    '`.scratch/pipeline-agent-reflection-activity/issues/`',
+  ].join('\n');
+
+  assert.equal(
+    validateRequiredWorkspaceMarkdownReferences(cwd, content),
+    'Delivery handoff must reference the specification: .scratch/pipeline-agent-reflection-activity/spec.md',
   );
 });
 
@@ -159,10 +169,9 @@ test('rejects missing, escaping, non-Markdown, and empty directory references', 
 
 function createFeatureWorkspace(): string {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'acp-cli-files-'));
-  const featureDir = path.join(cwd, '.scratch', 'file-backed-pipeline');
+  const featureDir = path.join(cwd, '.scratch', 'pipeline-agent-reflection-activity');
   const issuesDir = path.join(featureDir, 'issues');
   fs.mkdirSync(issuesDir, { recursive: true });
-  fs.writeFileSync(path.join(featureDir, 'plan.md'), '# Plan\n');
   fs.writeFileSync(path.join(featureDir, 'spec.md'), '# Spec\n');
   fs.writeFileSync(path.join(issuesDir, '01-ticket.md'), '# Ticket\n');
   return cwd;
