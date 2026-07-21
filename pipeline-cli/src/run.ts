@@ -7,7 +7,10 @@ import type {
 import type { CliRunCommand } from './args.js';
 import type { CliPipelineHost, CliPipelineListEntry } from './host.js';
 import type { CliTerminal } from './terminal.js';
-import { expandWorkspaceMarkdownReferences } from './workspaceArtifacts.js';
+import {
+  expandWorkspaceMarkdownReferences,
+  validateRequiredWorkspaceMarkdownReferences,
+} from './workspaceArtifacts.js';
 
 export interface CliRunResult {
   status: 'completed' | 'cancelled' | 'failed';
@@ -30,6 +33,28 @@ export async function runPipelineInteractive(
         ...pause,
         content: expandWorkspaceMarkdownReferences(command.cwd, pause.content),
       }));
+    }
+
+    const workspaceHandoffError = validateRequiredWorkspaceMarkdownReferences(
+      command.cwd,
+      pause.content,
+    );
+    if (workspaceHandoffError) {
+      const failed: CliRunResult = {
+        status: 'failed',
+        runId: result.runId,
+        error: {
+          code: 'invalid_workspace_handoff',
+          message: workspaceHandoffError,
+          nodeId: pause.nodeId,
+        },
+      };
+      if (command.json) {
+        terminal.write(JSON.stringify(failed, null, 2));
+      } else {
+        terminal.writeError(formatFailure(failed.error));
+      }
+      return failed;
     }
 
     if (pause.type === 'question') {
