@@ -4,6 +4,7 @@ import * as path from 'node:path';
 const SCRATCH_REFERENCE = /`((?:\.\/)?\.scratch\/[^`\r\n]+)`/g;
 const REQUIRED_REFERENCE_MARKER = /<!--\s*acp-cli:require-workspace-files(?:=(\d+))?\s*-->/;
 const WORKSPACE_LAYOUT_MARKER = /<!--\s*acp-cli:workspace-layout=(plan|delivery)\s*-->/;
+const WORKSPACE_ROOT_MARKER = /<!--\s*acp-cli:workspace-root=([^\s]+)\s*-->/;
 
 export function expandWorkspaceMarkdownReferences(
   workspaceCwd: string,
@@ -74,7 +75,11 @@ export function validateRequiredWorkspaceMarkdownReferences(
 
   const layout = content.match(WORKSPACE_LAYOUT_MARKER)?.[1] as 'plan' | 'delivery' | undefined;
   if (layout) {
-    return validateWorkspaceLayout(references, layout);
+    return validateWorkspaceLayout(
+      references,
+      layout,
+      content.match(WORKSPACE_ROOT_MARKER)?.[1],
+    );
   }
 
   return undefined;
@@ -83,6 +88,7 @@ export function validateRequiredWorkspaceMarkdownReferences(
 function validateWorkspaceLayout(
   references: string[],
   layout: 'plan' | 'delivery',
+  configuredRoot?: string,
 ): string | undefined {
   const normalized = [...new Set(references.map(normalizeReference))];
   const roots = new Set(normalized.map(getFeatureRoot).filter((value): value is string => Boolean(value)));
@@ -96,12 +102,16 @@ function validateWorkspaceLayout(
     return 'Workspace handoff contains references outside the preserved feature directory.';
   }
 
-  const planPath = `${featureRoot}/plan.md`;
-  if (!normalized.includes(planPath)) {
-    return `Workspace handoff must reference the approved plan: ${planPath}`;
+  const expectedRoot = configuredRoot ? normalizeReference(configuredRoot) : undefined;
+  if (expectedRoot && featureRoot !== expectedRoot) {
+    return `Workspace handoff must use the configured root ${expectedRoot}, but found ${featureRoot}.`;
   }
 
   if (layout === 'plan') {
+    const planPath = `${featureRoot}/plan.md`;
+    if (!normalized.includes(planPath)) {
+      return `Workspace handoff must reference the approved plan: ${planPath}`;
+    }
     if (normalized.length !== 1) {
       return 'Plan handoff must contain only the authoritative plan.md reference.';
     }
@@ -111,10 +121,10 @@ function validateWorkspaceLayout(
   const specPath = `${featureRoot}/spec.md`;
   const issuesPath = `${featureRoot}/issues`;
   if (!normalized.includes(specPath)) {
-    return `Delivery handoff must reference the specification derived from the plan: ${specPath}`;
+    return `Delivery handoff must reference the specification: ${specPath}`;
   }
   if (!normalized.includes(issuesPath)) {
-    return `Delivery handoff must reference the ticket directory derived from the plan: ${issuesPath}/`;
+    return `Delivery handoff must reference the ticket directory: ${issuesPath}/`;
   }
 
   return undefined;
