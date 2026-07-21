@@ -152,6 +152,7 @@ export interface PipelinePauseSnapshot {
   nodeId: string;
   type: PipelinePauseType;
   content: string;
+  recommendation?: string;
   format: PipelinePauseFormat;
 }
 

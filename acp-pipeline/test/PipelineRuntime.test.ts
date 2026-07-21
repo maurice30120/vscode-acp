@@ -474,7 +474,7 @@ test("PipelineRuntime pauses an interview question, records the answer, then pro
     async execute({ prompt }) {
       prompts.push(prompt);
       if (prompts.length === 1) {
-        return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: proposedQuestion("Which API?") } };
+        return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: proposedQuestion("Which API?", "Use the public API.") } };
       }
       return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: proposedReady("Use the public API.") } };
     },
@@ -484,6 +484,9 @@ test("PipelineRuntime pauses an interview question, records the answer, then pro
   assert.equal(first.status, "paused");
   assert.equal(first.pause.type, "question");
   assert.equal(first.pause.content, "Which API?");
+  assert.equal(first.pause.recommendation, "Use the public API.");
+  assert.equal(first.snapshot.pendingPause?.content, "Which API?");
+  assert.equal(first.snapshot.pendingPause?.recommendation, "Use the public API.");
   assert.equal(first.snapshot.nodeStates.plan.status, "paused");
   assert.equal(first.snapshot.artifacts["plan.plan"], undefined);
 
@@ -835,13 +838,17 @@ test("PipelineRuntime does not let an interview pause mask an ordinary node fail
   assert.equal(result.error.code, "ordinary_failed");
 });
 
-function proposedQuestion(question: string): string {
-  return [
+function proposedQuestion(question: string, recommendedAnswer?: string): string {
+  const lines = [
     "<proposed_plan>",
     "<interview_state>question</interview_state>",
     `<clarification_question>${question}</clarification_question>`,
-    "</proposed_plan>",
-  ].join("\n");
+  ];
+  if (recommendedAnswer) {
+    lines.push(`<recommended_answer>${recommendedAnswer}</recommended_answer>`);
+  }
+  lines.push("</proposed_plan>");
+  return lines.join("\n");
 }
 
 function proposedReady(body: string): string {

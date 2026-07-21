@@ -427,7 +427,7 @@ export class PipelineRuntime {
               throw new Error("Expected ready after complete-interview, but the agent returned question.");
             }
             interview.turns.push({ role: "agent", content: parsed.content });
-            return this.pauseInterview(active, node, parsed.question);
+            return this.pauseInterview(active, node, parsed.question, parsed.recommendedAnswer);
           }
 
           const finalResult: PipelineNodeExecutionResult = {
@@ -479,7 +479,7 @@ export class PipelineRuntime {
     return { nodeId: node.id, code: "retry_exhausted", message: `Node "${node.id}" exhausted retries.` };
   }
 
-  private async pauseInterview(active: ActiveRun, node: CompiledPipelineNode, question: string): Promise<{ paused: PipelineRuntimeResult }> {
+  private async pauseInterview(active: ActiveRun, node: CompiledPipelineNode, question: string, recommendation?: string): Promise<{ paused: PipelineRuntimeResult }> {
     const state = active.snapshot.nodeStates[node.id];
     const turn = active.snapshot.activeInterview?.turns.filter(entry => entry.role === "agent").length ?? state.attempts;
     const pause = {
@@ -487,6 +487,7 @@ export class PipelineRuntime {
       nodeId: node.id,
       type: "question" as const,
       content: question,
+      ...(recommendation ? { recommendation } : {}),
       format: "markdown" as const,
     };
     active.snapshot.nodeStates[node.id] = {

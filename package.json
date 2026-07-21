@@ -4,6 +4,7 @@
   "workspaces": [
     "acp-pipeline",
     "acp-sandcastle",
+    "pipeline-cli",
     "plugin-vscode",
     "plugin-pi"
   ],

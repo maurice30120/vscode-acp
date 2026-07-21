@@ -1,12 +1,13 @@
 import {
   extractClarificationQuestion,
+  extractRecommendedAnswer,
   extractSingleProposedPlan,
   getProposedPlanInterviewState,
 } from "./ProposedPlan";
 import type { PipelineInterviewTurn } from "./PipelineV3Types";
 
 export type PipelineInterviewProtocolState =
-  | { state: "question"; question: string; content: string }
+  | { state: "question"; question: string; recommendedAnswer?: string; content: string }
   | { state: "ready"; artifact: unknown; content: string };
 
 export interface PipelineInterviewProtocol {
@@ -44,7 +45,8 @@ const proposedPlanProtocol: PipelineInterviewProtocol = {
       if (!question) {
         throw new Error("Expected a non-empty <clarification_question> for interview_state question.");
       }
-      return { state, question, content: plan };
+      const recommendedAnswer = extractRecommendedAnswer(plan) ?? undefined;
+      return { state, question, recommendedAnswer, content: plan };
     }
     if (state === "ready") {
       return { state, artifact: plan, content: plan };

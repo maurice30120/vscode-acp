@@ -62,7 +62,7 @@ test('answers a v3 question then approves the next pause', async () => {
   const results: PipelineRuntimeResult[] = [
     {
       status: 'paused', runId: 'run-1',
-      pause: { id: 'q1', nodeId: 'question', type: 'question', content: 'Which API?', format: 'markdown' },
+      pause: { id: 'q1', nodeId: 'question', type: 'question', content: 'Which API?', recommendation: 'Use the public API.', format: 'markdown' },
       snapshot: snapshot('paused'),
     },
     {
@@ -92,6 +92,7 @@ test('answers a v3 question then approves the next pause', async () => {
     { pauseId: 'a1', kind: 'approve', value: 'Final plan' },
   ]);
   assert.deepEqual(terminal.questions, ['Answer [/done to finish]:']);
+  assert.equal(terminal.output[0], '\n## Pipeline question\n\nWhich API?\n\nRecommended answer\n\nUse the public API.\n');
   assert.equal(terminal.output.at(-1), 'done');
 });
 
@@ -124,6 +125,7 @@ test('translates /done into complete-interview for v3 questions', async () => {
   assert.equal(result.status, 'completed');
   assert.deepEqual(resumes, [{ pauseId: 'q1', kind: 'complete-interview' }]);
   assert.deepEqual(terminal.questions, ['Answer [/done to finish]:']);
+  assert.equal(terminal.output[0], '\n## Pipeline question\n\nAnything else?\n');
 });
 
 test('--yes auto-approves approvals but never promotions', async () => {
