@@ -6,10 +6,31 @@ import {
   compilePipelineV3Definition,
   InMemoryPipelineRunStore,
   NATIVE_ACP_BASELINE_CAPABILITIES,
+  type PipelineNodeExecutionInput,
+  type PipelineNodeExecutionResult,
   type PipelineRuntimeAdapter,
 } from "../dist/index.js";
 
 const agents = { Codex: {} };
+
+function sessionAdapter(
+  execute: (input: PipelineNodeExecutionInput) => Promise<PipelineNodeExecutionResult>,
+): PipelineRuntimeAdapter {
+  return {
+    async execute(input) {
+      return execute(input);
+    },
+    async createSession({ runId, node }) {
+      return {
+        runId,
+        nodeId: node.id,
+        send: execute,
+        async cancel() {},
+        async close() {},
+      };
+    },
+  };
+}
 
 test("PipelineRuntime completes a linear pipeline with strict inputs and final artifact", async () => {
   const program = compilePipelineV3Definition({
@@ -33,8 +54,7 @@ test("PipelineRuntime completes a linear pipeline with strict inputs and final a
       },
     ],
   }, agents).program!;
-  const adapter: PipelineRuntimeAdapter = {
-    async execute({ node, inputs }) {
+  const adapter: PipelineRuntimeAdapter = sessionAdapter(async ({ node, inputs }) => {
       return {
         artifact: {
           name: "out",
@@ -43,8 +63,8 @@ test("PipelineRuntime completes a linear pipeline with strict inputs and final a
           value: node.id === "first" ? "one" : `two:${inputs.first.value}`,
         },
       };
-    },
-  };
+
+  });
   const runtime = new PipelineRuntime(adapter, { runIdFactory: () => "run-1" });
 
   const result = await runtime.start(program);
@@ -78,8 +98,7 @@ test("PipelineRuntime renders node prompts from start inputs and typed artifacts
     ],
   }, agents).program!;
   const prompts: string[] = [];
-  const adapter: PipelineRuntimeAdapter = {
-    async execute({ node, prompt }) {
+  const adapter: PipelineRuntimeAdapter = sessionAdapter(async ({ node, prompt }) => {
       prompts.push(prompt);
       return {
         artifact: {
@@ -89,8 +108,8 @@ test("PipelineRuntime renders node prompts from start inputs and typed artifacts
           value: node.id === "plan" ? "approved plan" : prompt,
         },
       };
-    },
-  };
+
+  });
 
   const runtime = new PipelineRuntime(adapter, { runIdFactory: () => "run-render" });
   const result = await runtime.start(program, { inputs: { userPrompt: "ship feature" } });
@@ -126,8 +145,7 @@ test("PipelineRuntime renders pause content from typed inputs", async () => {
       },
     ],
   }, agents).program!;
-  const adapter: PipelineRuntimeAdapter = {
-    async execute() {
+  const adapter: PipelineRuntimeAdapter = sessionAdapter(async () => {
       return {
         artifact: {
           name: "out",
@@ -136,8 +154,8 @@ test("PipelineRuntime renders pause content from typed inputs", async () => {
           value: "the plan",
         },
       };
-    },
-  };
+
+  });
 
   const runtime = new PipelineRuntime(adapter, { runIdFactory: () => "run-pause-render" });
   const result = await runtime.start(program, { inputs: { userPrompt: "ship feature" } });
@@ -178,11 +196,10 @@ test("PipelineRuntime supports multiple stable pauses and rejects obsolete resum
       },
     ],
   }, agents).program!;
-  const runtime = new PipelineRuntime({
-    async execute({ inputs }) {
+  const runtime = new PipelineRuntime(sessionAdapter(async ({ inputs }) => {
       return { artifact: { name: "out", type: "text-note", format: "text", value: inputs.answer.value } };
-    },
-  }, { runIdFactory: () => "run-paused" });
+
+  }), { runIdFactory: () => "run-paused" });
 
   const first = await runtime.start(program);
   assert.equal(first.status, "paused");
@@ -225,19 +242,17 @@ test("PipelineRuntime resumes a persisted pause after runtime reconstruction", a
     ],
   }, agents).program!;
   const store = new InMemoryPipelineRunStore();
-  const firstRuntime = new PipelineRuntime({
-    async execute() {
+  const firstRuntime = new PipelineRuntime(sessionAdapter(async () => {
       throw new Error("first runtime should not execute after pause");
-    },
-  }, { runIdFactory: () => "run-restored", store });
+
+  }), { runIdFactory: () => "run-restored", store });
   const paused = await firstRuntime.start(program);
   assert.equal(paused.status, "paused");
 
-  const restoredRuntime = new PipelineRuntime({
-    async execute({ inputs }) {
+  const restoredRuntime = new PipelineRuntime(sessionAdapter(async ({ inputs }) => {
       return { artifact: { name: "out", type: "text-note", format: "text", value: inputs.answer.value } };
-    },
-  }, { store, programs: [program] });
+
+  }), { store, programs: [program] });
 
   const completed = await restoredRuntime.resume(paused.runId, {
     pauseId: paused.pause.id,
@@ -264,11 +279,10 @@ test("PipelineRuntime emits telemetry through options without EventEmitter surfa
     ],
   }, agents).program!;
   const events: string[] = [];
-  const runtime = new PipelineRuntime({
-    async execute() {
+  const runtime = new PipelineRuntime(sessionAdapter(async () => {
       return { artifact: { name: "out", type: "note", format: "text", value: "ok" } };
-    },
-  }, {
+
+  }), {
     runIdFactory: () => "run-events",
     onEvent: event => {
       events.push(event.type);
@@ -315,8 +329,7 @@ test("PipelineRuntime runs ready nodes together and retries transient failures",
   }, agents).program!;
   const starts: string[] = [];
   let aAttempts = 0;
-  const runtime = new PipelineRuntime({
-    async execute({ node, inputs }) {
+  const runtime = new PipelineRuntime(sessionAdapter(async ({ node, inputs }) => {
       starts.push(node.id);
       if (node.id === "a" && ++aAttempts === 1) {
         return { code: "temporary", message: "try again", retryable: true };
@@ -329,8 +342,8 @@ test("PipelineRuntime runs ready nodes together and retries transient failures",
           value: node.id === "join" ? `${inputs.a.value}${inputs.b.value}` : node.id,
         },
       };
-    },
-  }, { runIdFactory: () => "run-parallel" });
+
+  }), { runIdFactory: () => "run-parallel" });
 
   const result = await runtime.start(program);
 
@@ -362,11 +375,10 @@ test("PipelineRuntime fail-fast result preserves diagnostics and cancels pending
     ],
   }, agents).program!;
   const store = new InMemoryPipelineRunStore();
-  const runtime = new PipelineRuntime({
-    async execute() {
+  const runtime = new PipelineRuntime(sessionAdapter(async () => {
       return { code: "boom", message: "failed", retryable: false };
-    },
-  }, { runIdFactory: () => "run-fail", store });
+
+  }), { runIdFactory: () => "run-fail", store });
 
   const result = await runtime.start(program);
 
@@ -393,12 +405,11 @@ test("PipelineRuntime refuses unsupported adapter policies before sending prompt
     ],
   }, agents).program!;
   let executed = false;
-  const runtime = new PipelineRuntime({
-    async execute() {
+  const runtime = new PipelineRuntime(sessionAdapter(async () => {
       executed = true;
       return { artifact: { name: "out", type: "note", format: "text", value: "bad" } };
-    },
-  }, {
+
+  }), {
     runIdFactory: () => "run-policy",
     adapterName: "native ACP",
     adapterCapabilities: NATIVE_ACP_BASELINE_CAPABILITIES,
@@ -427,12 +438,11 @@ test("PipelineRuntime refuses unresolved node skills before sending prompts", as
     ],
   }, agents).program!;
   let executed = false;
-  const runtime = new PipelineRuntime({
-    async execute() {
+  const runtime = new PipelineRuntime(sessionAdapter(async () => {
       executed = true;
       return { artifact: { name: "out", type: "note", format: "text", value: "bad" } };
-    },
-  }, {
+
+  }), {
     runIdFactory: () => "run-skills",
     resolveNodeSkills: node => node.skills.includes("missing") ? ['Pipeline node references missing skill "missing".'] : [],
   });
@@ -470,15 +480,14 @@ test("PipelineRuntime pauses an interview question, records the answer, then pro
     ],
   }, agents).program!;
   const prompts: string[] = [];
-  const runtime = new PipelineRuntime({
-    async execute({ prompt }) {
+  const runtime = new PipelineRuntime(sessionAdapter(async ({ prompt }) => {
       prompts.push(prompt);
       if (prompts.length === 1) {
         return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: proposedQuestion("Which API?", "Use the public API.") } };
       }
       return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: proposedReady("Use the public API.") } };
-    },
-  }, { runIdFactory: () => "run-interview" });
+
+  }), { runIdFactory: () => "run-interview" });
 
   const first = await runtime.start(program, { inputs: { userPrompt: "ship" } });
   assert.equal(first.status, "paused");
@@ -501,6 +510,8 @@ test("PipelineRuntime pauses an interview question, records the answer, then pro
   assert.match(approval.pause.content, /Use the public API\./);
   assert.match(prompts[1], /User:\nUse the public API/);
   assert.equal(approval.snapshot.activeInterview, undefined);
+  assert.equal(approval.snapshot.nodeInterviewHistories?.plan.originalPrompt, "Plan ship");
+  assert.deepEqual(approval.snapshot.nodeInterviewHistories?.plan.turns.map(turn => turn.role), ["agent", "user"]);
   assert.equal(approval.snapshot.artifacts["plan.plan"].value, proposedReady("Use the public API."));
 });
 
@@ -520,8 +531,7 @@ test("PipelineRuntime completes an interview with complete-interview and rejects
     ],
   }, agents).program!;
   let call = 0;
-  const runtime = new PipelineRuntime({
-    async execute() {
+  const runtime = new PipelineRuntime(sessionAdapter(async () => {
       call += 1;
       return {
         artifact: {
@@ -531,8 +541,8 @@ test("PipelineRuntime completes an interview with complete-interview and rejects
           value: call === 1 ? proposedQuestion("Anything else?") : proposedReady("Final."),
         },
       };
-    },
-  }, { runIdFactory: () => "run-done" });
+
+  }), { runIdFactory: () => "run-done" });
 
   const paused = await runtime.start(program);
   assert.equal(paused.status, "paused");
@@ -545,11 +555,10 @@ test("PipelineRuntime completes an interview with complete-interview and rejects
   assert.equal(completed.status, "completed");
   assert.equal(completed.artifact?.value, proposedReady("Final."));
 
-  const badRuntime = new PipelineRuntime({
-    async execute() {
+  const badRuntime = new PipelineRuntime(sessionAdapter(async () => {
       return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: proposedQuestion("Nope?") } };
-    },
-  }, { runIdFactory: () => "run-bad-done" });
+
+  }), { runIdFactory: () => "run-bad-done" });
   const badPaused = await badRuntime.start(program);
   assert.equal(badPaused.status, "paused");
   const failed = await badRuntime.resume(badPaused.runId, {
@@ -558,6 +567,53 @@ test("PipelineRuntime completes an interview with complete-interview and rejects
   });
   assert.equal(failed.status, "failed");
   assert.equal(failed.error.code, "malformed_interview_output");
+});
+
+test("PipelineRuntime makes one normalized final output request after complete-interview", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "final-request",
+    title: "Final Request",
+    nodes: [
+      {
+        id: "plan",
+        agent: "Codex",
+        prompt: "Plan",
+        interaction: { protocol: "proposed-plan", repairAttempts: 0 },
+        output: { name: "plan", type: "acp.grill-decision/v1", format: "markdown" },
+      },
+    ],
+  }, agents).program!;
+  let call = 0;
+  const prompts: string[] = [];
+  const runtime = new PipelineRuntime(sessionAdapter(async ({ prompt }) => {
+      prompts.push(prompt);
+      call += 1;
+      return {
+        artifact: {
+          name: "plan",
+          type: "acp.grill-decision/v1",
+          format: "markdown",
+          value: call === 1 ? proposedQuestion("Anything else?")
+            : call === 2 ? "missing final artifact"
+              : proposedReady("Final."),
+        },
+      };
+
+  }), { runIdFactory: () => "run-final-request" });
+
+  const paused = await runtime.start(program);
+  assert.equal(paused.status, "paused");
+
+  const completed = await runtime.resume(paused.runId, {
+    pauseId: paused.pause.id,
+    kind: "complete-interview",
+  });
+
+  assert.equal(completed.status, "completed");
+  assert.equal(completed.artifact?.value, proposedReady("Final."));
+  assert.match(prompts[2], /Return only one valid <proposed_plan> block with <interview_state>ready<\/interview_state>/);
+  assert.equal(completed.snapshot.nodeInterviewHistories?.plan.finalOutputRequestsUsed, 1);
 });
 
 test("PipelineRuntime restores a multi-turn interview from snapshot replay and rejects obsolete answers", async () => {
@@ -576,19 +632,17 @@ test("PipelineRuntime restores a multi-turn interview from snapshot replay and r
     ],
   }, agents).program!;
   const store = new InMemoryPipelineRunStore();
-  const firstRuntime = new PipelineRuntime({
-    async execute() {
+  const firstRuntime = new PipelineRuntime(sessionAdapter(async () => {
       return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: proposedQuestion("First?") } };
-    },
-  }, { runIdFactory: () => "run-restore-interview", store });
+
+  }), { runIdFactory: () => "run-restore-interview", store });
   const first = await firstRuntime.start(program, { inputs: { userPrompt: "ship" } });
   assert.equal(first.status, "paused");
   const firstPauseId = first.pause.id;
 
   const prompts: string[] = [];
   let call = 0;
-  const secondRuntime = new PipelineRuntime({
-    async execute({ prompt }) {
+  const secondRuntime = new PipelineRuntime(sessionAdapter(async ({ prompt }) => {
       prompts.push(prompt);
       call += 1;
       return {
@@ -599,8 +653,7 @@ test("PipelineRuntime restores a multi-turn interview from snapshot replay and r
           value: call === 1 ? proposedQuestion("Second?") : proposedReady("Done."),
         },
       };
-    },
-  }, { store, programs: [program] });
+  }), { store, programs: [program] });
 
   const second = await secondRuntime.resume(first.runId, {
     pauseId: firstPauseId,
@@ -638,8 +691,7 @@ test("PipelineRuntime repairs one malformed interview output before failing expl
   }, agents).program!;
   let call = 0;
   const prompts: string[] = [];
-  const runtime = new PipelineRuntime({
-    async execute({ prompt }) {
+  const runtime = new PipelineRuntime(sessionAdapter(async ({ prompt }) => {
       prompts.push(prompt);
       call += 1;
       return {
@@ -650,8 +702,8 @@ test("PipelineRuntime repairs one malformed interview output before failing expl
           value: call === 1 ? "not a plan" : proposedReady("Repaired."),
         },
       };
-    },
-  }, { runIdFactory: () => "run-repair" });
+
+  }), { runIdFactory: () => "run-repair" });
 
   const result = await runtime.start(program);
 
@@ -659,11 +711,10 @@ test("PipelineRuntime repairs one malformed interview output before failing expl
   assert.match(prompts[1], /Protocol error:/);
   assert.equal(result.artifact?.value, proposedReady("Repaired."));
 
-  const failing = new PipelineRuntime({
-    async execute() {
+  const failing = new PipelineRuntime(sessionAdapter(async () => {
       return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: "still bad" } };
-    },
-  }, { runIdFactory: () => "run-repair-fails" });
+
+  }), { runIdFactory: () => "run-repair-fails" });
   const failed = await failing.start(program);
   assert.equal(failed.status, "failed");
   assert.equal(failed.error.code, "malformed_interview_output");
@@ -690,8 +741,7 @@ test("PipelineRuntime gives each interview turn its own repair budget", async ()
     "bad second turn",
     proposedReady("Done."),
   ];
-  const runtime = new PipelineRuntime({
-    async execute() {
+  const runtime = new PipelineRuntime(sessionAdapter(async () => {
       return {
         artifact: {
           name: "plan",
@@ -700,8 +750,8 @@ test("PipelineRuntime gives each interview turn its own repair budget", async ()
           value: outputs.shift(),
         },
       };
-    },
-  }, { runIdFactory: () => "run-repair-each-turn" });
+
+  }), { runIdFactory: () => "run-repair-each-turn" });
 
   const paused = await runtime.start(program);
   assert.equal(paused.status, "paused");
@@ -745,15 +795,14 @@ test("PipelineRuntime serializes interview nodes while ordinary agents can still
     ],
   }, agents).program!;
   const started: string[] = [];
-  const runtime = new PipelineRuntime({
-    async execute({ node }) {
+  const runtime = new PipelineRuntime(sessionAdapter(async ({ node }) => {
       started.push(node.id);
       if (node.id === "ordinary") {
         return { artifact: { name: "out", type: "note", format: "text", value: "ok" } };
       }
       return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: proposedQuestion(`${node.id}?`) } };
-    },
-  }, { runIdFactory: () => "run-ordered-interviews" });
+
+  }), { runIdFactory: () => "run-ordered-interviews" });
 
   const result = await runtime.start(program);
 
@@ -781,8 +830,7 @@ test("PipelineRuntime keeps technical retries independent from interview repairs
     ],
   }, agents).program!;
   let call = 0;
-  const runtime = new PipelineRuntime({
-    async execute() {
+  const runtime = new PipelineRuntime(sessionAdapter(async () => {
       call += 1;
       if (call === 1) {
         return { code: "temporary", message: "temporary", retryable: true };
@@ -791,8 +839,8 @@ test("PipelineRuntime keeps technical retries independent from interview repairs
         return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: "bad format" } };
       }
       return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: proposedReady("Ok.") } };
-    },
-  }, { runIdFactory: () => "run-retry-interview" });
+
+  }), { runIdFactory: () => "run-retry-interview" });
 
   const result = await runtime.start(program);
 
@@ -800,6 +848,65 @@ test("PipelineRuntime keeps technical retries independent from interview repairs
   assert.equal(call, 3);
   assert.equal(result.snapshot.nodeStates.plan.attempts, 2);
   assert.equal(result.snapshot.diagnostics.filter(item => item.code === "temporary").length, 1);
+});
+
+test("PipelineRuntime replaces an interview session after retryable transport loss", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "retry-interview-session",
+    title: "Retry Interview Session",
+    nodes: [
+      {
+        id: "plan",
+        agent: "Codex",
+        prompt: "Plan",
+        retry: { maxAttempts: 2, backoffMs: 0 },
+        interaction: { protocol: "proposed-plan", repairAttempts: 0 },
+        output: { name: "plan", type: "acp.grill-decision/v1", format: "markdown" },
+      },
+    ],
+  }, agents).program!;
+  const events: string[] = [];
+  const runtimeEvents: string[] = [];
+  let sessionNumber = 0;
+  const runtime = new PipelineRuntime({
+    async createSession({ node }) {
+      sessionNumber += 1;
+      const current = sessionNumber;
+      events.push(`open:${current}`);
+      return {
+        runId: "run-retry-interview-session",
+        nodeId: node.id,
+        async send({ replay }) {
+          events.push(`send:${current}:${replay ? "replay" : "live"}`);
+          return current === 1
+            ? { code: "transport_lost", message: "lost", retryable: true }
+            : { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: proposedReady("Done.") } };
+        },
+        async cancel() {
+          events.push(`cancel:${current}`);
+        },
+        async close() {
+          events.push(`close:${current}`);
+        },
+      };
+    },
+    async execute() {
+      throw new Error("createSession should be used");
+    },
+  }, {
+    runIdFactory: () => "run-retry-interview-session",
+    onEvent: event => {
+      runtimeEvents.push(event.type);
+    },
+  });
+
+  const result = await runtime.start(program);
+
+  assert.equal(result.status, "completed");
+  assert.deepEqual(events, ["open:1", "send:1:live", "close:1", "open:2", "send:2:replay", "close:2"]);
+  assert.equal(runtimeEvents.filter(type => type === "node_started").length, 1);
+  assert.equal(runtimeEvents.filter(type => type === "node_replayed").length, 1);
 });
 
 test("PipelineRuntime does not let an interview pause mask an ordinary node failure", async () => {
@@ -823,19 +930,230 @@ test("PipelineRuntime does not let an interview pause mask an ordinary node fail
       },
     ],
   }, agents).program!;
-  const runtime = new PipelineRuntime({
-    async execute({ node }) {
+  const runtime = new PipelineRuntime(sessionAdapter(async ({ node }) => {
       if (node.id === "ordinary") {
         return { code: "ordinary_failed", message: "ordinary failed" };
       }
       return { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: proposedQuestion("Question?") } };
-    },
-  }, { runIdFactory: () => "run-interview-with-failure" });
+
+  }), { runIdFactory: () => "run-interview-with-failure" });
 
   const result = await runtime.start(program);
 
   assert.equal(result.status, "failed");
   assert.equal(result.error.code, "ordinary_failed");
+});
+
+test("PipelineRuntime opens and closes one AgentNodeSession per non-interactive attempt", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "attempt-sessions",
+    title: "Attempt Sessions",
+    nodes: [{
+      id: "work",
+      agent: "Codex",
+      prompt: "work",
+      retry: { maxAttempts: 2, backoffMs: 0 },
+      output: { name: "out", type: "note", format: "text" },
+    }],
+  }, agents).program!;
+  const events: string[] = [];
+  let sends = 0;
+  const runtime = new PipelineRuntime({
+    async createSession({ node }) {
+      events.push(`open:${node.id}`);
+      return {
+        runId: "run-attempt-sessions",
+        nodeId: node.id,
+        async send() {
+          events.push(`send:${node.id}`);
+          sends += 1;
+          return sends === 1
+            ? { code: "transport_lost", message: "lost", retryable: true }
+            : { artifact: { name: "out", type: "note", format: "text", value: "ok" } };
+        },
+        async cancel() {
+          events.push(`cancel:${node.id}`);
+        },
+        async close() {
+          events.push(`close:${node.id}`);
+        },
+      };
+    },
+    async execute() {
+      throw new Error("createSession should be used");
+    },
+  }, { runIdFactory: () => "run-attempt-sessions" });
+
+  const result = await runtime.start(program);
+
+  assert.equal(result.status, "completed");
+  assert.deepEqual(events, ["open:work", "send:work", "close:work", "open:work", "send:work", "close:work"]);
+});
+
+test("PipelineRuntime keeps an interview AgentNodeSession open across user answers and closes it on final artifact", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "interview-session",
+    title: "Interview Session",
+    nodes: [{
+      id: "plan",
+      agent: "Codex",
+      prompt: "Plan",
+      interaction: { protocol: "proposed-plan", repairAttempts: 0 },
+      output: { name: "plan", type: "acp.grill-decision/v1", format: "markdown" },
+    }],
+  }, agents).program!;
+  const events: string[] = [];
+  let turn = 0;
+  const runtimeEvents: string[] = [];
+  const runtime = new PipelineRuntime({
+    async createSession({ node }) {
+      events.push(`open:${node.id}`);
+      return {
+        runId: "run-interview-session",
+        nodeId: node.id,
+        async send() {
+          turn += 1;
+          events.push(`send:${turn}`);
+          return {
+            artifact: {
+              name: "plan",
+              type: "acp.grill-decision/v1",
+              format: "markdown",
+              value: turn === 1 ? proposedQuestion("Continue?") : proposedReady("Done."),
+            },
+          };
+        },
+        async cancel() {
+          events.push("cancel");
+        },
+        async close() {
+          events.push("close");
+        },
+      };
+    },
+    async execute() {
+      throw new Error("createSession should be used");
+    },
+  }, {
+    runIdFactory: () => "run-interview-session",
+    onEvent: event => {
+      runtimeEvents.push(event.type);
+    },
+  });
+
+  const paused = await runtime.start(program);
+  assert.equal(paused.status, "paused");
+
+  const completed = await runtime.resume(paused.runId, {
+    pauseId: paused.pause.id,
+    kind: "answer",
+    value: "yes",
+  });
+
+  assert.equal(completed.status, "completed");
+  assert.deepEqual(events, ["open:plan", "send:1", "send:2", "close"]);
+  assert.equal(runtimeEvents.filter(type => type === "node_started").length, 1);
+  assert.equal(runtimeEvents.filter(type => type === "node_replayed").length, 0);
+});
+
+test("PipelineRuntime rejects an AgentNodeSession bound to another run or node", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "session-boundary",
+    title: "Session Boundary",
+    nodes: [{
+      id: "work",
+      agent: "Codex",
+      prompt: "work",
+      output: { name: "out", type: "note", format: "text" },
+    }],
+  }, agents).program!;
+  const events: string[] = [];
+  const runtime = new PipelineRuntime({
+    async createSession() {
+      events.push("open");
+      return {
+        runId: "another-run",
+        nodeId: "another-node",
+        async send() {
+          events.push("send");
+          return { artifact: { name: "out", type: "note", format: "text", value: "wrong" } };
+        },
+        async cancel() {
+          events.push("cancel");
+        },
+        async close() {
+          events.push("close");
+        },
+      };
+    },
+  }, { runIdFactory: () => "run-session-boundary" });
+
+  const result = await runtime.start(program);
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.error.code, "invalid_agent_node_session");
+  assert.match(result.error.message, /run-session-boundary/);
+  assert.match(result.error.message, /work/);
+  assert.deepEqual(events, ["open", "close"]);
+});
+
+test("PipelineRuntime cancels and closes the active interview session on reject", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "reject-interview-session",
+    title: "Reject Interview Session",
+    nodes: [{
+      id: "plan",
+      agent: "Codex",
+      prompt: "Plan",
+      interaction: { protocol: "proposed-plan", repairAttempts: 0 },
+      output: { name: "plan", type: "acp.grill-decision/v1", format: "markdown" },
+    }],
+  }, agents).program!;
+  const events: string[] = [];
+  const runtime = new PipelineRuntime({
+    async createSession({ node }) {
+      events.push(`open:${node.id}`);
+      return {
+        runId: "run-reject-interview-session",
+        nodeId: node.id,
+        async send() {
+          events.push("send");
+          return {
+            artifact: {
+              name: "plan",
+              type: "acp.grill-decision/v1",
+              format: "markdown",
+              value: proposedQuestion("Continue?"),
+            },
+          };
+        },
+        async cancel() {
+          events.push("cancel");
+        },
+        async close() {
+          events.push("close");
+        },
+      };
+    },
+    async execute() {
+      throw new Error("createSession should be used");
+    },
+  }, { runIdFactory: () => "run-reject-interview-session" });
+
+  const paused = await runtime.start(program);
+  assert.equal(paused.status, "paused");
+
+  const rejected = await runtime.resume(paused.runId, {
+    pauseId: paused.pause.id,
+    kind: "reject",
+  });
+
+  assert.equal(rejected.status, "cancelled");
+  assert.deepEqual(events, ["open:plan", "send", "cancel", "close"]);
 });
 
 function proposedQuestion(question: string, recommendedAnswer?: string): string {

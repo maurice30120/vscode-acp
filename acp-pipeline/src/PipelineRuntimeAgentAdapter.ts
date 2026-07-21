@@ -6,6 +6,9 @@ import {
 } from "./PipelinePolicy";
 import type { PipelineAgentRunner, PipelineStepStatusUpdate } from "./PipelineAgentRunner";
 import type {
+  AgentNodeSession,
+  AgentNodeSessionFactory,
+  AgentNodeSessionFactoryInput,
   CompiledPipelineNode,
   PipelineNodeExecutionInput,
   PipelineNodeExecutionResult,
@@ -23,8 +26,56 @@ export interface PipelineRuntimeAgentAdapterOptions {
 export class PipelineRuntimeAgentAdapter implements PipelineRuntimeAdapter {
   constructor(private readonly options: PipelineRuntimeAgentAdapterOptions) {}
 
+  async createSession(input: AgentNodeSessionFactoryInput): Promise<AgentNodeSession> {
+    return new PipelineRuntimeAgentNodeSession(input, this.options);
+  }
+
   async execute(input: PipelineNodeExecutionInput): Promise<PipelineNodeExecutionResult> {
+    const session = await this.createSession({
+      runId: input.runId,
+      node: input.node,
+      signal: input.signal,
+    });
+    try {
+      return await session.send(input);
+    } finally {
+      await session.close();
+    }
+  }
+
+  asSessionFactory(): AgentNodeSessionFactory {
+    return input => this.createSession(input);
+  }
+}
+
+class PipelineRuntimeAgentNodeSession implements AgentNodeSession {
+  readonly runId: string;
+  readonly nodeId: string;
+  private closed = false;
+  private controller: AbortController;
+
+  constructor(
+    input: AgentNodeSessionFactoryInput,
+    private readonly options: PipelineRuntimeAgentAdapterOptions,
+  ) {
+    this.runId = input.runId;
+    this.nodeId = input.node.id;
+    this.controller = new AbortController();
+    if (input.signal.aborted) {
+      this.controller.abort();
+    } else {
+      input.signal.addEventListener("abort", () => this.controller.abort(), { once: true });
+    }
+  }
+
+  async send(input: PipelineNodeExecutionInput): Promise<PipelineNodeExecutionResult> {
     const node = input.node;
+    if (this.closed) {
+      return {
+        code: "agent_session_closed",
+        message: `AgentNodeSession for node "${this.nodeId}" is closed.`,
+      };
+    }
     if (!node.agent) {
       return {
         code: "missing_agent",
@@ -43,7 +94,7 @@ export class PipelineRuntimeAgentAdapter implements PipelineRuntimeAdapter {
         workspaceCwd: this.options.workspaceCwd(),
         agentName: node.agent,
         promptText: input.prompt,
-        signal: input.signal,
+        signal: this.controller.signal,
         onSessionUpdate: update => this.options.onSessionUpdate?.(input.runId, node, update),
         onStatus: update => this.options.onStatus?.(input.runId, node, update),
         sideEffects: mapPolicyToLegacySideEffects(node.policy),
@@ -66,5 +117,14 @@ export class PipelineRuntimeAgentAdapter implements PipelineRuntimeAdapter {
         retryable: false,
       };
     }
+  }
+
+  async cancel(): Promise<void> {
+    this.controller.abort();
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
+    this.controller.abort();
   }
 }

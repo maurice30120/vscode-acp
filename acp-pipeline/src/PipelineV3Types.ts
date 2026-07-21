@@ -134,6 +134,7 @@ export interface PipelineRuntimeSnapshot {
   artifacts: Record<string, PipelineArtifact>;
   pendingPause?: PipelinePauseSnapshot;
   activeInterview?: PipelineInterviewSnapshot;
+  nodeInterviewHistories?: Record<string, PipelineInterviewSnapshot>;
   finalArtifact?: PipelineArtifact;
   diagnostics: PipelineRuntimeDiagnostic[];
   createdAt: string;
@@ -166,10 +167,12 @@ export interface PipelineInterviewTurn {
 export interface PipelineInterviewSnapshot {
   nodeId: string;
   protocol: string;
+  originalPrompt?: string;
   state: PipelineInterviewState;
   completionRequested: boolean;
   turns: PipelineInterviewTurn[];
   repairAttemptsUsed: number;
+  finalOutputRequestsUsed?: number;
 }
 
 export interface PipelineRuntimeDiagnostic {
@@ -199,6 +202,15 @@ export interface PipelineNodeExecutionInput {
   signal: AbortSignal;
 }
 
+export interface AgentNodeSessionTurnInput extends PipelineNodeExecutionInput {
+  replay?: boolean;
+}
+
+export interface AgentNodeSessionActivity {
+  kind: "message" | "thought" | "status";
+  content: string;
+}
+
 export interface PipelineNodeExecutionSuccess {
   artifact: Omit<PipelineArtifact, "producerNodeId">;
 }
@@ -213,6 +225,26 @@ export type PipelineNodeExecutionResult =
   | PipelineNodeExecutionSuccess
   | PipelineNodeExecutionFailure;
 
+export interface AgentNodeSession {
+  readonly runId: string;
+  readonly nodeId: string;
+  send(input: AgentNodeSessionTurnInput): Promise<PipelineNodeExecutionResult>;
+  onActivity?(handler: (activity: AgentNodeSessionActivity) => void): () => void;
+  cancel(): Promise<void>;
+  close(): Promise<void>;
+}
+
+export interface AgentNodeSessionFactoryInput {
+  runId: string;
+  node: CompiledPipelineNode;
+  signal: AbortSignal;
+}
+
+export type AgentNodeSessionFactory = (
+  input: AgentNodeSessionFactoryInput,
+) => Promise<AgentNodeSession>;
+
 export interface PipelineRuntimeAdapter {
-  execute(input: PipelineNodeExecutionInput): Promise<PipelineNodeExecutionResult>;
+  createSession: AgentNodeSessionFactory;
+  execute?(input: PipelineNodeExecutionInput): Promise<PipelineNodeExecutionResult>;
 }
