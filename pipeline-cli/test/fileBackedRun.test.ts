@@ -25,25 +25,29 @@ class FakeTerminal implements CliTerminal {
   close(): void {}
 }
 
-test('shows referenced files but approves the compact handoff', async () => {
+test('shows referenced spec and tickets but approves the compact handoff', async () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'acp-cli-run-files-'));
-  const planPath = path.join(cwd, '.scratch', 'compact-context', 'plan.md');
-  fs.mkdirSync(path.dirname(planPath), { recursive: true });
-  fs.writeFileSync(planPath, '# Approved plan\n\nKeep model context compact.\n');
+  const featureDir = path.join(cwd, '.scratch', 'french-poem');
+  const issuesDir = path.join(featureDir, 'issues');
+  fs.mkdirSync(issuesDir, { recursive: true });
+  fs.writeFileSync(path.join(featureDir, 'spec.md'), '# Approved specification\n\nKeep model context compact.\n');
+  fs.writeFileSync(path.join(issuesDir, '01-create-poem.md'), '# Create the poem\n');
 
   const handoff = [
-    '<!-- acp-cli:require-workspace-files=1 -->',
+    '<!-- acp-cli:require-workspace-files=2 -->',
+    '<!-- acp-cli:workspace-layout=delivery -->',
     '## Documentation',
     '',
-    '- `.scratch/compact-context/plan.md`',
+    '- `.scratch/french-poem/spec.md`',
+    '- `.scratch/french-poem/issues/`',
   ].join('\n');
   const decisions: unknown[] = [];
   const paused: PipelineRuntimeResult = {
     status: 'paused',
     runId: 'run-files',
     pause: {
-      id: 'approve-plan',
-      nodeId: 'plan-approval',
+      id: 'approve-delivery',
+      nodeId: 'delivery-approval',
       type: 'approval',
       content: handoff,
       format: 'proposed-plan',
@@ -73,26 +77,28 @@ test('shows referenced files but approves the compact handoff', async () => {
 
   await runPipelineInteractive(host, terminal, command(cwd));
 
-  assert.match(terminal.output[0] ?? '', /# Approved plan/);
+  assert.match(terminal.output[0] ?? '', /# Approved specification/);
   assert.match(terminal.output[0] ?? '', /Keep model context compact\./);
+  assert.match(terminal.output[0] ?? '', /# Create the poem/);
   assert.deepEqual(decisions, [{
-    pauseId: 'approve-plan',
+    pauseId: 'approve-delivery',
     kind: 'approve',
     value: handoff,
   }]);
 });
 
-test('fails before approval when a required workspace handoff has no file', async () => {
+test('fails before approval when a required workspace handoff has no files', async () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'acp-cli-run-files-'));
   const paused: PipelineRuntimeResult = {
     status: 'paused',
     runId: 'run-invalid-files',
     pause: {
-      id: 'approve-plan',
-      nodeId: 'plan-approval',
+      id: 'approve-delivery',
+      nodeId: 'delivery-approval',
       type: 'approval',
       content: [
-        '<!-- acp-cli:require-workspace-files=1 -->',
+        '<!-- acp-cli:require-workspace-files=2 -->',
+        '<!-- acp-cli:workspace-layout=delivery -->',
         '<proposed_plan>',
         '<interview_state>ready</interview_state>',
         '</proposed_plan>',
@@ -116,7 +122,7 @@ test('fails before approval when a required workspace handoff has no file', asyn
   assert.equal(result.status, 'failed');
   assert.equal(result.error?.code, 'invalid_workspace_handoff');
   assert.equal(resumed, false);
-  assert.match(terminal.errors[0] ?? '', /requires at least 1 existing \.scratch Markdown reference/);
+  assert.match(terminal.errors[0] ?? '', /requires at least 2 existing \.scratch Markdown reference/);
 });
 
 function command(cwd: string): CliRunCommand {
