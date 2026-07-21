@@ -1108,6 +1108,7 @@ test("PipelineRuntime projects temporary agent activity without publishing node 
       output: { name: "plan", type: "acp.grill-decision/v1", format: "markdown" },
     }],
   }, agents).program!;
+  const store = new InMemoryPipelineRunStore();
   const runtimeEvents: { type: string; nodeId?: string; message?: string; activity?: unknown }[] = [];
   let activityHandler: ((activity: { kind: "status"; content: string }) => void) | undefined;
   let unsubscribed = false;
@@ -1140,6 +1141,7 @@ test("PipelineRuntime projects temporary agent activity without publishing node 
   }, {
     runIdFactory: () => "run-interview-activity",
     now: () => new Date("2026-07-21T00:00:00.000Z"),
+    store,
     onEvent: event => {
       runtimeEvents.push(event);
     },
@@ -1159,6 +1161,7 @@ test("PipelineRuntime projects temporary agent activity without publishing node 
   });
   assert.equal(paused.snapshot.artifacts["plan.plan"], undefined);
   assert.equal(paused.snapshot.pendingPause?.content, "Continue?");
+  assert.equal((await store.readEvents(paused.runId)).some(event => event.type === "agent_activity"), false);
 
   await runtime.cancel(paused.runId);
   assert.equal(unsubscribed, true);

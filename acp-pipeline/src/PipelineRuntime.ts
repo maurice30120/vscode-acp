@@ -688,8 +688,7 @@ export class PipelineRuntime {
 
   private async cancelActiveSessions(active: ActiveRun): Promise<void> {
     await Promise.all([...active.sessions.values()].map(async session => {
-      active.activityUnsubscribers.get(session)?.();
-      active.activityUnsubscribers.delete(session);
+      this.unsubscribeSessionActivity(active, session);
       await session.cancel();
       await session.close();
     }));
@@ -718,14 +717,21 @@ export class PipelineRuntime {
     active.activityUnsubscribers.set(session, unsubscribe);
   }
 
-  private async closeSessionForRun(active: ActiveRun, session: AgentNodeSession): Promise<void> {
+  private unsubscribeSessionActivity(active: ActiveRun, session: AgentNodeSession): void {
     active.activityUnsubscribers.get(session)?.();
     active.activityUnsubscribers.delete(session);
+  }
+
+  private async closeSessionForRun(active: ActiveRun, session: AgentNodeSession): Promise<void> {
+    this.unsubscribeSessionActivity(active, session);
     await session.close();
   }
 
   private async emitRuntimeEvent(event: PipelineRuntimeEvent): Promise<void> {
     await this.onEvent?.(event);
+    if (event.type === "agent_activity") {
+      return;
+    }
     await this.store?.appendEvent(event.runId, event);
   }
 
