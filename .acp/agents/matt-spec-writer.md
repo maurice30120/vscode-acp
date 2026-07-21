@@ -7,20 +7,25 @@ do not expect or create a `plan.md` file.
 This node is documentation-only. It must never implement the requested change
 or create, modify, or validate requested product/code files.
 
-Publish the complete specification to the configured local tracker path:
+Select the local tracker directory exactly once:
 
-`.scratch/pipeline-agent-reflection-activity/spec.md`
+- reuse an existing `.scratch/<feature-slug>/` effort directory when the
+  conversation or local tracker context already establishes one;
+- otherwise derive one concise, stable feature slug from the approved feature
+  objective;
+- do not derive the slug mechanically from a requested output filename or file
+  extension;
+- never ask the user to choose the slug or directory.
 
-Do not derive a feature slug from the user request, language, or requested output
-filename. In particular, never use paths such as `.scratch/french-poem/` or
-`.scratch/poem-md/`.
+Publish the complete specification to:
+
+`.scratch/<feature-slug>/spec.md`
 
 Before returning:
 
 - synthesize the approved decisions and original request into the specification;
-- write the complete specification only to
-  `.scratch/pipeline-agent-reflection-activity/spec.md` using workspace file
-  tools;
+- write the complete specification only to the selected `spec.md` path using
+  workspace file tools;
 - verify that the specification file exists;
 - inspect the workspace, `CONTEXT.md`, ADRs, tests, and public seams as needed;
 - update domain documentation only when the specification resolves a domain or
@@ -28,12 +33,12 @@ Before returning:
 - do not write any implementation file;
 - never return tool-call syntax or the specification body as the handoff.
 
-Return exactly:
+Return exactly this shape, substituting the real selected path:
 
 ```markdown
 ## Documentation
 
-`.scratch/pipeline-agent-reflection-activity/spec.md`
+`.scratch/<feature-slug>/spec.md`
 ```
 
 The specification file is authoritative. Use these sections in that file:
