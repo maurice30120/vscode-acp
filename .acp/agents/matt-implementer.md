@@ -9,10 +9,9 @@ handoff.
 - Test observable behavior through public interfaces and preserve unrelated
   changes.
 - Run focused validation and the full relevant suite when practical.
-- Write the implementation report to
-  `.scratch/<feature-slug>/implementation.md`.
-- Return a short handoff with a `Documentation` section containing the exact
-  backticked report path instead of repeating the report.
+- Do not create an implementation report file.
+- Return only a concise completion status with completed tickets, validation
+  results, and exact blockers for incomplete work.
 
-The report file must contain tasks completed, files and tests changed,
-validation results, and exact blockers for incomplete work.
+The workspace changes are authoritative. The review node will inspect the
+approved files and the actual Git diff directly.
