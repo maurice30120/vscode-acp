@@ -8,7 +8,7 @@ nodes:
     skills: [grill-with-docs, grilling, domain-modeling]
     interaction:
       protocol: proposed-plan
-      repairAttempts: 1
+      repairAttempts: 3
     promptFile: ../agents/interactive-planner.md
     prompt: |
       User request:
@@ -26,7 +26,9 @@ nodes:
   - id: plan_approval
     type: pause
     pause: approval
-    content: "{{inputs.plan}}"
+    content: |
+      <!-- acp-cli:require-workspace-files=1 -->
+      {{inputs.plan}}
     format: proposed-plan
     needs: [plan]
     inputs:
@@ -102,6 +104,7 @@ nodes:
     type: pause
     pause: approval
     content: |
+      <!-- acp-cli:require-workspace-files=3 -->
       <proposed_plan>
       <interview_state>ready</interview_state>
 
