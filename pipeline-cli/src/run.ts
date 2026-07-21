@@ -6,6 +6,11 @@ import type {
 
 import type { CliRunCommand } from './args.js';
 import type { CliPipelineHost, CliPipelineListEntry } from './host.js';
+import {
+  capturePreImplementationWorkspaceState,
+  requiresDocumentationOnlyGuard,
+  validateNoPreImplementationWorkspaceChanges,
+} from './preImplementationGuard.js';
 import type { CliTerminal } from './terminal.js';
 import {
   expandWorkspaceMarkdownReferences,
@@ -24,6 +29,7 @@ export async function runPipelineInteractive(
   terminal: CliTerminal,
   command: CliRunCommand,
 ): Promise<CliRunResult> {
+  const preImplementationBaseline = capturePreImplementationWorkspaceState(command.cwd);
   let result = await host.start(command.pipelineName, command.prompt);
 
   while (result.status === 'paused') {
@@ -40,21 +46,31 @@ export async function runPipelineInteractive(
       pause.content,
     );
     if (workspaceHandoffError) {
-      const failed: CliRunResult = {
-        status: 'failed',
-        runId: result.runId,
-        error: {
-          code: 'invalid_workspace_handoff',
-          message: workspaceHandoffError,
-          nodeId: pause.nodeId,
-        },
-      };
-      if (command.json) {
-        terminal.write(JSON.stringify(failed, null, 2));
-      } else {
-        terminal.writeError(formatFailure(failed.error));
+      return failInteractiveRun(
+        terminal,
+        command.json,
+        result.runId,
+        'invalid_workspace_handoff',
+        workspaceHandoffError,
+        pause.nodeId,
+      );
+    }
+
+    if (requiresDocumentationOnlyGuard(pause.content)) {
+      const preImplementationError = validateNoPreImplementationWorkspaceChanges(
+        preImplementationBaseline,
+        capturePreImplementationWorkspaceState(command.cwd),
+      );
+      if (preImplementationError) {
+        return failInteractiveRun(
+          terminal,
+          command.json,
+          result.runId,
+          'preimplementation_workspace_change',
+          preImplementationError,
+          pause.nodeId,
+        );
       }
-      return failed;
     }
 
     if (pause.type === 'question') {
@@ -106,6 +122,27 @@ export function formatPipelineList(entries: CliPipelineListEntry[], json: boolea
     return 'No valid ACP version 3 pipelines found in .acp/pipelines.';
   }
   return entries.map(entry => `- ${entry.id} — ${entry.title} (${entry.nodeCount} nodes)`).join('\n');
+}
+
+function failInteractiveRun(
+  terminal: CliTerminal,
+  json: boolean,
+  runId: string,
+  code: string,
+  message: string,
+  nodeId?: string,
+): CliRunResult {
+  const failed: CliRunResult = {
+    status: 'failed',
+    runId,
+    error: { code, message, nodeId },
+  };
+  if (json) {
+    terminal.write(JSON.stringify(failed, null, 2));
+  } else {
+    terminal.writeError(formatFailure(failed.error));
+  }
+  return failed;
 }
 
 function normalizeResult(result: PipelineRuntimeResult): CliRunResult {
