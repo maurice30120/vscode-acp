@@ -5,8 +5,8 @@ title: Grill with Docs → Spec Docs → Ticket Docs → Implement → Review
 nodes:
   - id: plan
     # Agents disponibles :
-    agent: Codex CLI
-    # agent: Vibe
+    # agent: Codex CLI
+    agent: Vibe
     # agent: Cursor CLI
     # agent: OpenCode
     # agent: Pi Agent
@@ -80,8 +80,8 @@ nodes:
 
   - id: spec
     # Agents disponibles :
-    agent: Codex CLI
-    # agent: Vibe
+    # agent: Codex CLI
+    agent: Vibe
     # agent: Cursor CLI
     # agent: OpenCode
     # agent: Pi Agent
@@ -133,8 +133,8 @@ nodes:
 
   - id: tasks
     # Agents disponibles :
-    agent: Codex CLI
-    # agent: Vibe
+    # agent: Codex CLI
+    agent: Vibe
     # agent: Cursor CLI
     # agent: OpenCode
     # agent: Pi Agent
@@ -226,14 +226,14 @@ nodes:
   - id: implementation
     # Agents disponibles :
     # agent: Codex CLI
-    # agent: Vibe
+    agent: Vibe
     # agent: Cursor CLI
     # agent: OpenCode
     # agent: Pi Agent
     # agent: Codex Sandcastle
     # agent: Cursor Sandcastle
     # agent: Pi Sandcastle
-    agent: Vibe Sandcastle
+    # agent: Vibe Sandcastle
 
     skills: [implement]
     promptFile: ../agents/matt-implementer.md
@@ -277,8 +277,8 @@ nodes:
 
   - id: review
     # Agents disponibles :
-    agent: Codex CLI
-    # agent: Vibe
+    # agent: Codex CLI
+    agent: Vibe
     # agent: Cursor CLI
     # agent: OpenCode
     # agent: Pi Agent

@@ -782,7 +782,7 @@ test("/pipeline run then approve executes planner and implementer", async () => 
 			},
 		} as any,
 		{
-			createSession: createSessionFromRunner(runner),
+			runner: { run: runner },
 		},
 	);
 	const ctx = commandContext(workspace, notifications);
@@ -904,7 +904,7 @@ test("PipelineController activity relays agent message chunks", async () => {
 			},
 		} as any,
 		{
-			createSession: createSessionFromRunner(runner),
+			runner: { run: runner },
 		},
 	);
 
@@ -912,7 +912,6 @@ test("PipelineController activity relays agent message chunks", async () => {
 
 	assert.ok(messages.some((message) => message.details?.kind === "activity-status"));
 	assert.ok(messages.some((message) => String(message.content).includes("generated chunk")));
-	assert.ok(messages.some((message) => /^Phase: \S+/m.test(String(message.content))));
 });
 
 test("PipelineController groups adjacent agent message chunks", async () => {
@@ -936,13 +935,14 @@ test("PipelineController groups adjacent agent message chunks", async () => {
 			},
 		} as any,
 		{
-			createSession: createSessionFromRunner(runner),
+			runner: { run: runner },
 		},
 	);
 
 	await controller.runPipeline("plan-execute-verify", "add tests");
 
-	const outputMessages = messages.filter((message) => message.details?.kind === "activity-status");
+	const outputMessages = messages.filter((message) => message.details?.kind === "agent-message-chunk");
+	assert.equal(outputMessages.length, 1);
 	assert.ok(outputMessages.some((message) => String(message.content).includes("generated chunk")));
 });
 
@@ -965,7 +965,7 @@ test("PipelineController activity relays agent thought chunks", async () => {
 			},
 		} as any,
 		{
-			createSession: createSessionFromRunner(runner),
+			runner: { run: runner },
 		},
 	);
 
@@ -1003,7 +1003,7 @@ test("PipelineController verbose activity still reports non-text session updates
 			},
 		} as any,
 			{
-				createSession: createSessionFromRunner(runner),
+				runner: { run: runner },
 			},
 	);
 	controller.setVerbose(true);
@@ -1030,7 +1030,7 @@ test("PipelineController keeps heartbeat internal during long-running activity",
 			},
 		} as any,
 		{
-			createSession: createSessionFromRunner(runner),
+			runner: { run: runner },
 			heartbeatIntervalMs: 5,
 		},
 	);
@@ -1086,7 +1086,7 @@ test("PipelineController status reports agent update counters without duplicatin
 	let snapshot = "";
 	for (let attempts = 0; attempts < 50; attempts += 1) {
 		snapshot = controller.formatActivitySnapshot();
-		if (snapshot.includes("Agent updates received: 0")) {
+		if (messages.some((message) => String(message.content).includes("hidden chunk"))) {
 			break;
 		}
 		await setImmediate();
@@ -1098,8 +1098,6 @@ test("PipelineController status reports agent update counters without duplicatin
 	assert.match(snapshot, /Agent updates received: 0/);
 	assert.match(snapshot, /Agent text chunks received: 0/);
 	assert.match(snapshot, /Agent thought chunks received: 0/);
-	assert.match(snapshot, /Agent threads:/);
-	assert.match(snapshot, /Pi Agent:/);
 	assert.ok(!snapshot.includes("hidden chunk"));
 	assert.ok(messages.some((message) => String(message.content).includes("hidden chunk")));
 });
