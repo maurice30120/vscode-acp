@@ -99,7 +99,6 @@ nodes:
     content: |
       <!-- acp-cli:require-workspace-files=2 -->
       <!-- acp-cli:workspace-layout=delivery -->
-      <!-- acp-cli:workspace-root=.scratch/pipeline-agent-reflection-activity -->
       <!-- acp-cli:documentation-only-before-approval -->
       <proposed_plan>
       <interview_state>ready</interview_state>
