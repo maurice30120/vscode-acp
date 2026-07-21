@@ -11,6 +11,7 @@ import type {
   CompiledPipelineNode,
   CompiledPipelineProgram,
   PipelineArtifact,
+  PipelineNodeExecutionFailure,
   PipelineNodeExecutionResult,
   PipelineResumeDecision,
   PipelineRuntimeAdapter,
@@ -468,6 +469,7 @@ export class PipelineRuntime {
       completionRequested: interview.completionRequested,
     });
     const firstAttempt = fixedAttempt ?? active.snapshot.nodeStates[node.id].attempts + 1;
+    let replayNextAttempt = Boolean(existing) && !active.sessions.has(node.id);
 
     for (let attempt = firstAttempt; attempt <= node.retry.maxAttempts; attempt++) {
       active.snapshot.nodeStates[node.id] = {
@@ -478,11 +480,11 @@ export class PipelineRuntime {
       };
       active.snapshot.updatedAt = this.isoNow();
       await this.persist(active.snapshot);
-      const hasLiveSession = active.sessions.has(node.id);
-      const isReplay = (Boolean(existing) && !hasLiveSession) || attempt > firstAttempt;
+      const isReplay = replayNextAttempt;
+      replayNextAttempt = false;
       if (isReplay) {
         await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "node_replayed", nodeId: node.id, message: "Interview replayed from node ACP history.", at: active.snapshot.updatedAt });
-      } else if (!existing) {
+      } else if (!existing && attempt === firstAttempt) {
         await this.emitRuntimeEvent({ runId: active.snapshot.runId, type: "node_started", nodeId: node.id, at: active.snapshot.updatedAt });
       }
 
@@ -513,7 +515,9 @@ export class PipelineRuntime {
             await this.persist(active.snapshot);
             return { nodeId: node.id, attempt, code: result.code, message: result.message };
           }
+          const shouldReplayTransportLoss = isInterviewTransportLoss(result);
           await this.closeInterviewSession(active, node.id);
+          replayNextAttempt = shouldReplayTransportLoss;
           await sleep(node.retry.backoffMs ?? 0);
           break;
         }
@@ -882,6 +886,10 @@ function assertArtifact(node: CompiledPipelineNode, result: PipelineNodeExecutio
 
 function artifactKey(nodeId: string, artifactName: string): string {
   return `${nodeId}.${artifactName}`;
+}
+
+function isInterviewTransportLoss(result: PipelineNodeExecutionFailure): boolean {
+  return result.retryable === true && result.code === "transport_lost";
 }
 
 class InvalidAgentNodeSessionError extends Error {

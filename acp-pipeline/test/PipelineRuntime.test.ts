@@ -1251,6 +1251,60 @@ test("PipelineRuntime replays interview history into a replacement session after
   assert.equal(runtimeEvents.filter(type => type === "node_replayed").length, 1);
 });
 
+test("PipelineRuntime retries non-transport interview failures without replaying history", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "retry-interview-without-replay",
+    title: "Retry Interview Without Replay",
+    nodes: [
+      {
+        id: "plan",
+        agent: "Codex",
+        prompt: "Plan",
+        retry: { maxAttempts: 2, backoffMs: 0 },
+        interaction: { protocol: "proposed-plan", repairAttempts: 0 },
+        output: { name: "plan", type: "acp.grill-decision/v1", format: "markdown" },
+      },
+    ],
+  }, agents).program!;
+  const events: string[] = [];
+  const runtimeEvents: string[] = [];
+  let sessionNumber = 0;
+  const runtime = new PipelineRuntime({
+    async createSession({ runId, node }) {
+      sessionNumber += 1;
+      const current = sessionNumber;
+      events.push(`open:${current}`);
+      return {
+        runId,
+        nodeId: node.id,
+        async send({ replay }) {
+          events.push(`send:${current}:${replay ? "replay" : "live"}`);
+          return current === 1
+            ? { code: "temporary", message: "temporary", retryable: true }
+            : { artifact: { name: "plan", type: "acp.grill-decision/v1", format: "markdown", value: proposedReady("Done.") } };
+        },
+        async cancel() {},
+        async close() {
+          events.push(`close:${current}`);
+        },
+      };
+    },
+  }, {
+    runIdFactory: () => "run-retry-interview-without-replay",
+    onEvent: event => {
+      runtimeEvents.push(event.type);
+    },
+  });
+
+  const result = await runtime.start(program);
+
+  assert.equal(result.status, "completed");
+  assert.deepEqual(events, ["open:1", "send:1:live", "close:1", "open:2", "send:2:live", "close:2"]);
+  assert.equal(runtimeEvents.filter(type => type === "node_started").length, 1);
+  assert.equal(runtimeEvents.filter(type => type === "node_replayed").length, 0);
+});
+
 test("PipelineRuntime does not let an interview pause mask an ordinary node failure", async () => {
   const program = compilePipelineV3Definition({
     version: 3,
@@ -1300,6 +1354,7 @@ test("PipelineRuntime opens and closes one AgentNodeSession per non-interactive 
     }],
   }, agents).program!;
   const events: string[] = [];
+  const runtimeEvents: string[] = [];
   let sends = 0;
   const runtime = new PipelineRuntime({
     async createSession({ node }) {
@@ -1307,8 +1362,8 @@ test("PipelineRuntime opens and closes one AgentNodeSession per non-interactive 
       return {
         runId: "run-attempt-sessions",
         nodeId: node.id,
-        async send() {
-          events.push(`send:${node.id}`);
+        async send({ replay }) {
+          events.push(`send:${node.id}:${replay ? "replay" : "live"}`);
           sends += 1;
           return sends === 1
             ? { code: "transport_lost", message: "lost", retryable: true }
@@ -1325,12 +1380,18 @@ test("PipelineRuntime opens and closes one AgentNodeSession per non-interactive 
     async execute() {
       throw new Error("createSession should be used");
     },
-  }, { runIdFactory: () => "run-attempt-sessions" });
+  }, {
+    runIdFactory: () => "run-attempt-sessions",
+    onEvent: event => {
+      runtimeEvents.push(event.type);
+    },
+  });
 
   const result = await runtime.start(program);
 
   assert.equal(result.status, "completed");
-  assert.deepEqual(events, ["open:work", "send:work", "close:work", "open:work", "send:work", "close:work"]);
+  assert.deepEqual(events, ["open:work", "send:work:live", "close:work", "open:work", "send:work:live", "close:work"]);
+  assert.equal(runtimeEvents.filter(type => type === "node_replayed").length, 0);
 });
 
 test("PipelineRuntime closes a non-interactive AgentNodeSession when send throws", async () => {
