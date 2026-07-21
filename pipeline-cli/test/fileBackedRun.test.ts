@@ -13,10 +13,11 @@ import type { CliTerminal } from '../src/terminal.js';
 
 class FakeTerminal implements CliTerminal {
   readonly output: string[] = [];
+  readonly errors: string[] = [];
   readonly confirmations = [true];
 
   write(message: string): void { this.output.push(message); }
-  writeError(): void {}
+  writeError(message: string): void { this.errors.push(message); }
   async ask(): Promise<string> { return ''; }
   async confirm(): Promise<boolean> { return this.confirmations.shift() ?? false; }
   async select(): Promise<string | undefined> { return undefined; }
@@ -30,7 +31,12 @@ test('shows referenced files but approves the compact handoff', async () => {
   fs.mkdirSync(path.dirname(planPath), { recursive: true });
   fs.writeFileSync(planPath, '# Approved plan\n\nKeep model context compact.\n');
 
-  const handoff = '## Documentation\n\n- `.scratch/compact-context/plan.md`';
+  const handoff = [
+    '<!-- acp-cli:require-workspace-files=1 -->',
+    '## Documentation',
+    '',
+    '- `.scratch/compact-context/plan.md`',
+  ].join('\n');
   const decisions: unknown[] = [];
   const paused: PipelineRuntimeResult = {
     status: 'paused',
@@ -64,17 +70,8 @@ test('shows referenced files but approves the compact handoff', async () => {
     },
   };
   const terminal = new FakeTerminal();
-  const command: CliRunCommand = {
-    kind: 'run',
-    pipelineName: 'file-backed',
-    prompt: 'simplify context',
-    cwd,
-    json: false,
-    verbose: false,
-    yes: false,
-  };
 
-  await runPipelineInteractive(host, terminal, command);
+  await runPipelineInteractive(host, terminal, command(cwd));
 
   assert.match(terminal.output[0] ?? '', /# Approved plan/);
   assert.match(terminal.output[0] ?? '', /Keep model context compact\./);
@@ -85,9 +82,58 @@ test('shows referenced files but approves the compact handoff', async () => {
   }]);
 });
 
-function snapshot(status: 'paused' | 'completed') {
+test('fails before approval when a required workspace handoff has no file', async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'acp-cli-run-files-'));
+  const paused: PipelineRuntimeResult = {
+    status: 'paused',
+    runId: 'run-invalid-files',
+    pause: {
+      id: 'approve-plan',
+      nodeId: 'plan-approval',
+      type: 'approval',
+      content: [
+        '<!-- acp-cli:require-workspace-files=1 -->',
+        '<proposed_plan>',
+        '<interview_state>ready</interview_state>',
+        '</proposed_plan>',
+      ].join('\n'),
+      format: 'proposed-plan',
+    },
+    snapshot: snapshot('paused', 'run-invalid-files'),
+  };
+  let resumed = false;
+  const host = {
+    start: async () => paused,
+    resume: async () => {
+      resumed = true;
+      throw new Error('resume must not be called');
+    },
+  };
+  const terminal = new FakeTerminal();
+
+  const result = await runPipelineInteractive(host, terminal, command(cwd));
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.error?.code, 'invalid_workspace_handoff');
+  assert.equal(resumed, false);
+  assert.match(terminal.errors[0] ?? '', /requires at least 1 existing \.scratch Markdown reference/);
+});
+
+function command(cwd: string): CliRunCommand {
   return {
-    runId: 'run-files',
+    kind: 'run',
+    pipelineName: 'file-backed',
+    prompt: 'simplify context',
+    cwd,
+    json: false,
+    verbose: false,
+    yes: false,
+  };
+}
+
+function snapshot(status: 'paused' | 'completed', runId = 'run-files') {
+  return {
+    runId,
     pipelineId: 'file-backed',
     status,
     nodeStates: {},
