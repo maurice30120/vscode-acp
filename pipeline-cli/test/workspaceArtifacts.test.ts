@@ -97,7 +97,7 @@ test('rejects missing, escaping, non-Markdown, and empty directory references', 
   assert.match(
     validateRequiredWorkspaceMarkdownReferences(
       cwd,
-      '<!-- acp-cli:require-workspace-files -->\n`.scratch/..\/outside.md`',
+      '<!-- acp-cli:require-workspace-files -->\n`.scratch/../outside.md`',
     ) ?? '',
     /escapes \.scratch/,
   );
