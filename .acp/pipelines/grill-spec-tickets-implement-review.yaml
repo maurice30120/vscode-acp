@@ -124,56 +124,5 @@ nodes:
         format: markdown
     output:
       name: approved
-      type: acp.workspace-files/v1
-      format: markdown
-
-  - id: implementation
-    agent: Vibe
-    promptFile: ../agents/matt-implementer.md
-    prompt: |
-      User request:
-      {{userPrompt}}
-
-      Approved delivery files:
-      {{inputs.delivery}}
-    needs: [delivery_approval]
-    inputs:
-      - name: delivery
-        from: delivery_approval.approved
-        type: acp.workspace-files/v1
-        format: markdown
-    policy:
-      filesystem: workspace-write
-      terminal: workspace-write
-      network: enabled
-      promotion: auto-apply
-    output:
-      name: result
-      type: acp.ticket-sequence-result/v1
-      format: markdown
-
-  - id: review
-    agent: Vibe
-    skills: [code-review]
-    promptFile: ../agents/matt-plan-reviewer.md
-    prompt: |
-      User request:
-      {{userPrompt}}
-
-      Approved delivery files:
-      {{inputs.delivery}}
-    needs: [implementation]
-    inputs:
-      - name: delivery
-        from: delivery_approval.approved
-        type: acp.workspace-files/v1
-        format: markdown
-    policy:
-      filesystem: read-only
-      terminal: workspace-write
-      network: disabled
-      promotion: discard
-    output:
-      name: report
-      type: acp.verification-report/v1
+      type: acp.sequential-delivery/v1
       format: markdown
