@@ -20,15 +20,13 @@ nodes:
       promotion: auto-apply
     output:
       name: plan
-      type: acp.workspace-files/v1
+      type: acp.grill-decision/v1
       format: markdown
 
   - id: plan_approval
     type: pause
     pause: approval
     content: |
-      <!-- acp-cli:require-workspace-files=1 -->
-      <!-- acp-cli:workspace-layout=plan -->
       <!-- acp-cli:documentation-only-before-approval -->
       {{inputs.plan}}
     format: proposed-plan
@@ -36,11 +34,11 @@ nodes:
     inputs:
       - name: plan
         from: plan.plan
-        type: acp.workspace-files/v1
+        type: acp.grill-decision/v1
         format: markdown
     output:
       name: approved
-      type: acp.workspace-files/v1
+      type: acp.grill-decision/v1
       format: markdown
 
   - id: spec
@@ -51,13 +49,13 @@ nodes:
       User request:
       {{userPrompt}}
 
-      Approved plan files:
-      {{inputs.approvedPlan}}
+      Approved decisions:
+      {{inputs.approvedDecisions}}
     needs: [plan_approval]
     inputs:
-      - name: approvedPlan
+      - name: approvedDecisions
         from: plan_approval.approved
-        type: acp.workspace-files/v1
+        type: acp.grill-decision/v1
         format: markdown
     policy:
       filesystem: workspace-write
@@ -77,17 +75,10 @@ nodes:
       User request:
       {{userPrompt}}
 
-      Approved plan files:
-      {{inputs.approvedPlan}}
-
       Specification files:
       {{inputs.specification}}
     needs: [spec]
     inputs:
-      - name: approvedPlan
-        from: plan_approval.approved
-        type: acp.workspace-files/v1
-        format: markdown
       - name: specification
         from: spec.specification
         type: acp.workspace-files/v1
@@ -106,15 +97,12 @@ nodes:
     type: pause
     pause: approval
     content: |
-      <!-- acp-cli:require-workspace-files=3 -->
+      <!-- acp-cli:require-workspace-files=2 -->
       <!-- acp-cli:workspace-layout=delivery -->
+      <!-- acp-cli:workspace-root=.scratch/pipeline-agent-reflection-activity -->
       <!-- acp-cli:documentation-only-before-approval -->
       <proposed_plan>
       <interview_state>ready</interview_state>
-
-      ## Plan files
-
-      {{inputs.plan}}
 
       ## Specification files
 
@@ -127,10 +115,6 @@ nodes:
     format: proposed-plan
     needs: [tasks]
     inputs:
-      - name: plan
-        from: plan_approval.approved
-        type: acp.workspace-files/v1
-        format: markdown
       - name: specification
         from: spec.specification
         type: acp.workspace-files/v1
