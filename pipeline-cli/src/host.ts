@@ -12,6 +12,7 @@ import {
   type PipelineResumeDecision,
   type PipelineRuntimeResult,
 } from '@acp-client/pipeline';
+import { clearSandcastleLogs } from '@acp-client/sandcastle';
 import {
   EphemeralAcpRunner,
   getPipelinePrograms,
@@ -154,6 +155,7 @@ export class CliPipelineHost {
 
     const runId = this.options.runIdFactory?.() ?? randomUUID();
     PipelineRunLog.clear(this.workspaceCwd);
+    clearSandcastleLogs(this.workspaceCwd);
     const runLog = PipelineRunLog.create(this.workspaceCwd, runId, program.id);
     this.runLogs.set(runId, runLog);
     runLog.append('run_started', {

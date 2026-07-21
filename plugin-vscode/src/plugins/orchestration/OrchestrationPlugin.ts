@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { PipelineService } from '@acp-client/pipeline';
+import { clearSandcastleLogs } from '@acp-client/sandcastle';
 
 import {
   getAgentConfigs,
@@ -48,6 +49,7 @@ export class OrchestrationPlugin implements FeaturePlugin<OrchestrationPluginCon
         return config ? isSandcastleAgentConfig(config) : false;
       },
       isRunAbortedError,
+      onPipelineStart: ({ workspaceCwd }) => clearSandcastleLogs(workspaceCwd),
     });
     const runtime = new OrchestrationRuntime(pipelineService, sessionManager, chatController);
     const disposables: vscode.Disposable[] = [];

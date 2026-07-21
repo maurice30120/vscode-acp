@@ -26,6 +26,7 @@ export interface PipelineServiceDependencies {
   getPipelineProgramForAgent?: (agentName: string) => CompiledPipelineProgram | null;
   getAgentConfigs?: () => Record<string, unknown>;
   runAgent?: PipelineAgentRunner;
+  onPipelineStart?: (input: { sessionId: string; program: CompiledPipelineProgram; workspaceCwd: string }) => void;
   isAgentSandcastle?: (agentName: string, agentConfigs: Record<string, unknown>) => boolean;
   isRunAbortedError?: (error: unknown) => boolean;
   artifactPublisher?: PipelineArtifactPublisher;
@@ -136,6 +137,11 @@ export class PipelineService extends EventEmitter {
     if (!this.dependencies.runAgent) {
       throw new Error('PipelineService v3 execution requires runAgent dependency.');
     }
+    this.dependencies.onPipelineStart?.({
+      sessionId,
+      program,
+      workspaceCwd: this.workspaceCwd(),
+    });
     const runtime = new PipelineRuntime(
       new PipelineRuntimeAgentAdapter({
         workspaceCwd: this.workspaceCwd,

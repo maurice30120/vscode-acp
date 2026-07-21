@@ -19,7 +19,8 @@
   },
   "dependencies": {
     "@acp-client/pi-extension": "file:../plugin-pi",
-    "@acp-client/pipeline": "file:../acp-pipeline"
+    "@acp-client/pipeline": "file:../acp-pipeline",
+    "@acp-client/sandcastle": "file:../acp-sandcastle"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

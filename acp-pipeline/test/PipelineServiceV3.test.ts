@@ -77,6 +77,36 @@ test("PipelineService cancel clears active v3 runtime sessions", async () => {
   }
 });
 
+test("PipelineService calls onPipelineStart only for a new v3 pipeline run", async () => {
+  const program = createTwoApprovalProgram();
+  const starts: string[] = [];
+  const service = new PipelineService(
+    () => "/workspace",
+    {
+      getPipelinePrograms: () => [program],
+      getPipelineProgramForAgent: name => name === program.title ? program : null,
+      getAgentConfigs: () => ({ Codex: {}, "Vibe Sandcastle": {} }),
+      onPipelineStart: input => starts.push(`${input.sessionId}:${input.program.id}:${input.workspaceCwd}`),
+      runAgent: async input => {
+        if (input.agentName === "Codex") {
+          return { text: "spec artifact" };
+        }
+        return { text: "implementation complete" };
+      },
+    },
+  );
+
+  try {
+    await service.createPlan("session-v3-start", "ship it", program.title);
+    await service.approvePlan("session-v3-start", "approved plan");
+    await service.approvePlan("session-v3-start", "approved delivery");
+
+    assert.deepEqual(starts, ["session-v3-start:delivery:/workspace"]);
+  } finally {
+    await service.dispose();
+  }
+});
+
 test("PipelineService projects v3 pause rejection as rejected", async () => {
   const program = createTwoApprovalProgram();
   const service = new PipelineService(

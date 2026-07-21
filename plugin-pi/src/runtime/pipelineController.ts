@@ -9,6 +9,7 @@ import {
 } from '@acp-client/pipeline';
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from '@earendil-works/pi-coding-agent';
 import type { SessionNotification } from '@agentclientprotocol/sdk';
+import { clearSandcastleLogs } from '@acp-client/sandcastle';
 
 import { EphemeralAcpRunner } from '../acp/ephemeralRunner.js';
 import { RunAbortedError } from '../acp/runAbortedError.js';
@@ -88,6 +89,7 @@ export class PipelineController {
           (agentConfigs[agentName] as { transport?: string } | undefined)?.transport === 'sandcastle',
         runAgent: this.runner.run,
         isRunAbortedError: error => error instanceof RunAbortedError,
+        onPipelineStart: ({ workspaceCwd }) => clearSandcastleLogs(workspaceCwd),
       },
     );
 

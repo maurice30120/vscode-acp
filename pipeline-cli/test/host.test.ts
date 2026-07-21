@@ -191,8 +191,27 @@ test('prints compact agent activity for CLI session updates without thought text
 test('writes fresh JSONL logs for each pipeline run', async () => {
   const cwd = createWorkspace();
   const logsDir = path.join(cwd, '.acp', 'logs');
+  const sandcastleLogsDir = path.join(cwd, '.sandcastle', 'logs');
+  const vibeSessionLogsDir = path.join(cwd, '.sandcastle', 'vibe-home', 'logs', 'session');
+  const vibeHomeDir = path.join(cwd, '.sandcastle', 'vibe-home');
+  const worktreeDir = path.join(cwd, '.sandcastle', 'worktrees', 'active');
+  const gitOverrideDir = path.join(cwd, '.sandcastle', 'git-overrides');
+  const codexHomeDir = path.join(cwd, '.sandcastle', 'codex-home');
   fs.mkdirSync(logsDir, { recursive: true });
+  fs.mkdirSync(sandcastleLogsDir, { recursive: true });
+  fs.mkdirSync(vibeSessionLogsDir, { recursive: true });
+  fs.mkdirSync(worktreeDir, { recursive: true });
+  fs.mkdirSync(gitOverrideDir, { recursive: true });
+  fs.mkdirSync(codexHomeDir, { recursive: true });
   fs.writeFileSync(path.join(logsDir, 'stale.jsonl'), '{}\n');
+  fs.writeFileSync(path.join(sandcastleLogsDir, 'stale.log'), 'stale\n');
+  fs.writeFileSync(path.join(vibeSessionLogsDir, 'messages.jsonl'), '{}\n');
+  fs.writeFileSync(path.join(cwd, '.sandcastle', '.env'), 'TOKEN=kept\n');
+  fs.writeFileSync(path.join(vibeHomeDir, 'config.toml'), 'kept = true\n');
+  fs.writeFileSync(path.join(vibeHomeDir, '.env'), 'VIBE=kept\n');
+  fs.writeFileSync(path.join(worktreeDir, 'file.txt'), 'kept\n');
+  fs.writeFileSync(path.join(gitOverrideDir, 'override.git'), 'kept\n');
+  fs.writeFileSync(path.join(codexHomeDir, 'config.toml'), 'kept\n');
 
   const host = new CliPipelineHost(cwd, {
     terminal: new FakeTerminal(),
@@ -230,6 +249,14 @@ test('writes fresh JSONL logs for each pipeline run', async () => {
   assert.match(agentLog, /"event":"agent_started"/);
   assert.match(agentLog, /Visible answer/);
   assert.doesNotMatch(log, /stale/);
+  assert.deepEqual(fs.readdirSync(sandcastleLogsDir), []);
+  assert.deepEqual(fs.readdirSync(vibeSessionLogsDir), []);
+  assert.equal(fs.readFileSync(path.join(cwd, '.sandcastle', '.env'), 'utf8'), 'TOKEN=kept\n');
+  assert.equal(fs.readFileSync(path.join(vibeHomeDir, 'config.toml'), 'utf8'), 'kept = true\n');
+  assert.equal(fs.readFileSync(path.join(vibeHomeDir, '.env'), 'utf8'), 'VIBE=kept\n');
+  assert.equal(fs.readFileSync(path.join(worktreeDir, 'file.txt'), 'utf8'), 'kept\n');
+  assert.equal(fs.readFileSync(path.join(gitOverrideDir, 'override.git'), 'utf8'), 'kept\n');
+  assert.equal(fs.readFileSync(path.join(codexHomeDir, 'config.toml'), 'utf8'), 'kept\n');
 });
 
 test('lists workspace pipelines with stable CLI metadata', () => {
