@@ -3,6 +3,7 @@ import * as path from 'node:path';
 
 const SCRATCH_REFERENCE = /`((?:\.\/)?\.scratch\/[^`\r\n]+)`/g;
 const REQUIRED_REFERENCE_MARKER = /<!--\s*acp-cli:require-workspace-files(?:=(\d+))?\s*-->/;
+const WORKSPACE_LAYOUT_MARKER = /<!--\s*acp-cli:workspace-layout=(plan|delivery)\s*-->/;
 
 export function expandWorkspaceMarkdownReferences(
   workspaceCwd: string,
@@ -35,7 +36,7 @@ export function validateRequiredWorkspaceMarkdownReferences(
   const validTargets = new Set<string>();
 
   for (const reference of references) {
-    const normalizedReference = reference.replace(/^\.\//, '');
+    const normalizedReference = normalizeReference(reference);
     const scratchRoot = path.resolve(workspaceCwd, '.scratch');
     const target = path.resolve(workspaceCwd, normalizedReference);
 
@@ -71,6 +72,51 @@ export function validateRequiredWorkspaceMarkdownReferences(
     return `Workspace handoff requires at least ${requiredCount} existing .scratch Markdown reference(s), but found ${validTargets.size}.`;
   }
 
+  const layout = content.match(WORKSPACE_LAYOUT_MARKER)?.[1] as 'plan' | 'delivery' | undefined;
+  if (layout) {
+    return validateWorkspaceLayout(references, layout);
+  }
+
+  return undefined;
+}
+
+function validateWorkspaceLayout(
+  references: string[],
+  layout: 'plan' | 'delivery',
+): string | undefined {
+  const normalized = [...new Set(references.map(normalizeReference))];
+  const roots = new Set(normalized.map(getFeatureRoot).filter((value): value is string => Boolean(value)));
+
+  if (roots.size !== 1) {
+    return `Workspace handoff must preserve one feature directory, but found ${roots.size}.`;
+  }
+
+  const [featureRoot] = [...roots];
+  if (normalized.some(reference => getFeatureRoot(reference) !== featureRoot)) {
+    return 'Workspace handoff contains references outside the preserved feature directory.';
+  }
+
+  const planPath = `${featureRoot}/plan.md`;
+  if (!normalized.includes(planPath)) {
+    return `Workspace handoff must reference the approved plan: ${planPath}`;
+  }
+
+  if (layout === 'plan') {
+    if (normalized.length !== 1) {
+      return 'Plan handoff must contain only the authoritative plan.md reference.';
+    }
+    return undefined;
+  }
+
+  const specPath = `${featureRoot}/spec.md`;
+  const issuesPath = `${featureRoot}/issues`;
+  if (!normalized.includes(specPath)) {
+    return `Delivery handoff must reference the specification derived from the plan: ${specPath}`;
+  }
+  if (!normalized.includes(issuesPath)) {
+    return `Delivery handoff must reference the ticket directory derived from the plan: ${issuesPath}/`;
+  }
+
   return undefined;
 }
 
@@ -79,7 +125,7 @@ function collectReferencedMarkdownFiles(workspaceCwd: string, content: string): 
   const files = new Set<string>();
 
   for (const reference of collectScratchReferences(content)) {
-    const normalizedReference = reference.replace(/^\.\//, '');
+    const normalizedReference = normalizeReference(reference);
     const target = path.resolve(workspaceCwd, normalizedReference);
     if (!isChildPath(scratchRoot, target) || !fs.existsSync(target)) {
       continue;
@@ -106,6 +152,15 @@ function collectReferencedMarkdownFiles(workspaceCwd: string, content: string): 
 
 function collectScratchReferences(content: string): string[] {
   return [...content.matchAll(SCRATCH_REFERENCE)].map(match => match[1]);
+}
+
+function normalizeReference(reference: string): string {
+  return reference.replace(/^\.\//, '').replace(/\/$/, '');
+}
+
+function getFeatureRoot(reference: string): string | undefined {
+  const match = /^\.scratch\/([^/]+)\/(?:.+)$/.exec(reference);
+  return match ? `.scratch/${match[1]}` : undefined;
 }
 
 function isChildPath(parent: string, candidate: string): boolean {
