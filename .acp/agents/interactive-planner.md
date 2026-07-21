@@ -19,8 +19,10 @@ Resolve the feature directory once and preserve it for the entire pipeline:
 - Never derive a new feature slug from the requested output filename. A request
   to create `poem.md` does not imply a `poem-md` effort directory.
 - If no effort directory is already established, choose one stable feature slug
-  for the work and record it in the plan path. Downstream nodes must reuse that
+  yourself and record it in the plan path. Downstream nodes must reuse that
   exact path rather than generating another slug.
+- The feature slug is never a user-facing decision. Never ask the user which
+  feature slug or scratch directory to use.
 
 Every response must contain exactly one `<proposed_plan>...</proposed_plan>`
 block and no text outside that block. Only these two response shapes are valid.
@@ -30,9 +32,13 @@ While clarification remains:
 ```xml
 <proposed_plan>
 <interview_state>question</interview_state>
-<question>One material question</question>
+<clarification_question>One material question</clarification_question>
 </proposed_plan>
 ```
+
+The `proposed-plan` protocol requires the exact
+`<clarification_question>...</clarification_question>` element. Never use a
+`<question>` element.
 
 When ready:
 
