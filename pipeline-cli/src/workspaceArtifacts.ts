@@ -3,8 +3,7 @@ import * as path from 'node:path';
 
 const SCRATCH_REFERENCE = /`((?:\.\/)?\.scratch\/[^`\r\n]+)`/g;
 const REQUIRED_REFERENCE_MARKER = /<!--\s*acp-cli:require-workspace-files(?:=(\d+))?\s*-->/;
-const WORKSPACE_LAYOUT_MARKER = /<!--\s*acp-cli:workspace-layout=(plan|delivery)\s*-->/;
-const WORKSPACE_ROOT_MARKER = /<!--\s*acp-cli:workspace-root=([^\s]+)\s*-->/;
+const WORKSPACE_LAYOUT_MARKER = /<!--\s*acp-cli:workspace-layout=(delivery)\s*-->/;
 
 export function expandWorkspaceMarkdownReferences(
   workspaceCwd: string,
@@ -73,23 +72,15 @@ export function validateRequiredWorkspaceMarkdownReferences(
     return `Workspace handoff requires at least ${requiredCount} existing .scratch Markdown reference(s), but found ${validTargets.size}.`;
   }
 
-  const layout = content.match(WORKSPACE_LAYOUT_MARKER)?.[1] as 'plan' | 'delivery' | undefined;
-  if (layout) {
-    return validateWorkspaceLayout(
-      references,
-      layout,
-      content.match(WORKSPACE_ROOT_MARKER)?.[1],
-    );
+  const layout = content.match(WORKSPACE_LAYOUT_MARKER)?.[1] as 'delivery' | undefined;
+  if (layout === 'delivery') {
+    return validateDeliveryWorkspaceLayout(references);
   }
 
   return undefined;
 }
 
-function validateWorkspaceLayout(
-  references: string[],
-  layout: 'plan' | 'delivery',
-  configuredRoot?: string,
-): string | undefined {
+function validateDeliveryWorkspaceLayout(references: string[]): string | undefined {
   const normalized = [...new Set(references.map(normalizeReference))];
   const roots = new Set(normalized.map(getFeatureRoot).filter((value): value is string => Boolean(value)));
 
@@ -100,22 +91,6 @@ function validateWorkspaceLayout(
   const [featureRoot] = [...roots];
   if (normalized.some(reference => getFeatureRoot(reference) !== featureRoot)) {
     return 'Workspace handoff contains references outside the preserved feature directory.';
-  }
-
-  const expectedRoot = configuredRoot ? normalizeReference(configuredRoot) : undefined;
-  if (expectedRoot && featureRoot !== expectedRoot) {
-    return `Workspace handoff must use the configured root ${expectedRoot}, but found ${featureRoot}.`;
-  }
-
-  if (layout === 'plan') {
-    const planPath = `${featureRoot}/plan.md`;
-    if (!normalized.includes(planPath)) {
-      return `Workspace handoff must reference the approved plan: ${planPath}`;
-    }
-    if (normalized.length !== 1) {
-      return 'Plan handoff must contain only the authoritative plan.md reference.';
-    }
-    return undefined;
   }
 
   const specPath = `${featureRoot}/spec.md`;
