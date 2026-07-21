@@ -30,6 +30,18 @@ test('allows scratch specification changes before implementation', () => {
   assert.equal(validateNoPreImplementationWorkspaceChanges(before, after), undefined);
 });
 
+test('allows glossary and ADR changes before implementation', () => {
+  const cwd = createRepository();
+  const before = capturePreImplementationWorkspaceState(cwd);
+  const adrDir = path.join(cwd, 'docs', 'architecture', 'adr');
+  fs.mkdirSync(adrDir, { recursive: true });
+  fs.writeFileSync(path.join(cwd, 'CONTEXT.md'), '# Context\n');
+  fs.writeFileSync(path.join(adrDir, '0001-poem-format.md'), '# Decision\n');
+  const after = capturePreImplementationWorkspaceState(cwd);
+
+  assert.equal(validateNoPreImplementationWorkspaceChanges(before, after), undefined);
+});
+
 test('rejects a product file created by a planning node', () => {
   const cwd = createRepository();
   const before = capturePreImplementationWorkspaceState(cwd);
