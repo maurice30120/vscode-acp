@@ -171,8 +171,17 @@ export interface PipelineInterviewSnapshot {
   state: PipelineInterviewState;
   completionRequested: boolean;
   turns: PipelineInterviewTurn[];
+  structuredOutputs?: PipelineInterviewStructuredOutput[];
   repairAttemptsUsed: number;
   finalOutputRequestsUsed?: number;
+}
+
+export const PIPELINE_NODE_ACP_HISTORY_ARTIFACT_NAME = "acpNodeHistory";
+export const PIPELINE_NODE_ACP_HISTORY_ARTIFACT_TYPE = "acp.node-history/v1";
+
+export interface PipelineInterviewStructuredOutput {
+  state: "ready";
+  content: string;
 }
 
 export interface PipelineRuntimeDiagnostic {

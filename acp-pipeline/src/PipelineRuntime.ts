@@ -1,6 +1,10 @@
 import { parseArtifactProducer } from "./PipelineV3Compiler";
 import { validateAdapterSupportsPolicy } from "./PipelinePolicy";
 import { getPipelineInterviewProtocol } from "./PipelineInterviewProtocol";
+import {
+  PIPELINE_NODE_ACP_HISTORY_ARTIFACT_NAME,
+  PIPELINE_NODE_ACP_HISTORY_ARTIFACT_TYPE,
+} from "./PipelineV3Types";
 import type { PipelineAdapterPolicyCapabilities } from "./PipelinePolicy";
 import type {
   AgentNodeSessionActivity,
@@ -409,7 +413,7 @@ export class PipelineRuntime {
     interview.finalOutputRequestsUsed ??= 0;
     interview.repairAttemptsUsed = 0;
     let prompt = protocol.renderReplay({
-      originalPrompt,
+      originalPrompt: interview.originalPrompt,
       turns: interview.turns,
       completionRequested: interview.completionRequested,
     });
@@ -477,6 +481,10 @@ export class PipelineRuntime {
             return this.pauseInterview(active, node, parsed.question, parsed.recommendedAnswer);
           }
 
+          interview.structuredOutputs = [
+            ...(interview.structuredOutputs ?? []),
+            { state: "ready", content: stringifyTemplateValue(parsed.content) },
+          ];
           const finalResult: PipelineNodeExecutionResult = {
             artifact: {
               name: node.output.name,
@@ -652,9 +660,17 @@ export class PipelineRuntime {
   }
 
   private recordInterviewHistory(active: ActiveRun, interview: NonNullable<PipelineRuntimeSnapshot["activeInterview"]>): void {
+    const history = cloneJson(interview);
     active.snapshot.nodeInterviewHistories = {
       ...active.snapshot.nodeInterviewHistories,
-      [interview.nodeId]: cloneJson(interview),
+      [interview.nodeId]: history,
+    };
+    active.snapshot.artifacts[artifactKey(interview.nodeId, PIPELINE_NODE_ACP_HISTORY_ARTIFACT_NAME)] = {
+      name: PIPELINE_NODE_ACP_HISTORY_ARTIFACT_NAME,
+      type: PIPELINE_NODE_ACP_HISTORY_ARTIFACT_TYPE,
+      format: "json",
+      value: history,
+      producerNodeId: interview.nodeId,
     };
   }
 

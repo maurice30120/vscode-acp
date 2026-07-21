@@ -6,8 +6,14 @@ import {
   compilePipelineV3Definition,
   InMemoryPipelineRunStore,
   NATIVE_ACP_BASELINE_CAPABILITIES,
+  PIPELINE_NODE_ACP_HISTORY_ARTIFACT_NAME,
+  PIPELINE_NODE_ACP_HISTORY_ARTIFACT_TYPE,
   type PipelineNodeExecutionInput,
   type PipelineNodeExecutionResult,
+  type PipelineInterviewSnapshot,
+  type PipelineRunStore,
+  type PipelineRuntimeEvent,
+  type PipelineRuntimeSnapshot,
   type PipelineRuntimeAdapter,
 } from "../dist/index.js";
 
@@ -672,6 +678,106 @@ test("PipelineRuntime restores a multi-turn interview from snapshot replay and r
   });
   assert.equal(obsolete.status, "failed");
   assert.equal(obsolete.error.code, "invalid_resume");
+});
+
+test("PipelineRuntime persists node ACP history as structured replay artifact after each meaningful interview exchange", async () => {
+  const program = compilePipelineV3Definition({
+    version: 3,
+    id: "history-artifact",
+    title: "History Artifact",
+    nodes: [
+      {
+        id: "plan",
+        agent: "Codex",
+        prompt: "Plan {{userPrompt}}",
+        interaction: { protocol: "proposed-plan", repairAttempts: 0 },
+        output: { name: "plan", type: "acp.grill-decision/v1", format: "markdown" },
+      },
+    ],
+  }, agents).program!;
+  const store = new InMemoryPipelineRunStore();
+  const prompts: string[] = [];
+  const historyArtifactKey = `plan.${PIPELINE_NODE_ACP_HISTORY_ARTIFACT_NAME}`;
+  const outputs = [
+    proposedQuestion("First?"),
+    proposedQuestion("Second?"),
+    proposedReady("Done."),
+  ];
+  const runtime = new PipelineRuntime({
+    async createSession({ runId, node }) {
+      return {
+        runId,
+        nodeId: node.id,
+        onActivity(handler) {
+          handler({ kind: "message", content: "debug chunk that must not enter replay" });
+          return () => {};
+        },
+        async send({ prompt }) {
+          prompts.push(prompt);
+          return {
+            artifact: {
+              name: "plan",
+              type: "acp.grill-decision/v1",
+              format: "markdown",
+              value: outputs.shift(),
+            },
+          };
+        },
+        async cancel() {},
+        async close() {},
+      };
+    },
+  }, { runIdFactory: () => "run-history-artifact", store });
+
+  const first = await runtime.start(program, { inputs: { userPrompt: "ship" } });
+  assert.equal(first.status, "paused");
+  const firstStored = await store.load(first.runId);
+  const firstHistory = firstStored?.artifacts[historyArtifactKey];
+  assert.equal(firstHistory?.name, PIPELINE_NODE_ACP_HISTORY_ARTIFACT_NAME);
+  assert.equal(firstHistory?.type, PIPELINE_NODE_ACP_HISTORY_ARTIFACT_TYPE);
+  assert.equal(firstHistory?.format, "json");
+  const firstHistoryValue = firstHistory?.value as PipelineInterviewSnapshot;
+  assert.deepEqual(firstHistoryValue.turns.map(turn => turn.role), ["agent"]);
+  assert.match(JSON.stringify(firstHistory?.value), /First\?/);
+  assert.doesNotMatch(JSON.stringify(firstHistory?.value), /debug chunk/);
+
+  const second = await runtime.resume(first.runId, {
+    pauseId: first.pause.id,
+    kind: "answer",
+    value: "first answer",
+  });
+  assert.equal(second.status, "paused");
+  const secondStored = await store.load(second.runId);
+  const secondHistoryValue = secondStored?.artifacts[historyArtifactKey]?.value as PipelineInterviewSnapshot;
+  assert.deepEqual(
+    secondHistoryValue.turns.map(turn => turn.role),
+    ["agent", "user", "agent"],
+  );
+  assert.match(JSON.stringify(secondHistoryValue), /first answer/);
+  assert.match(prompts[1], /Agent:\n<proposed_plan>/);
+  assert.match(prompts[1], /User:\nfirst answer/);
+  assert.match(prompts[1], /^Plan ship/);
+  assert.doesNotMatch(prompts[1], /debug chunk/);
+
+  const completed = await runtime.resume(second.runId, {
+    pauseId: second.pause.id,
+    kind: "complete-interview",
+  });
+  assert.equal(completed.status, "completed");
+  const finalHistory = completed.snapshot.artifacts[historyArtifactKey];
+  const finalHistoryValue = finalHistory.value as PipelineInterviewSnapshot;
+  assert.equal(finalHistoryValue.completionRequested, true);
+  assert.deepEqual(
+    finalHistoryValue.turns.map(turn => turn.role),
+    ["agent", "user", "agent"],
+  );
+  assert.deepEqual(finalHistoryValue.structuredOutputs?.map(output => output.state), ["ready"]);
+  assert.equal(finalHistoryValue.structuredOutputs?.[0]?.content, proposedReady("Done."));
+
+  const inspected = await new PipelineRuntime(sessionAdapter(async () => {
+    throw new Error("inspection should not require a live ACP session");
+  }), { store, programs: [program] }).inspect(completed.runId);
+  assert.equal(inspected?.artifacts[historyArtifactKey]?.type, PIPELINE_NODE_ACP_HISTORY_ARTIFACT_TYPE);
 });
 
 test("PipelineRuntime repairs one malformed interview output before failing explicitly", async () => {
