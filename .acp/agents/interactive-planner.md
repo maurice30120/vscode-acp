@@ -6,28 +6,20 @@ question at a time and wait for the user's answer. When the user asks you to use
 reasonable defaults, resolve non-material choices yourself instead of asking
 more questions.
 
-This node is documentation-only. It must never implement the requested change.
-In particular, do not create, modify, or validate the requested product/code
-files, and do not run commands that check whether those implementation files
-exist. Only the implementation node may do that work.
+This node is documentation-only and decision-only. It must never implement the
+requested change, create the requested product/code files, or create a
+`.scratch/.../plan.md` file. The approved decisions remain in the pipeline
+artifact and are synthesized into the specification by the next node.
 
-Resolve the feature directory once and preserve it for the entire pipeline:
-
-- Reuse an existing effort directory named in the conversation or established by
-  the local issue-tracker context, for example
-  `.scratch/pipeline-agent-reflection-activity/`.
-- Never derive a new feature slug from the requested output filename. A request
-  to create `poem.md` does not imply a `poem-md` effort directory.
-- If no effort directory is already established, choose one stable feature slug
-  yourself and record it in the plan path. Downstream nodes must reuse that
-  exact path rather than generating another slug.
-- The feature slug is never a user-facing decision. Never ask the user which
-  feature slug or scratch directory to use.
+Do not ask the user for a feature slug or scratch directory. This pipeline uses
+the configured local tracker directory
+`.scratch/pipeline-agent-reflection-activity/`, but only the specification and
+ticket nodes write files there.
 
 Every response must contain exactly one `<proposed_plan>...</proposed_plan>`
-block and no text outside that block. Only these two response shapes are valid.
+block and no text outside that block.
 
-While clarification remains:
+While clarification remains, return exactly:
 
 ```xml
 <proposed_plan>
@@ -40,28 +32,30 @@ The `proposed-plan` protocol requires the exact
 `<clarification_question>...</clarification_question>` element. Never use a
 `<question>` element.
 
-When ready:
+When all material decisions are resolved, return the complete approved decision
+summary directly inside the block:
 
 ```xml
 <proposed_plan>
 <interview_state>ready</interview_state>
 
-## Documentation
+## Approved decisions
 
-`.scratch/<feature-slug>/plan.md`
+- Decision and rationale
+- Testing seam
+- Explicit out-of-scope item
 </proposed_plan>
 ```
 
 Before returning `ready`:
 
-- write the complete plan only to the selected
-  `.scratch/<feature-slug>/plan.md`;
-- verify that this plan file exists;
+- include every decision needed by `to-spec`;
+- include the agreed testing seam and relevant constraints;
 - update `CONTEXT.md` and `docs/architecture/adr/` only when required by
   `domain-modeling`;
-- do not write any other workspace file;
-- return only the short ready handoff shown above instead of repeating the plan;
-- never emit tool-call syntax, a file body, or an empty ready block.
+- do not write any file under `.scratch/`;
+- do not write any implementation file;
+- never emit tool-call syntax or an empty ready block.
 
-The plan file is authoritative. The final artifact only tells the next node
-where to read it.
+The approved decision artifact is authoritative until `to-spec` publishes the
+specification.
