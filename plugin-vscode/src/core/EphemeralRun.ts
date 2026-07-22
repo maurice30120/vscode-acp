@@ -1,5 +1,10 @@
-import type { SessionNotification } from '@agentclientprotocol/sdk';
-import type { PipelinePermissions } from '@acp-client/pipeline';
+import type { ContentBlock, SessionNotification } from '@agentclientprotocol/sdk';
+import {
+  renderAcpPrompt,
+  renderExplicitPipelineSkills,
+  type PipelineNodePrompt,
+  type PipelinePermissions,
+} from '@acp-client/pipeline';
 
 import { getAgentConfig, isSandcastleAgentConfig } from '../config/AgentConfig';
 import { SessionUpdateHandler } from '../handlers/SessionUpdateHandler';
@@ -43,6 +48,7 @@ export interface EphemeralRunInput extends EphemeralRunOptions {
   workspaceCwd: string;
   agentName: string;
   promptText: string;
+  prompt?: PipelineNodePrompt;
   permissions?: PipelinePermissions;
   skills?: readonly string[];
 }
@@ -76,6 +82,27 @@ export function buildEphemeralRunPrompt(input: Pick<EphemeralRunInput, 'agentNam
     skillsBootstrapped: false,
     skills: input.skills,
   }).text;
+}
+
+export function buildEphemeralRunPromptBlocks(
+  input: Pick<EphemeralRunInput, 'agentName' | 'workspaceCwd' | 'promptText' | 'prompt' | 'skills'>,
+): ContentBlock[] {
+  if (!input.prompt) {
+    return [{ type: 'text', text: buildEphemeralRunPrompt(input) }];
+  }
+
+  return renderAcpPrompt(input.prompt, {
+    renderSkills: skillNames => {
+      if (!isSkillsEnabledAgent(input.agentName) || skillNames.length === 0) {
+        return '';
+      }
+      const resolved = new SkillsCatalog(input.workspaceCwd).resolveExplicitSkills(skillNames);
+      if (resolved.errors.length > 0) {
+        throw new Error(resolved.errors.join('\n'));
+      }
+      return renderExplicitPipelineSkills(resolved.skills);
+    },
+  });
 }
 
 /**
@@ -165,7 +192,7 @@ export async function runEphemeralRun(input: EphemeralRunInput): Promise<Ephemer
 
     await connInfo.connection.prompt({
       sessionId,
-      prompt: [{ type: 'text', text: buildEphemeralRunPrompt(input) }],
+      prompt: buildEphemeralRunPromptBlocks(input),
     });
 
     if (signal?.aborted) {
