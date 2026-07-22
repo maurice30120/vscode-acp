@@ -3,7 +3,7 @@ export * from './PipelineAgentRunner';
 export * from './PipelineService';
 export * from './PipelineStepCompletion';
 export * from './PipelineV3Types';
-export * from './PipelineV3Compiler';
+export * from './PipelineV3DefinitionCompiler';
 export * from './PipelineV3Catalog';
 export * from './PipelineRuntime';
 export * from './PipelineRuntimeAgentAdapter';
