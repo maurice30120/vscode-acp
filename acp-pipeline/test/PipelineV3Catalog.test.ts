@@ -120,6 +120,69 @@ test("resolvePipelineV3InstructionFiles accepts promptFile as a migration alias 
   assert.equal(node.promptFile, "Legacy role.");
 });
 
+test("resolvePipelineV3InstructionFiles keeps promptFile-only nodes as legacy complete tasks", () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "pipeline-v3-catalog-"));
+  const pipelinePath = path.join(workspace, ".acp", "pipelines", "plan.yaml");
+  const promptPath = path.join(workspace, ".acp", "agents", "planner.md");
+  fs.mkdirSync(path.dirname(promptPath), { recursive: true });
+  fs.mkdirSync(path.dirname(pipelinePath), { recursive: true });
+  fs.writeFileSync(promptPath, "Legacy complete prompt.", "utf8");
+
+  const result = resolvePipelineV3InstructionFiles(
+    {
+      version: 3,
+      id: "plan",
+      title: "Plan",
+      nodes: [{
+        id: "plan",
+        agent: "Codex",
+        promptFile: "../agents/planner.md",
+        output: { name: "plan", type: "acp.plan/v1", format: "markdown" },
+      }],
+    },
+    {
+      workspaceCwd: workspace,
+      maxBytes: 1024,
+      pipelineFilePath: pipelinePath,
+    },
+  );
+
+  assert.deepEqual(result.errors, []);
+  const node = (result.definition as { nodes: Array<{ prompt: string; promptFile?: string }> }).nodes[0];
+  assert.equal(node.prompt, "Legacy complete prompt.");
+  assert.equal(node.promptFile, undefined);
+});
+
+test("resolvePipelineV3InstructionFiles rejects instructionsFile without a task prompt", () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "pipeline-v3-catalog-"));
+  const pipelinePath = path.join(workspace, ".acp", "pipelines", "plan.yaml");
+  const instructionsPath = path.join(workspace, ".acp", "agents", "planner.md");
+  fs.mkdirSync(path.dirname(instructionsPath), { recursive: true });
+  fs.mkdirSync(path.dirname(pipelinePath), { recursive: true });
+  fs.writeFileSync(instructionsPath, "Invariant role.", "utf8");
+
+  const result = resolvePipelineV3InstructionFiles(
+    {
+      version: 3,
+      id: "plan",
+      title: "Plan",
+      nodes: [{
+        id: "plan",
+        agent: "Codex",
+        instructionsFile: "../agents/planner.md",
+        output: { name: "plan", type: "acp.plan/v1", format: "markdown" },
+      }],
+    },
+    {
+      workspaceCwd: workspace,
+      maxBytes: 1024,
+      pipelineFilePath: pipelinePath,
+    },
+  );
+
+  assert.match(result.errors[0]?.error ?? "", /requires prompt/);
+});
+
 test("resolvePipelineV3InstructionFiles rejects instruction paths outside ACP config root", () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "pipeline-v3-catalog-"));
   const pipelinePath = path.join(workspace, ".acp", "pipelines", "plan.yaml");
