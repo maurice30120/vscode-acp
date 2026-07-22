@@ -98,7 +98,7 @@ export function loadWorkspacePipelinePrograms(
 
   const result = compilePipelineV3Catalog(sources, {
     workspaceCwd,
-    maxPromptFileBytes: getInstructionsMaxBytes(),
+    maxInstructionsFileBytes: getInstructionsMaxBytes(),
     agentConfigs,
   });
   const combined = { programs: result.programs, errors: [...parseErrors, ...result.errors] };
