@@ -98,8 +98,10 @@ export interface PipelineV3InstructionFileResolveError {
  * promptFile carries the resolved instruction text internally; it is no longer
  * a path and is never concatenated with prompt.
  *
- * The former promptFile YAML field is accepted as a deprecated alias so
- * existing pipelines retain the same behavior during migration.
+ * The former promptFile YAML field is accepted as a deprecated alias. When it
+ * is the node's only prompt source, its content remains the complete task for
+ * backward compatibility. When an inline prompt also exists, the file content
+ * becomes the invariant instructions layer.
  */
 export function resolvePipelineV3InstructionFiles(
   definition: unknown,
@@ -116,15 +118,19 @@ export function resolvePipelineV3InstructionFiles(
     }
 
     const nodeId = typeof node.id === "string" && node.id.trim() ? node.id : String(index + 1);
-    const instructionsFile = typeof node.instructionsFile === "string"
-      ? node.instructionsFile
-      : typeof node.promptFile === "string"
-        ? node.promptFile
+    const hasInstructionsFile = typeof node.instructionsFile === "string";
+    const hasLegacyPromptFile = !hasInstructionsFile && typeof node.promptFile === "string";
+    const instructionsFile = hasInstructionsFile
+      ? node.instructionsFile as string
+      : hasLegacyPromptFile
+        ? node.promptFile as string
         : undefined;
     if (!instructionsFile) {
       return node;
     }
-    if (typeof node.prompt !== "string" || node.prompt.length === 0) {
+
+    const hasInlineTask = typeof node.prompt === "string" && node.prompt.length > 0;
+    if (hasInstructionsFile && !hasInlineTask) {
       errors.push({
         nodeId,
         error: "instructionsFile requires prompt to define the task and run data.",
@@ -143,6 +149,12 @@ export function resolvePipelineV3InstructionFiles(
       promptFile: _legacyPromptFile,
       ...rest
     } = node;
+    if (hasLegacyPromptFile && !hasInlineTask) {
+      return {
+        ...rest,
+        prompt: outcome.content,
+      };
+    }
     return {
       ...rest,
       // Internal compatibility slot consumed as PipelineNodePrompt.instructions.
