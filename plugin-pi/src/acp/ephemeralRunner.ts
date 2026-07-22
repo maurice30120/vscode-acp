@@ -297,12 +297,10 @@ export class EphemeralAcpRunner {
 	private composeRunnerPrompt(
 		input: PipelineAgentRunInput,
 	): ContentBlock[] {
-		const prompt = input.prompt ?? {
-			skills: [...(input.skills ?? [])],
-			task: input.promptText,
-			context: [],
-		};
-		return renderAcpPrompt(prompt, {
+		if (!input.prompt) {
+			return [{ type: "text", text: this.composeLegacyRunnerPrompt(input) }];
+		}
+		return renderAcpPrompt(input.prompt, {
 			renderSkills: skillNames => {
 				if (skillNames.length === 0) {
 					return "";
@@ -318,6 +316,28 @@ export class EphemeralAcpRunner {
 				);
 			},
 		});
+	}
+
+	private composeLegacyRunnerPrompt(input: PipelineAgentRunInput): string {
+		const skills = input.skills;
+		if (!skills || skills.length === 0) {
+			return input.promptText;
+		}
+
+		const catalog = loadSkillCatalog({
+			workspaceCwd: input.workspaceCwd,
+			logger: (message, error) => this.options.logger?.error(message, error),
+		});
+		const skillsBlock = renderSkillsCatalog(
+			catalog,
+			skills,
+			input.workspaceCwd,
+		);
+		if (!skillsBlock) {
+			return input.promptText;
+		}
+
+		return `${skillsBlock}\n\n${input.promptText}`;
 	}
 
 	private async finishSandcastleRun(
