@@ -114,7 +114,7 @@ export function loadPipelineProgramsFromRoot(
 	const result = compilePipelineV3Catalog(sources, {
 		workspaceCwd: options.workspaceCwd,
 		configRoot: options.configRoot,
-		maxPromptFileBytes: maxBytes,
+		maxInstructionsFileBytes: maxBytes,
 		agentConfigs: options.agentConfigs,
 	});
 	const combined = { programs: result.programs, errors: [...errors, ...result.errors] };
