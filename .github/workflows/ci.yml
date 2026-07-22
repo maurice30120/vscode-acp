@@ -25,47 +25,13 @@ jobs:
       - name: Test shared packages
         run: npm run test:common
 
-      - name: Compile VS Code tests
-        run: npm run compile-tests -w acp-client
-
-      - name: Compile VS Code extension
-        run: npm run compile -w acp-client
-
-      - name: Lint VS Code extension
-        run: npm run lint -w acp-client
-
       - name: Test VS Code extension
-        id: vscode_test_linux
-        shell: bash
-        run: |
-          set -o pipefail
-          cd plugin-vscode
-          xvfb-run -a npx vscode-test 2>&1 | tee ../vscode-test-${{ runner.os }}.log
-        continue-on-error: true
+        run: xvfb-run -a npm run test:vscode
         if: runner.os == 'Linux'
 
       - name: Test VS Code extension
-        id: vscode_test_non_linux
-        shell: bash
-        run: |
-          set -o pipefail
-          cd plugin-vscode
-          npx vscode-test 2>&1 | tee ../vscode-test-${{ runner.os }}.log
-        continue-on-error: true
+        run: npm run test:vscode
         if: runner.os != 'Linux'
-
-      - name: Upload VS Code test log
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: vscode-test-log-${{ runner.os }}
-          path: vscode-test-${{ runner.os }}.log
-          if-no-files-found: ignore
-
-      - name: Fail on VS Code test error
-        shell: bash
-        if: steps.vscode_test_linux.outcome == 'failure' || steps.vscode_test_non_linux.outcome == 'failure'
-        run: exit 1
 
       - name: Test Pi extension
         run: npm run test:pi
