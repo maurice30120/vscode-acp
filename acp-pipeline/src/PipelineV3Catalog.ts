@@ -97,6 +97,9 @@ export interface PipelineV3InstructionFileResolveError {
  * separately from the run-specific prompt. The compiler compatibility field
  * promptFile carries the resolved instruction text internally; it is no longer
  * a path and is never concatenated with prompt.
+ *
+ * The former promptFile YAML field is accepted as a deprecated alias so
+ * existing pipelines retain the same behavior during migration.
  */
 export function resolvePipelineV3InstructionFiles(
   definition: unknown,
@@ -113,14 +116,12 @@ export function resolvePipelineV3InstructionFiles(
     }
 
     const nodeId = typeof node.id === "string" && node.id.trim() ? node.id : String(index + 1);
-    if (typeof node.promptFile === "string") {
-      errors.push({
-        nodeId,
-        error: "promptFile was renamed to instructionsFile; prompt now contains only the task and run data.",
-      });
-      return node;
-    }
-    if (typeof node.instructionsFile !== "string") {
+    const instructionsFile = typeof node.instructionsFile === "string"
+      ? node.instructionsFile
+      : typeof node.promptFile === "string"
+        ? node.promptFile
+        : undefined;
+    if (!instructionsFile) {
       return node;
     }
     if (typeof node.prompt !== "string" || node.prompt.length === 0) {
@@ -131,13 +132,17 @@ export function resolvePipelineV3InstructionFiles(
       return node;
     }
 
-    const outcome = readInstructionsFile(node.instructionsFile, options);
+    const outcome = readInstructionsFile(instructionsFile, options);
     if ("error" in outcome) {
       errors.push({ nodeId, error: outcome.error });
       return node;
     }
 
-    const { instructionsFile: _instructionsFile, ...rest } = node;
+    const {
+      instructionsFile: _instructionsFile,
+      promptFile: _legacyPromptFile,
+      ...rest
+    } = node;
     return {
       ...rest,
       // Internal compatibility slot consumed as PipelineNodePrompt.instructions.
