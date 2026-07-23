@@ -6,7 +6,21 @@ import type {
 
 import type { CliRunCommand } from './args.js';
 import type { CliPipelineHost, CliPipelineListEntry } from './host.js';
+import {
+  capturePreImplementationWorkspaceState,
+  requiresDocumentationOnlyGuard,
+  validateNoPreImplementationWorkspaceChanges,
+} from './preImplementationGuard.js';
+import {
+  prepareSequentialDelivery,
+  runSequentialDelivery,
+  SEQUENTIAL_DELIVERY_ARTIFACT_TYPE,
+} from './sequentialDelivery.js';
 import type { CliTerminal } from './terminal.js';
+import {
+  expandWorkspaceMarkdownReferences,
+  validateRequiredWorkspaceMarkdownReferences,
+} from './workspaceArtifacts.js';
 
 export interface CliRunResult {
   status: 'completed' | 'cancelled' | 'failed';
@@ -20,12 +34,48 @@ export async function runPipelineInteractive(
   terminal: CliTerminal,
   command: CliRunCommand,
 ): Promise<CliRunResult> {
+  const preImplementationBaseline = capturePreImplementationWorkspaceState(command.cwd);
   let result = await host.start(command.pipelineName, command.prompt);
 
   while (result.status === 'paused') {
     const pause = result.pause;
     if (!command.json) {
-      terminal.write(formatPause(pause));
+      terminal.write(formatPause({
+        ...pause,
+        content: expandWorkspaceMarkdownReferences(command.cwd, pause.content),
+      }));
+    }
+
+    const workspaceHandoffError = validateRequiredWorkspaceMarkdownReferences(
+      command.cwd,
+      pause.content,
+    );
+    if (workspaceHandoffError) {
+      return failInteractiveRun(
+        terminal,
+        command.json,
+        result.runId,
+        'invalid_workspace_handoff',
+        workspaceHandoffError,
+        pause.nodeId,
+      );
+    }
+
+    if (requiresDocumentationOnlyGuard(pause.content)) {
+      const preImplementationError = validateNoPreImplementationWorkspaceChanges(
+        preImplementationBaseline,
+        capturePreImplementationWorkspaceState(command.cwd),
+      );
+      if (preImplementationError) {
+        return failInteractiveRun(
+          terminal,
+          command.json,
+          result.runId,
+          'preimplementation_workspace_change',
+          preImplementationError,
+          pause.nodeId,
+        );
+      }
     }
 
     if (pause.type === 'question') {
@@ -53,6 +103,33 @@ export async function runPipelineInteractive(
       : { pauseId: pause.id, kind: 'reject' });
   }
 
+  if (result.status === 'completed' && result.artifact?.type === SEQUENTIAL_DELIVERY_ARTIFACT_TYPE) {
+    let plan;
+    try {
+      plan = prepareSequentialDelivery(command.cwd, result.artifact);
+    } catch (error: unknown) {
+      return failInteractiveRun(
+        terminal,
+        command.json,
+        result.runId,
+        'invalid_sequential_delivery',
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+
+    try {
+      result = await runSequentialDelivery(host, terminal, command, plan);
+    } catch (error: unknown) {
+      return failInteractiveRun(
+        terminal,
+        command.json,
+        result.runId,
+        'sequential_delivery_failed',
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
   const final = normalizeResult(result);
   if (command.json) {
     terminal.write(JSON.stringify(final, null, 2));
@@ -77,6 +154,27 @@ export function formatPipelineList(entries: CliPipelineListEntry[], json: boolea
     return 'No valid ACP version 3 pipelines found in .acp/pipelines.';
   }
   return entries.map(entry => `- ${entry.id} — ${entry.title} (${entry.nodeCount} nodes)`).join('\n');
+}
+
+function failInteractiveRun(
+  terminal: CliTerminal,
+  json: boolean,
+  runId: string,
+  code: string,
+  message: string,
+  nodeId?: string,
+): CliRunResult {
+  const failed: CliRunResult = {
+    status: 'failed',
+    runId,
+    error: { code, message, nodeId },
+  };
+  if (json) {
+    terminal.write(JSON.stringify(failed, null, 2));
+  } else {
+    terminal.writeError(formatFailure(failed.error));
+  }
+  return failed;
 }
 
 function normalizeResult(result: PipelineRuntimeResult): CliRunResult {
