@@ -2,15 +2,12 @@ import { createInterface, type Interface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import type { Readable, Writable } from 'node:stream';
 
-import type { PiPermissionContext } from '@acp-client/pi-extension/host';
-
 export interface CliTerminal {
   write(message: string): void;
   writeError(message: string): void;
   ask(question: string): Promise<string>;
   confirm(title: string, message?: string): Promise<boolean>;
   select(title: string, options: string[]): Promise<string | undefined>;
-  asPermissionContext(): PiPermissionContext;
   close(): void;
 }
 
@@ -62,16 +59,6 @@ export class NodeCliTerminal implements CliTerminal {
     return Number.isInteger(index) && index >= 0 && index < options.length
       ? options[index]
       : undefined;
-  }
-
-  asPermissionContext(): PiPermissionContext {
-    return {
-      hasUI: true,
-      ui: {
-        select: (title: string, options: string[]) => this.select(title, options),
-        confirm: (title: string, message?: string) => this.confirm(title, message),
-      } as PiPermissionContext['ui'],
-    };
   }
 
   close(): void {

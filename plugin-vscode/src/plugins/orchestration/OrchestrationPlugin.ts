@@ -1,21 +1,22 @@
 import * as vscode from 'vscode';
 import { PipelineRuntimeAgentAdapter, PipelineService } from '@acp-client/pipeline';
+import {
+  EphemeralAcpRunner,
+  loadAgentCatalog,
+  type AgentConfigEntry,
+  type RuntimePermissionContext,
+  type SandcastlePromotionRequest,
+} from '@acp-client/runtime';
 import { clearSandcastleLogs } from '@acp-client/sandcastle';
 
-import {
-  getAgentConfigs,
-  isSandcastleAgentConfig,
-  type AgentConfigEntry,
-} from '../../config/AgentConfig';
+import { getAgentConfigs } from '../../config/AgentConfig';
 import {
   getPipelineProgramForAgent,
   getPipelinePrograms,
 } from '../../config/PipelineCatalog';
 import { isPipelineEnabled } from '../../config/PipelineConfig';
-import { DefaultEphemeralAgentRunner } from '../../core/EphemeralAgentRunner';
 import type { SessionManager } from '../../core/SessionManager';
 import { isRunAbortedError } from '../../core/RunAbortedError';
-import type { SandcastlePromotion } from '../../sandcastle/SandcastlePromotion';
 import type { ChatWebviewController } from '../../ui/ChatWebviewController';
 import type { SessionTreeProvider } from '../../ui/SessionTreeProvider';
 import type { FeaturePlugin } from '../FeaturePlugin';
@@ -28,16 +29,22 @@ export interface OrchestrationPluginContext {
   sessionTreeProvider: SessionTreeProvider;
   chatController: ChatWebviewController;
   workspaceCwd: () => string;
-  sandcastlePromotion: SandcastlePromotion;
 }
 
 export class OrchestrationPlugin implements FeaturePlugin<OrchestrationPluginContext> {
   readonly id = 'orchestration';
 
   activate(context: OrchestrationPluginContext): vscode.Disposable {
-    const { sessionManager, sessionTreeProvider, chatController, sandcastlePromotion } = context;
-    const ephemeralRunner = new DefaultEphemeralAgentRunner(sandcastlePromotion);
+    const { sessionManager, sessionTreeProvider, chatController } = context;
     const readAgentConfigs = () => getAgentConfigs(context.workspaceCwd());
+    const runtimeCatalog = loadAgentCatalog(context.workspaceCwd());
+    const ephemeralRunner = new EphemeralAcpRunner(context.workspaceCwd(), {
+      getAgentConfigs: () => readAgentConfigs(),
+      getPermissionContext: createVsCodePermissionContext,
+      timeouts: runtimeCatalog.native.pipeline.timeouts,
+      getSandcastlePromotion: () => readSandcastlePromotionMode(),
+      requestSandcastlePromotion: requestVsCodeSandcastlePromotion,
+    });
     const serviceRef: { current?: PipelineService } = {};
     const createSession = new PipelineRuntimeAgentAdapter({
       workspaceCwd: context.workspaceCwd,
@@ -70,7 +77,7 @@ export class OrchestrationPlugin implements FeaturePlugin<OrchestrationPluginCon
       getAgentConfigs: readAgentConfigs,
       isAgentSandcastle: (agentName, agentConfigs) => {
         const config = agentConfigs[agentName] as AgentConfigEntry | undefined;
-        return config ? isSandcastleAgentConfig(config) : false;
+        return config?.transport === 'sandcastle';
       },
       createSession,
       isRunAbortedError,
@@ -118,5 +125,60 @@ export class OrchestrationPlugin implements FeaturePlugin<OrchestrationPluginCon
     );
 
     return vscode.Disposable.from(...disposables);
+  }
+}
+
+function createVsCodePermissionContext(): RuntimePermissionContext {
+  return {
+    hasUI: true,
+    ui: {
+      select: async (title, options) => vscode.window.showQuickPick(options, { title, ignoreFocusOut: true }),
+      confirm: async (title, message) => {
+        const selected = await vscode.window.showWarningMessage(
+          message ? `${title}\n\n${message}` : title,
+          { modal: true },
+          'Confirm',
+        );
+        return selected === 'Confirm';
+      },
+    },
+  };
+}
+
+function readSandcastlePromotionMode(): 'ask' | 'autoApply' | 'autoReject' {
+  const mode = vscode.workspace.getConfiguration('acp').get<string>('sandcastle.promotion', 'ask');
+  return mode === 'autoApply' || mode === 'autoReject' ? mode : 'ask';
+}
+
+async function requestVsCodeSandcastlePromotion(
+  request: SandcastlePromotionRequest,
+): Promise<'approve' | 'reject' | 'cancelled'> {
+  const choices = [
+    { label: '$(diff) View Diff', choice: 'diff' as const },
+    { label: '$(check) Apply', choice: 'approve' as const },
+    { label: '$(close) Reject', choice: 'reject' as const },
+  ];
+  let allowDiff = true;
+  while (true) {
+    const selected = await vscode.window.showQuickPick(
+      allowDiff ? choices : choices.slice(1),
+      {
+        title: `Sandcastle changes from ${request.agentName}`,
+        placeHolder: `${request.preview.filesChanged} file(s) changed`,
+        ignoreFocusOut: true,
+      },
+    );
+    if (!selected) {
+      return 'cancelled';
+    }
+    if (selected.choice === 'approve' || selected.choice === 'reject') {
+      return selected.choice;
+    }
+    const document = await vscode.workspace.openTextDocument({
+      language: 'diff',
+      content: request.preview.diff || '(no changes)',
+    });
+    await vscode.window.showTextDocument(document, { preview: true, viewColumn: vscode.ViewColumn.Beside });
+    allowDiff = false;
   }
 }

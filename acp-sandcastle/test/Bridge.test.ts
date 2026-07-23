@@ -11,16 +11,16 @@ import type {
 	Sandbox,
 	SandboxRunOptions,
 } from "@ai-hero/sandcastle";
-import { buildSandboxMounts } from "@acp-client/sandcastle";
+import { buildSandboxMounts } from "../src/SandboxMounts.js";
 
-import { parseBridgeConfig } from "../src/sandcastle/BridgeConfig.js";
-import { defaultSandcastleRuntime } from "../src/sandcastle/DefaultSandcastleRuntime.js";
-import { enrichProviderRunError } from "../src/sandcastle/ProviderRunError.js";
-import { decidePromotionPolicy } from "../src/sandcastle/PromotionPolicy.js";
+import { parseBridgeConfig } from "../src/BridgeConfig.js";
+import { defaultSandcastleRuntime } from "../src/DefaultSandcastleRuntime.js";
+import { enrichProviderRunError } from "../src/ProviderRunError.js";
+import { decidePromotionPolicy } from "../src/PromotionPolicy.js";
 import {
 	SandcastleBridgeAgent,
 	type SandcastleRuntime,
-} from "../src/sandcastle/BridgeAgent.js";
+} from "../src/BridgeAgent.js";
 
 test("parseBridgeConfig parses provider model effort and image", () => {
 	const config = parseBridgeConfig(

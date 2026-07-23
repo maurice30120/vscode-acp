@@ -277,7 +277,6 @@ function initializeExtensionRuntime(
         sessionTreeProvider,
         chatController,
         workspaceCwd: () => workspaceIdentity().cwd,
-        sandcastlePromotion,
       },
     },
     {

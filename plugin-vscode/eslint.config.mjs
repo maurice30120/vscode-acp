@@ -6,6 +6,7 @@ export default defineConfig({
 		"plugin-vscode/src/**/*.ts",
 		"acp-pipeline/src/**/*.ts",
 		"acp-sandcastle/src/**/*.ts",
+		"acp-runtime/src/**/*.ts",
 		"plugin-pi/src/**/*.ts",
 	],
 	extends: typescriptEslint.configs.recommended,
