@@ -1,6 +1,3 @@
-declare module 'js-yaml' {
-  export function load(text: string): unknown;
-}
 
 declare module 'typebox' {
   export const Type: {

@@ -1,6 +1,6 @@
 # ACP Client monorepo
 
-Ce dépôt est un monorepo npm qui regroupe les surfaces ACP Client qui doivent évoluer ensemble : une extension VS Code, un moteur d'orchestration partagé et une extension Pi. La racine ne contient pas de code applicatif ; elle sert de point d'entrée pour les commandes transverses, la déclaration des workspaces et la cohérence des builds.
+Ce dépôt est un monorepo npm qui regroupe les surfaces ACP Client et leurs briques partagées : extension VS Code, CLI, extension Pi, runtime d'agents, moteur de pipelines et intégration Sandcastle. La racine ne contient pas de code applicatif ; elle sert de point d'entrée pour les commandes transverses, la déclaration des workspaces et la cohérence des builds.
 
 Le monorepo permet de faire évoluer le modèle pipeline une seule fois, puis de le consommer depuis plusieurs environnements. C'est important parce que l'orchestration d'agents ACP, les pipelines déclaratifs, les approbations humaines et les runs isolés Sandcastle doivent rester cohérents entre VS Code et Pi, même si les intégrations UI et runtime sont différentes.
 
@@ -10,13 +10,18 @@ Le monorepo permet de faire évoluer le modèle pipeline une seule fois, puis de
 | --- | --- | --- |
 | `plugin-vscode` | `acp-client` | Extension VS Code principale. Elle connecte l'éditeur à des agents compatibles ACP, fournit le chat, l'historique de sessions, les pipelines v2 et les runtimes Sandcastle avec promotion Apply/Reject. |
 | `acp-pipeline` | `@acp-client/pipeline` | Bibliothèque TypeScript indépendante de VS Code. Elle porte les types, la validation, la compilation et l'exécution des pipelines déclaratifs, avec approbation humaine, reprise, annulation et branches parallèles. |
-| `plugin-pi` | `@acp-client/pi-extension` | Extension pour l'hôte Pi. Elle embarque sa configuration ACP, expose des commandes `/pipeline`, lance des agents ACP externes et consomme le moteur pipeline partagé pour orchestrer des workflows dans Pi. |
+| `acp-runtime` | `@acp-client/runtime` | Runtime Node partagé : catalogue d'agents, processus ACP, authentification, permissions, sessions éphémères et sélection du transport ACP/Sandcastle. |
+| `acp-sandcastle` | `@acp-client/sandcastle` | Intégration Sandcastle partagée : bridge ACP, providers Codex/Cursor/Pi/Vibe, worktrees, logs et promotion Apply/Reject. |
+| `pipeline-cli` | `@acp-client/cli` | CLI autonome pour lister et exécuter les pipelines avec des agents ACP ou Sandcastle, sans dépendre de VS Code ni du plugin Pi. |
+| `plugin-pi` | `@acp-client/pi-extension` | Adaptateur pour l'hôte Pi. Il expose les commandes `/pipeline` et consomme le runtime et le moteur pipeline partagés. |
 
 ## Pourquoi ce découpage
 
 - `plugin-vscode` reste le produit principal livré en VSIX, avec toute l'intégration VS Code.
 - `acp-pipeline` isole la logique métier d'orchestration pour qu'elle soit testable et réutilisable hors VS Code.
-- `plugin-pi` valide que le modèle pipeline peut vivre dans un autre hôte, sans dépendre de l'extension VS Code.
+- `acp-runtime` fournit une seule implémentation de l'exécution d'agents pour la CLI, VS Code et Pi.
+- `acp-sandcastle` fournit une seule implémentation de l'isolation et de la promotion Sandcastle.
+- `plugin-vscode` et `plugin-pi` ne portent plus le runtime générique : ils adaptent seulement leur UI et leur cycle de vie.
 - La racine garde les commandes courantes pour éviter de mémoriser les noms exacts des packages npm.
 
 ## À quoi sert le projet
@@ -29,6 +34,7 @@ Le monorepo existe pour partager cette logique entre plusieurs surfaces :
 
 - dans VS Code, l'utilisateur manipule directement les agents depuis l'éditeur ;
 - dans Pi, les mêmes concepts sont exposés comme plugin et commandes de pipeline ;
+- dans la CLI, les pipelines et agents Sandcastle s'exécutent sans charger un plugin d'éditeur ;
 - dans `acp-pipeline`, l'orchestration reste indépendante de l'UI et du runtime concret.
 
 Dans le vocabulaire de recherche récent, ce type de travail se rapproche du **harness engineering** : améliorer le code et les règles autour d'un agent pour mieux gérer le contexte, les outils, la mémoire, les traces et les effets de bord. Le projet ne cherche pas à optimiser automatiquement des harnesses comme Meta-Harness ; il construit le harness applicatif nécessaire pour utiliser, orchestrer et isoler des agents ACP dans des environnements de développement réels.
@@ -50,6 +56,8 @@ Commandes ciblées :
 
 ```bash
 npm run build -w @acp-client/pipeline
+npm run build -w @acp-client/runtime
+npm run build -w @acp-client/sandcastle
 npm run build -w @acp-client/pi-extension
 npm run vsx -w acp-client
 ```

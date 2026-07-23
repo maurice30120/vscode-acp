@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import type { SessionNotification } from '@agentclientprotocol/sdk';
 import {
   PipelineRuntime,
   PipelineRuntimeAgentAdapter,
@@ -10,19 +9,36 @@ import {
   type AgentNodeSessionFactory,
   type CompiledPipelineProgram,
   type CompiledPipelineNode,
+  type PipelineAgentRunInput,
   type PipelineAgentRunner,
   type PipelineResumeDecision,
   type PipelineRuntimeResult,
 } from '@acp-client/pipeline';
-import { clearSandcastleLogs } from '@acp-client/sandcastle';
-import {
-  EphemeralAcpRunner,
-  getPipelinePrograms,
-  loadPiAgentCatalog,
-  type Logger,
-} from '@acp-client/pi-extension/host';
 
 import type { CliTerminal } from './terminal.js';
+
+type SessionNotification = Parameters<NonNullable<PipelineAgentRunInput['onSessionUpdate']>>[0];
+
+export interface CliLogger {
+  log(message: string): void;
+  error(message: string, error?: unknown): void;
+}
+
+export interface CliPipelineBackend {
+  programs: CompiledPipelineProgram[];
+  runAgent?: PipelineAgentRunner;
+  clearRunLogs?(): void;
+}
+
+export interface CliPipelineBackendContext {
+  terminal: Pick<CliTerminal, 'confirm' | 'select'>;
+  logger: CliLogger;
+}
+
+export type CliPipelineBackendFactory = (
+  workspaceCwd: string,
+  context: CliPipelineBackendContext,
+) => CliPipelineBackend;
 
 export interface CliPipelineListEntry {
   id: string;
@@ -32,6 +48,7 @@ export interface CliPipelineListEntry {
 
 export interface CliPipelineHostOptions {
   terminal: CliTerminal;
+  backendFactory: CliPipelineBackendFactory;
   verbose?: boolean;
   createSession?: AgentNodeSessionFactory;
   runAgent?: PipelineAgentRunner;
@@ -39,10 +56,11 @@ export interface CliPipelineHostOptions {
 }
 
 export class CliPipelineHost {
+  private readonly backend: CliPipelineBackend;
   private readonly programs: CompiledPipelineProgram[];
   private readonly runtimes = new Map<string, PipelineRuntime>();
   private readonly createSession: AgentNodeSessionFactory;
-  private readonly logger: Logger;
+  private readonly logger: CliLogger;
   private readonly runLogs = new Map<string, PipelineRunLog>();
   private readonly activeAgentNodes = new Map<string, CompiledPipelineNode>();
   private readonly activityByNode = new Map<string, 'agent_message_chunk' | 'agent_thought_chunk'>();
@@ -68,13 +86,22 @@ export class CliPipelineHost {
       },
     };
 
-    const catalog = loadPiAgentCatalog(this.workspaceCwd);
-    if (catalog.errors.length > 0) {
-      throw new Error(`Invalid workspace ACP configuration:\n- ${catalog.errors.join('\n- ')}`);
+    this.backend = this.options.backendFactory(this.workspaceCwd, {
+      terminal: this.options.terminal,
+      logger: this.logger,
+    });
+    this.programs = this.backend.programs;
+
+    if (this.options.createSession) {
+      this.createSession = this.options.createSession;
+      return;
     }
 
-    this.programs = getPipelinePrograms(this.workspaceCwd, this.logger);
-    this.createSession = this.options.createSession ?? this.createDefaultSessionFactory(catalog);
+    const runner = this.options.runAgent ?? this.backend.runAgent;
+    if (!runner) {
+      throw new Error('The CLI backend must provide runAgent when createSession is not supplied.');
+    }
+    this.createSession = this.createDefaultSessionFactory(runner);
   }
 
   listPipelines(): CliPipelineListEntry[] {
@@ -95,7 +122,7 @@ export class CliPipelineHost {
 
     const runId = this.options.runIdFactory?.() ?? randomUUID();
     PipelineRunLog.clear(this.workspaceCwd);
-    clearSandcastleLogs(this.workspaceCwd);
+    this.backend.clearRunLogs?.();
     const runLog = PipelineRunLog.create(this.workspaceCwd, runId, program.id);
     this.runLogs.set(runId, runLog);
     runLog.append('run_started', {
@@ -202,33 +229,7 @@ export class CliPipelineHost {
     }
   }
 
-  private createDefaultSessionFactory(catalog: ReturnType<typeof loadPiAgentCatalog>): AgentNodeSessionFactory {
-    const ephemeral = new EphemeralAcpRunner(this.workspaceCwd, {
-      getPermissionContext: () => this.options.terminal.asPermissionContext(),
-      getAgentConfigs: () => catalog.agents,
-      timeouts: catalog.native.pipeline.timeouts,
-      getSandcastlePromotion: () => catalog.sandcastle.promotion,
-      requestSandcastlePromotion: async request => {
-        const selected = await this.options.terminal.select(
-          [
-            `Sandcastle promotion for ${request.agentName}`,
-            `Files changed: ${request.preview.filesChanged}`,
-            `Branch: ${request.preview.branch || '(unknown)'}`,
-            `Base: ${request.preview.baseRef || '(unknown)'}`,
-          ].join('\n'),
-          ['Apply Sandcastle changes', 'Reject Sandcastle changes'],
-        );
-        if (selected === 'Apply Sandcastle changes') {
-          return 'approve';
-        }
-        if (selected === 'Reject Sandcastle changes') {
-          return 'reject';
-        }
-        return 'cancelled';
-      },
-      logger: this.logger,
-    });
-    const runner = this.options.runAgent ?? ((input) => ephemeral.run(input));
+  private createDefaultSessionFactory(runner: PipelineAgentRunner): AgentNodeSessionFactory {
     return new PipelineRuntimeAgentAdapter({
       workspaceCwd: () => this.workspaceCwd,
       runAgent: async input => {

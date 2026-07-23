@@ -1,55 +1,16 @@
 version: 3
 id: grill-spec-tickets-implement-review
-title: Grill with Docs → Spec Docs → Ticket Docs → Implement → Review
+title: Grill with Docs → Spec Docs → Ticket Docs → Sequential Implement → Review
 
 nodes:
   - id: plan
-    # Agents disponibles :
-    # agent: Codex CLI
-    agent: Vibe
-    # agent: Cursor CLI
-    # agent: OpenCode
-    # agent: Pi Agent
-    # agent: Codex Sandcastle
-    # agent: Cursor Sandcastle
-    # agent: Pi Sandcastle
-    # agent: Vibe Sandcastle
-    skills:
-      - grill-with-docs
-      - grilling
-      - domain-modeling
+    agent: Codex CLI
+    skills: [grill-with-docs, grilling, domain-modeling]
     interaction:
       protocol: proposed-plan
-      repairAttempts: 1
-    promptFile: ../agents/interactive-planner.md
+      repairAttempts: 3
+    instructionsFile: ../agents/interactive-planner.md
     prompt: |
-      Resolve one user decision at a time. Recommend an answer with a short
-      justification. Inspect the workspace for facts instead of asking about
-      them. Preserve confirmed decisions. Do not declare the plan ready until
-      every material question is answered.
-
-      Use `grill-with-docs`: run the grilling interview while applying
-      `domain-modeling`. When terms crystallize, update `CONTEXT.md` inline.
-      When a hard-to-reverse, surprising, trade-off decision crystallizes,
-      create or update the relevant ADR under `docs/architecture/adr/`.
-
-      Before returning the ready plan, write the approved planning deliverable
-      to `.scratch/<feature-slug>/plan.md`. The plan document must include:
-      Problem, confirmed decisions, unresolved out-of-scope items, testing seams,
-      documentation updates, and next-step handoff notes.
-
-      Documentation contract:
-      - Derive one stable feature slug from the user request and approved
-        decisions.
-      - Use `.scratch/<feature-slug>/` as the feature documentation directory.
-      - Follow `docs/agents/issue-tracker.md` for spec and ticket locations.
-      - Follow `docs/agents/domain.md` and the `domain-modeling` skill for
-        glossary and ADR updates.
-      - Every plan, spec, or task step must write its Markdown deliverable
-        before returning its pipeline artifact.
-      - Return Markdown that includes a `Documentation` section listing every
-        file created or updated.
-
       User request:
       {{userPrompt}}
     policy:
@@ -65,7 +26,9 @@ nodes:
   - id: plan_approval
     type: pause
     pause: approval
-    content: "{{inputs.plan}}"
+    content: |
+      <!-- acp-cli:documentation-only-before-approval -->
+      {{inputs.plan}}
     format: proposed-plan
     needs: [plan]
     inputs:
@@ -79,45 +42,18 @@ nodes:
       format: markdown
 
   - id: spec
-    # Agents disponibles :
-    # agent: Codex CLI
-    agent: Vibe
-    # agent: Cursor CLI
-    # agent: OpenCode
-    # agent: Pi Agent
-    # agent: Codex Sandcastle
-    # agent: Cursor Sandcastle
-    # agent: Pi Sandcastle
-    # agent: Vibe Sandcastle
-    skills:
-      - to-spec
-      - domain-modeling
-    promptFile: ../agents/matt-spec-writer.md
+    agent: Codex CLI
+    skills: [to-spec, domain-modeling]
+    instructionsFile: ../agents/matt-spec-writer.md
     prompt: |
-      Original request:
+      User request:
       {{userPrompt}}
 
-      Approved plan:
-      {{inputs.approvedPlan}}
-
-      Synthesize the approved decisions into the complete specification now.
-      Publish it as `.scratch/<feature-slug>/spec.md`, using the same feature
-      slug selected by the plan document. Apply the original `to-spec` template
-      and conventions exactly.
-
-      Documentation contract:
-      - Reuse the feature slug from `.scratch/<feature-slug>/plan.md`.
-      - Use `.scratch/<feature-slug>/` as the feature documentation directory.
-      - Follow `docs/agents/issue-tracker.md` for spec publication.
-      - Follow `docs/agents/domain.md` and the `domain-modeling` skill if the
-        specification resolves domain terms or ADR-worthy decisions.
-      - Write `.scratch/<feature-slug>/spec.md` before returning the pipeline
-        artifact.
-      - Return Markdown that includes a `Documentation` section listing every
-        file created or updated.
+      Approved decisions:
+      {{inputs.approvedDecisions}}
     needs: [plan_approval]
     inputs:
-      - name: approvedPlan
+      - name: approvedDecisions
         from: plan_approval.approved
         type: acp.grill-decision/v1
         format: markdown
@@ -128,59 +64,24 @@ nodes:
       promotion: auto-apply
     output:
       name: specification
-      type: acp.specification/v1
+      type: acp.workspace-files/v1
       format: markdown
 
   - id: tasks
-    # Agents disponibles :
-    # agent: Codex CLI
-    agent: Vibe
-    # agent: Cursor CLI
-    # agent: OpenCode
-    # agent: Pi Agent
-    # agent: Codex Sandcastle
-    # agent: Cursor Sandcastle
-    # agent: Pi Sandcastle
-    # agent: Vibe Sandcastle
-    skills:
-      - to-tickets
-      - domain-modeling
-    promptFile: ../agents/matt-ticket-planner.md
+    agent: Codex CLI
+    skills: [to-tickets]
+    instructionsFile: ../agents/matt-ticket-planner.md
     prompt: |
-      Original request:
+      User request:
       {{userPrompt}}
 
-      Approved plan:
-      {{inputs.approvedPlan}}
-
-      Specification:
+      Specification files:
       {{inputs.specification}}
-
-      Produce the ordered tracer-bullet task plan now. Publish each approved
-      task as a separate Markdown issue under
-      `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` in
-      dependency order. Never publish a single combined ticket file. Apply the
-      original `to-tickets` local ticket template and conventions exactly.
-
-      Documentation contract:
-      - Reuse the feature slug from `.scratch/<feature-slug>/plan.md`.
-      - Use `.scratch/<feature-slug>/` as the feature documentation directory.
-      - Follow `docs/agents/issue-tracker.md` for ticket publication.
-      - Follow `docs/agents/domain.md` and the `domain-modeling` skill if the
-        task breakdown resolves domain terms or ADR-worthy decisions.
-      - Write every task ticket Markdown file before returning the pipeline
-        artifact.
-      - Return Markdown that includes a `Documentation` section listing every
-        file created or updated.
     needs: [spec]
     inputs:
-      - name: approvedPlan
-        from: plan_approval.approved
-        type: acp.grill-decision/v1
-        format: markdown
       - name: specification
         from: spec.specification
-        type: acp.specification/v1
+        type: acp.workspace-files/v1
         format: markdown
     policy:
       filesystem: workspace-write
@@ -189,21 +90,24 @@ nodes:
       promotion: auto-apply
     output:
       name: tickets
-      type: acp.ticket-graph/v1
+      type: acp.workspace-files/v1
       format: markdown
 
   - id: delivery_approval
     type: pause
     pause: approval
     content: |
+      <!-- acp-cli:require-workspace-files=2 -->
+      <!-- acp-cli:workspace-layout=delivery -->
+      <!-- acp-cli:documentation-only-before-approval -->
       <proposed_plan>
       <interview_state>ready</interview_state>
 
-      ## Specification
+      ## Specification files
 
       {{inputs.specification}}
 
-      ## Task plan
+      ## Ticket files
 
       {{inputs.tickets}}
       </proposed_plan>
@@ -212,124 +116,13 @@ nodes:
     inputs:
       - name: specification
         from: spec.specification
-        type: acp.specification/v1
+        type: acp.workspace-files/v1
         format: markdown
       - name: tickets
         from: tasks.tickets
-        type: acp.ticket-graph/v1
+        type: acp.workspace-files/v1
         format: markdown
     output:
       name: approved
-      type: acp.ticket-graph/v1
-      format: markdown
-
-  - id: implementation
-    # Agents disponibles :
-    # agent: Codex CLI
-    agent: Vibe
-    # agent: Cursor CLI
-    # agent: OpenCode
-    # agent: Pi Agent
-    # agent: Codex Sandcastle
-    # agent: Cursor Sandcastle
-    # agent: Pi Sandcastle
-    # agent: Vibe Sandcastle
-
-    skills: [implement]
-    promptFile: ../agents/matt-implementer.md
-    prompt: |
-      Original request:
-      {{userPrompt}}
-
-      Approved plan:
-      {{inputs.approvedPlan}}
-
-      Approved specification:
-      {{inputs.specification}}
-
-      Approved task plan:
-      {{inputs.approvedTickets}}
-
-      Implement the complete approved task plan in dependency order.
-    needs: [delivery_approval]
-    inputs:
-      - name: approvedPlan
-        from: plan_approval.approved
-        type: acp.grill-decision/v1
-        format: markdown
-      - name: specification
-        from: spec.specification
-        type: acp.specification/v1
-        format: markdown
-      - name: approvedTickets
-        from: delivery_approval.approved
-        type: acp.ticket-graph/v1
-        format: markdown
-    policy:
-      filesystem: workspace-write
-      terminal: workspace-write
-      network: enabled
-      promotion: auto-apply
-    output:
-      name: result
-      type: acp.implementation-result/v1
-      format: markdown
-
-  - id: review
-    # Agents disponibles :
-    # agent: Codex CLI
-    agent: Vibe
-    # agent: Cursor CLI
-    # agent: OpenCode
-    # agent: Pi Agent
-    # agent: Codex Sandcastle
-    # agent: Cursor Sandcastle
-    # agent: Pi Sandcastle
-    # agent: Vibe Sandcastle
-    # agent: Pi Agent
-    skills: [code-review]
-    promptFile: ../agents/matt-plan-reviewer.md
-    prompt: |
-      Original request:
-      {{userPrompt}}
-
-      Approved plan:
-      {{inputs.approvedPlan}}
-
-      Approved specification:
-      {{inputs.specification}}
-
-      Approved task plan:
-      {{inputs.approvedTickets}}
-
-      Implementation report:
-      {{inputs.implementation}}
-
-      Review the actual workspace diff against all approved artifacts.
-    needs: [implementation]
-    inputs:
-      - name: approvedPlan
-        from: plan_approval.approved
-        type: acp.grill-decision/v1
-        format: markdown
-      - name: specification
-        from: spec.specification
-        type: acp.specification/v1
-        format: markdown
-      - name: approvedTickets
-        from: delivery_approval.approved
-        type: acp.ticket-graph/v1
-        format: markdown
-      - name: implementation
-        from: implementation.result
-        type: acp.implementation-result/v1
-        format: markdown
-    policy:
-      filesystem: read-only
-      terminal: none
-      network: disabled
-      promotion: discard
-    output:
-      name: report
-      type: acp.verification-report/v1
+      type: acp.sequential-delivery/v1
       format: markdown

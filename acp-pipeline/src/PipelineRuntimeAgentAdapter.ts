@@ -94,6 +94,14 @@ class PipelineRuntimeAgentNodeSession implements AgentNodeSession {
         workspaceCwd: this.options.workspaceCwd(),
         agentName: node.agent,
         promptText: input.prompt,
+        prompt: {
+          skills: [...node.skills],
+          // The catalog resolves the public instructionsFile field into this
+          // compatibility slot before compilation.
+          instructions: node.promptFile,
+          task: input.prompt,
+          context: Object.values(input.inputs),
+        },
         signal: this.controller.signal,
         onSessionUpdate: update => this.options.onSessionUpdate?.(input.runId, node, update),
         onStatus: update => this.options.onStatus?.(input.runId, node, update),

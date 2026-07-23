@@ -12,7 +12,9 @@ export interface PipelineV3CatalogSource {
 export interface PipelineV3CatalogOptions {
   workspaceCwd: string;
   configRoot?: string;
-  maxPromptFileBytes: number;
+  maxInstructionsFileBytes?: number;
+  /** @deprecated Use maxInstructionsFileBytes. */
+  maxPromptFileBytes?: number;
   agentConfigs?: Record<string, unknown>;
 }
 
@@ -32,6 +34,16 @@ export function compilePipelineV3Catalog(
 ): PipelineV3CatalogResult {
   const programs: CompiledPipelineProgram[] = [];
   const errors: PipelineV3CatalogError[] = [];
+  const maxBytes = options.maxInstructionsFileBytes ?? options.maxPromptFileBytes;
+  if (maxBytes === undefined) {
+    return {
+      programs,
+      errors: sources.map(source => ({
+        filePath: source.filePath,
+        errors: ["maxInstructionsFileBytes must be configured."],
+      })),
+    };
+  }
 
   for (const source of [...sources].sort(compareSources)) {
     const versionError = rejectUnsupportedVersion(source.definition);
@@ -40,10 +52,10 @@ export function compilePipelineV3Catalog(
       continue;
     }
 
-    const resolved = resolvePipelineV3PromptFiles(source.definition, {
+    const resolved = resolvePipelineV3InstructionFiles(source.definition, {
       workspaceCwd: options.workspaceCwd,
       configRoot: options.configRoot,
-      maxBytes: options.maxPromptFileBytes,
+      maxBytes,
       pipelineFilePath: source.filePath,
     });
     if (resolved.errors.length > 0) {
@@ -68,46 +80,85 @@ export function compilePipelineV3Catalog(
   return { programs, errors };
 }
 
-export interface PipelineV3PromptFileResolveOptions {
+export interface PipelineV3InstructionFileResolveOptions {
   workspaceCwd: string;
   configRoot?: string;
   maxBytes: number;
   pipelineFilePath: string;
 }
 
-export interface PipelineV3PromptFileResolveError {
+export interface PipelineV3InstructionFileResolveError {
   nodeId: string;
   error: string;
 }
 
-export function resolvePipelineV3PromptFiles(
+/**
+ * Resolves the public instructionsFile field while preserving the role/rules
+ * separately from the run-specific prompt. The compiler compatibility field
+ * promptFile carries the resolved instruction text internally; it is no longer
+ * a path and is never concatenated with prompt.
+ *
+ * The former promptFile YAML field is accepted as a deprecated alias. When it
+ * is the node's only prompt source, its content remains the complete task for
+ * backward compatibility. When an inline prompt also exists, the file content
+ * becomes the invariant instructions layer.
+ */
+export function resolvePipelineV3InstructionFiles(
   definition: unknown,
-  options: PipelineV3PromptFileResolveOptions,
-): { definition: unknown; errors: PipelineV3PromptFileResolveError[] } {
+  options: PipelineV3InstructionFileResolveOptions,
+): { definition: unknown; errors: PipelineV3InstructionFileResolveError[] } {
   if (!isRecord(definition) || !Array.isArray(definition.nodes)) {
     return { definition, errors: [] };
   }
 
-  const errors: PipelineV3PromptFileResolveError[] = [];
+  const errors: PipelineV3InstructionFileResolveError[] = [];
   const nodes = definition.nodes.map((node, index) => {
-    if (!isRecord(node) || typeof node.promptFile !== "string") {
+    if (!isRecord(node)) {
       return node;
     }
 
     const nodeId = typeof node.id === "string" && node.id.trim() ? node.id : String(index + 1);
-    const outcome = readPromptFile(node.promptFile, options);
+    const hasInstructionsFile = typeof node.instructionsFile === "string";
+    const hasLegacyPromptFile = !hasInstructionsFile && typeof node.promptFile === "string";
+    const instructionsFile = hasInstructionsFile
+      ? node.instructionsFile as string
+      : hasLegacyPromptFile
+        ? node.promptFile as string
+        : undefined;
+    if (!instructionsFile) {
+      return node;
+    }
+
+    const hasInlineTask = typeof node.prompt === "string" && node.prompt.length > 0;
+    if (hasInstructionsFile && !hasInlineTask) {
+      errors.push({
+        nodeId,
+        error: "instructionsFile requires prompt to define the task and run data.",
+      });
+      return node;
+    }
+
+    const outcome = readInstructionsFile(instructionsFile, options);
     if ("error" in outcome) {
       errors.push({ nodeId, error: outcome.error });
       return node;
     }
 
-    const inlinePrompt = typeof node.prompt === "string" ? node.prompt : "";
-    const { promptFile: _promptFile, ...rest } = node;
+    const {
+      instructionsFile: _instructionsFile,
+      promptFile: _legacyPromptFile,
+      ...rest
+    } = node;
+    if (hasLegacyPromptFile && !hasInlineTask) {
+      return {
+        ...rest,
+        prompt: outcome.content,
+      };
+    }
     return {
       ...rest,
-      prompt: inlinePrompt.length > 0
-        ? `${outcome.content}\n\n${inlinePrompt}`
-        : outcome.content,
+      // Internal compatibility slot consumed as PipelineNodePrompt.instructions.
+      promptFile: outcome.content,
     };
   });
 
@@ -116,6 +167,13 @@ export function resolvePipelineV3PromptFiles(
     errors,
   };
 }
+
+/** @deprecated Use resolvePipelineV3InstructionFiles. */
+export const resolvePipelineV3PromptFiles = resolvePipelineV3InstructionFiles;
+/** @deprecated Use PipelineV3InstructionFileResolveOptions. */
+export type PipelineV3PromptFileResolveOptions = PipelineV3InstructionFileResolveOptions;
+/** @deprecated Use PipelineV3InstructionFileResolveError. */
+export type PipelineV3PromptFileResolveError = PipelineV3InstructionFileResolveError;
 
 function rejectUnsupportedVersion(definition: unknown): string | null {
   if (!isRecord(definition)) {
@@ -130,9 +188,9 @@ function rejectUnsupportedVersion(definition: unknown): string | null {
   return null;
 }
 
-function readPromptFile(
+function readInstructionsFile(
   relativePath: string,
-  options: PipelineV3PromptFileResolveOptions,
+  options: PipelineV3InstructionFileResolveOptions,
 ): { content: string } | { error: string } {
   const safePath = resolveSafePath(relativePath, options);
   if ("error" in safePath) {
@@ -143,35 +201,35 @@ function readPromptFile(
   try {
     stat = fs.statSync(safePath.absolutePath);
   } catch {
-    return { error: `promptFile not found: ${relativePath}` };
+    return { error: `instructionsFile not found: ${relativePath}` };
   }
 
   if (!stat.isFile()) {
-    return { error: `promptFile path is not a file: ${relativePath}` };
+    return { error: `instructionsFile path is not a file: ${relativePath}` };
   }
   if (stat.size > options.maxBytes) {
-    return { error: `promptFile exceeds max size (${options.maxBytes} bytes): ${relativePath}` };
+    return { error: `instructionsFile exceeds max size (${options.maxBytes} bytes): ${relativePath}` };
   }
 
   try {
     return { content: fs.readFileSync(safePath.absolutePath, "utf8") };
   } catch (e: unknown) {
     const message = e instanceof Error && e.message ? e.message : String(e);
-    return { error: `Failed to read promptFile: ${message}` };
+    return { error: `Failed to read instructionsFile: ${message}` };
   }
 }
 
 function resolveSafePath(
   relativePath: string,
-  options: PipelineV3PromptFileResolveOptions,
+  options: PipelineV3InstructionFileResolveOptions,
 ): { absolutePath: string } | { error: string } {
   if (path.isAbsolute(relativePath)) {
-    return { error: "promptFile path must be relative to the pipeline YAML file." };
+    return { error: "instructionsFile path must be relative to the pipeline YAML file." };
   }
 
   const normalizedRelative = path.normalize(relativePath);
   if (path.isAbsolute(normalizedRelative)) {
-    return { error: "promptFile path must be relative." };
+    return { error: "instructionsFile path must be relative." };
   }
 
   const configRoot = path.resolve(options.configRoot ?? options.workspaceCwd);
@@ -183,7 +241,7 @@ function resolveSafePath(
   const relativeToAcpRoot = path.relative(acpRoot, candidate);
 
   if (relativeToAcpRoot.startsWith("..") || path.isAbsolute(relativeToAcpRoot)) {
-    return { error: "promptFile path must stay within the ACP config root." };
+    return { error: "instructionsFile path must stay within the ACP config root." };
   }
   return { absolutePath: candidate };
 }

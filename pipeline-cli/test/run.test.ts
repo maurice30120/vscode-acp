@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { PipelineRuntimeResult } from '@acp-client/pipeline';
-import type { PiPermissionContext } from '@acp-client/pi-extension/host';
 
 import type { CliRunCommand } from '../src/args.js';
 import { formatPipelineList, runPipelineInteractive } from '../src/run.js';
@@ -24,7 +23,6 @@ class FakeTerminal implements CliTerminal {
   }
   async confirm(): Promise<boolean> { return this.confirmations.shift() ?? false; }
   async select(): Promise<string | undefined> { return undefined; }
-  asPermissionContext(): PiPermissionContext { return {} as PiPermissionContext; }
   close(): void {}
 }
 

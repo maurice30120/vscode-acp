@@ -34,7 +34,10 @@ nodes:
       format: markdown
 `);
 
-      const result = loadWorkspacePipelinePrograms(workspace, { Codex: {}, Vibe: {} });
+      const result = loadWorkspacePipelinePrograms(workspace, {
+        Codex: { command: 'codex' },
+        Vibe: { command: 'vibe' },
+      });
 
       assert.deepStrictEqual(result.errors, []);
       assert.deepStrictEqual(result.programs.map(program => program.id), ['feature-dev']);
@@ -65,7 +68,7 @@ nodes:
       format: markdown
 `);
 
-      const result = loadWorkspacePipelinePrograms(workspace, { Codex: {} });
+      const result = loadWorkspacePipelinePrograms(workspace, { Codex: { command: 'codex' } });
 
       assert.deepStrictEqual(result.errors, []);
       assert.strictEqual(result.programs[0].nodes[0].prompt, 'Planner instructions.');
@@ -93,7 +96,7 @@ nodes:
       format: markdown
 `);
 
-      const result = loadWorkspacePipelinePrograms(workspace, { Codex: {} });
+      const result = loadWorkspacePipelinePrograms(workspace, { Codex: { command: 'codex' } });
 
       assert.deepStrictEqual(result.programs.map(program => program.id), ['good']);
       assert.match(result.errors[0]?.errors.join('\n') ?? '', /nodes must be an array/);
@@ -107,7 +110,7 @@ nodes:
     try {
       writePipeline(workspace, 'broken.yaml', 'version: 3\nnodes:\n  - : broken');
 
-      const result = loadWorkspacePipelinePrograms(workspace, { Codex: {} });
+      const result = loadWorkspacePipelinePrograms(workspace, { Codex: { command: 'codex' } });
 
       assert.strictEqual(result.programs.length, 0);
       assert.match(result.errors[0]?.errors.join('\n') ?? '', /YAML parse error/);
@@ -133,8 +136,9 @@ nodes:
       format: markdown
 `);
 
-      assert.strictEqual(getPipelineProgramForAgent('pev', workspace, { Codex: {} })?.title, 'Plan Execute Verify');
-      assert.strictEqual(getPipelineProgramForAgent('Plan Execute Verify', workspace, { Codex: {} })?.id, 'pev');
+      const agents = { Codex: { command: 'codex' } };
+      assert.strictEqual(getPipelineProgramForAgent('pev', workspace, agents)?.title, 'Plan Execute Verify');
+      assert.strictEqual(getPipelineProgramForAgent('Plan Execute Verify', workspace, agents)?.id, 'pev');
     } finally {
       fs.rmSync(workspace, { recursive: true, force: true });
     }
@@ -151,7 +155,7 @@ primitives: {}
 steps: []
 `);
 
-      const result = loadWorkspacePipelinePrograms(workspace, { Codex: {} });
+      const result = loadWorkspacePipelinePrograms(workspace, { Codex: { command: 'codex' } });
 
       assert.strictEqual(result.programs.length, 0);
       assert.match(result.errors[0]?.errors.join('\n') ?? '', /Unsupported ACP pipeline version 2/);

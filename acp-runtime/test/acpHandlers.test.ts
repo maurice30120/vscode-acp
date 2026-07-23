@@ -14,9 +14,8 @@ import {
 	PipelineTimeoutError,
 } from "../src/acp/operationGuards.js";
 import { PermissionHandler } from "../src/acp/permissionHandler.js";
-import { PiAcpClient } from "../src/acp/piAcpClient.js";
-import { buildSandcastleBridgeProcessConfig } from "../src/acp/sandcastleConnector.js";
-import { parseDotEnv } from "../src/acp/sandcastleEnv.js";
+import { AcpClient } from "../src/acp/acpClient.js";
+import { buildSandcastleBridgeProcessConfig, parseDotEnv } from "@acp-client/sandcastle";
 import { filterEnv, validatePath } from "../src/acp/security.js";
 import { SessionUpdateHandler } from "../src/acp/sessionUpdateHandler.js";
 import { TerminalHandler } from "../src/acp/terminalHandler.js";
@@ -354,9 +353,9 @@ test("SessionUpdateHandler forwards updates only to current listeners", () => {
 	assert.deepEqual(seen, ["first:s1", "second:s1", "second:s2"]);
 });
 
-test("PiAcpClient delegates ACP client methods to handlers", async () => {
+test("AcpClient delegates ACP client methods to handlers", async () => {
 	const calls: string[] = [];
-	const client = new PiAcpClient(
+	const client = new AcpClient(
 		{
 			readTextFile: async () => {
 				calls.push("read");
@@ -508,7 +507,7 @@ test("buildSandcastleBridgeProcessConfig builds node bridge command args and ima
 	});
 
 	assert.equal(config.command, process.execPath);
-	assert.match(config.args?.[0] ?? "", /sandcastle[\/\\]bridge\.js$/);
+	assert.match(config.args?.[0] ?? "", /acp-sandcastle[\/\\]dist[\/\\]bridge\.js$/);
 	assert.deepEqual(config.args?.slice(1), [
 		"--provider",
 		"codex",

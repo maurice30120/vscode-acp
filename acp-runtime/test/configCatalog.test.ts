@@ -2,10 +2,10 @@ import * as assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-	loadPiAcpConfig,
-	loadPiAgentCatalog,
+	loadAcpConfig,
+	loadAgentCatalog,
 	loadSandcastleConfig,
-	parsePiAcpConfig,
+	parseAcpConfig,
 	parseSandcastleConfig,
 } from "../src/catalog/config.js";
 import {
@@ -30,7 +30,7 @@ import {
 } from "./helpers.js";
 
 test("loads .acp/acp-agents.json compatible native ACP config", () => {
-	const config = parsePiAcpConfig(
+	const config = parseAcpConfig(
 		JSON.stringify({
 			agents: {
 				"Codex CLI": {
@@ -55,11 +55,11 @@ test("loads .acp/acp-agents.json compatible native ACP config", () => {
 	assert.equal(config.pipeline.instructionsMaxBytes, 1234);
 });
 
-test("loadPiAcpConfig loads config from the workspace root", () => {
+test("loadAcpConfig loads config from the workspace root", () => {
 	const workspace = createTempWorkspace();
 	writeDefaultConfig(workspace);
 
-	const config = loadPiAcpConfig(workspace);
+	const config = loadAcpConfig(workspace);
 
 	assert.deepEqual(config.errors, []);
 	assert.equal(config.agents["Codex CLI"].command, "codex");
@@ -69,25 +69,25 @@ test("loadPiAcpConfig loads config from the workspace root", () => {
 	assert.equal(config.filePath.replaceAll(String.fromCharCode(92), "/"), `${workspace.replaceAll(String.fromCharCode(92), "/")}/.acp/acp-agents.json`);
 });
 
-test("loadPiAcpConfig reports missing workspace config without package fallback", () => {
+test("loadAcpConfig reports missing workspace config without package fallback", () => {
 	const workspace = createTempWorkspace();
 
-	const config = loadPiAcpConfig(workspace);
+	const config = loadAcpConfig(workspace);
 
 	assert.deepEqual(config.agents, {});
-	assert.match(config.errors.join("\n"), /Missing Pi ACP config at workspace root/);
+	assert.match(config.errors.join("\n"), /Missing ACP config at workspace root/);
 });
 
-test("parsePiAcpConfig reports JSON parse errors as empty config", () => {
-	const config = parsePiAcpConfig("{not json");
+test("parseAcpConfig reports JSON parse errors as empty config", () => {
+	const config = parseAcpConfig("{not json");
 
 	assert.deepEqual(config.agents, {});
 	assert.equal(config.pipeline.enabled, true);
 	assert.match(config.errors.join("\n"), /JSON parse error/);
 });
 
-test("parsePiAcpConfig rejects invalid agent and pipeline fields", () => {
-	const config = parsePiAcpConfig(
+test("parseAcpConfig rejects invalid agent and pipeline fields", () => {
+	const config = parseAcpConfig(
 		JSON.stringify({
 			agents: {
 				BadArgs: {
@@ -140,7 +140,7 @@ test("parsePiAcpConfig rejects invalid agent and pipeline fields", () => {
 });
 
 test("rejects sandcastle agents in native Pi config and points to dedicated file", () => {
-	const config = parsePiAcpConfig(
+	const config = parseAcpConfig(
 		JSON.stringify({
 			agents: {
 				Sandcastle: {
@@ -243,7 +243,7 @@ test("loadSandcastleConfig missing file is an empty non-regression", () => {
 	assert.equal(config.promotion, "autoApply");
 });
 
-test("loadPiAgentCatalog keeps native and Sandcastle agents disjoint but combines names for pipelines", () => {
+test("loadAgentCatalog keeps native and Sandcastle agents disjoint but combines names for pipelines", () => {
 	const workspace = createTempWorkspace();
 	writeDefaultConfig(workspace);
 	writeFile(
@@ -261,7 +261,7 @@ test("loadPiAgentCatalog keeps native and Sandcastle agents disjoint but combine
 		}),
 	);
 
-	const catalog = loadPiAgentCatalog(workspace);
+	const catalog = loadAgentCatalog(workspace);
 
 	assert.deepEqual(catalog.errors, []);
 	assert.ok(catalog.native.agents["Codex CLI"]);
@@ -303,7 +303,7 @@ test("duplicate native and Sandcastle agent names are errors and make v3 pipelin
 	]);
 	const errors: string[] = [];
 
-	const catalog = loadPiAgentCatalog(workspace);
+	const catalog = loadAgentCatalog(workspace);
 	const result = loadPipelineProgramsFromRoot({
 		workspaceCwd: workspace,
 		configRoot: workspace,
