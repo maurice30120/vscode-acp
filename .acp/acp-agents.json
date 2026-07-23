@@ -2,7 +2,7 @@
   "agents": {
     "Codex CLI": {
       "command": "npx",
-      "args": ["-y", "@zed-industries/codex-acp@0.16.0"],
+      "args": ["-y", "@agentclientprotocol/codex-acp@latest"],
       "env": {}
     },
     "Vibe": {
