@@ -6,7 +6,7 @@ nodes:
   - id: review
     agent: Vibe
     skills: [code-review]
-    promptFile: ../agents/matt-plan-reviewer.md
+    instructionsFile: ../agents/matt-plan-reviewer.md
     prompt: |
       Approved delivery request:
       {{userPrompt}}

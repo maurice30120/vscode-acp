@@ -6,6 +6,7 @@ import test from 'node:test';
 
 import {
   loadAgentCatalog,
+  loadPipelineProgramsFromRoot,
   parseAcpConfig,
   removeAgentConfig,
   resolveConnector,
@@ -44,6 +45,49 @@ test('connector selection is stable for native and Sandcastle agents', () => {
   const sandcastle = async () => { throw new Error('not called'); };
   assert.equal(resolveConnector({ command: 'codex' }, native, sandcastle), native);
   assert.equal(resolveConnector({ transport: 'sandcastle', provider: 'codex', model: 'gpt-5', effort: 'high', maxIterations: 3 }, native, sandcastle), sandcastle);
+});
+
+test('public pipeline catalog resolves instructionsFile and keeps promptFile compatibility', () => {
+  const cwd = workspace();
+  const pipelines = path.join(cwd, '.acp', 'pipelines');
+  const agents = path.join(cwd, '.acp', 'agents');
+  fs.mkdirSync(pipelines, { recursive: true });
+  fs.mkdirSync(agents, { recursive: true });
+  fs.writeFileSync(path.join(agents, 'planner.md'), 'Invariant planner instructions.');
+  fs.writeFileSync(path.join(agents, 'legacy.md'), 'Legacy complete prompt.');
+  fs.writeFileSync(path.join(pipelines, 'structured.yaml'), `version: 3
+id: structured
+title: Structured
+nodes:
+  - id: plan
+    agent: Codex
+    instructionsFile: ../agents/planner.md
+    prompt: Run-specific task.
+    output: { name: plan, type: acp.plan/v1, format: markdown }
+`);
+  fs.writeFileSync(path.join(pipelines, 'legacy.yaml'), `version: 3
+id: legacy
+title: Legacy
+nodes:
+  - id: plan
+    agent: Codex
+    promptFile: ../agents/legacy.md
+    output: { name: plan, type: acp.plan/v1, format: markdown }
+`);
+
+  const result = loadPipelineProgramsFromRoot({
+    workspaceCwd: cwd,
+    configRoot: cwd,
+    agentConfigs: { Codex: { command: 'codex' } },
+  });
+
+  assert.deepEqual(result.errors, []);
+  const structured = result.programs.find(program => program.id === 'structured')?.nodes[0];
+  assert.equal(structured?.prompt, 'Run-specific task.');
+  assert.equal(structured?.promptFile, 'Invariant planner instructions.');
+  const legacy = result.programs.find(program => program.id === 'legacy')?.nodes[0];
+  assert.equal(legacy?.prompt, 'Legacy complete prompt.');
+  assert.equal(legacy?.promptFile, undefined);
 });
 
 test('hosts do not import workspace catalogues from the low-level runtime', () => {

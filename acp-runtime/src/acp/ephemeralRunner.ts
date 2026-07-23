@@ -1,10 +1,12 @@
-import type {
-	PipelineAgentRunInput,
-	PipelineAgentRunner,
-	PipelinePromotionStatus,
+import {
+	renderAcpPrompt,
+	type PipelineAgentRunInput,
+	type PipelineAgentRunner,
+	type PipelinePromotionStatus,
 } from "@acp-client/pipeline";
 import type {
 	ClientSideConnection,
+	ContentBlock,
 	PromptResponse,
 	SessionNotification,
 } from "@agentclientprotocol/sdk";
@@ -167,9 +169,7 @@ export class EphemeralAcpRunner {
 					resolveTimeouts(this.options.timeouts).promptMs,
 					connected.connInfo.connection.prompt({
 						sessionId,
-						prompt: [
-							{ type: "text", text: this.composeRunnerPrompt(input) },
-						],
+						prompt: this.composeRunnerPrompt(input),
 					}),
 					async () => {
 						try {
@@ -296,7 +296,25 @@ export class EphemeralAcpRunner {
 
 	private composeRunnerPrompt(
 		input: PipelineAgentRunInput,
-	): string {
+	): ContentBlock[] {
+		if (!input.prompt) {
+			return [{ type: "text", text: this.composeLegacyRunnerPrompt(input) }];
+		}
+		return renderAcpPrompt(input.prompt, {
+			renderSkills: skillNames => {
+				if (skillNames.length === 0) {
+					return "";
+				}
+				const catalog = loadSkillCatalog({
+					workspaceCwd: input.workspaceCwd,
+					logger: (message, error) => this.options.logger?.error(message, error),
+				});
+				return renderSkillsCatalog(catalog, [...skillNames], input.workspaceCwd);
+			},
+		});
+	}
+
+	private composeLegacyRunnerPrompt(input: PipelineAgentRunInput): string {
 		const skills = input.skills;
 		if (!skills || skills.length === 0) {
 			return input.promptText;

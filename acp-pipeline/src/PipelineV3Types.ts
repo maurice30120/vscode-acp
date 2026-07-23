@@ -49,7 +49,11 @@ export interface PipelineAgentNodeDefinition {
   id: string;
   type?: "agent";
   agent: string;
+  /** Run-specific task and data. */
   prompt?: string;
+  /** Invariant role and rules loaded separately from prompt. */
+  instructionsFile?: string;
+  /** @deprecated Use instructionsFile. */
   promptFile?: string;
   skills?: string[];
   needs?: string[];
@@ -96,6 +100,7 @@ export interface CompiledPipelineNode {
   kind: "agent" | "pause";
   agent?: string;
   prompt?: string;
+  /** Resolved invariant instructions; retained in this compatibility slot. */
   promptFile?: string;
   skills: readonly string[];
   needs: readonly string[];

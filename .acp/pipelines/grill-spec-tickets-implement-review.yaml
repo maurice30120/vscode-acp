@@ -9,7 +9,7 @@ nodes:
     interaction:
       protocol: proposed-plan
       repairAttempts: 3
-    promptFile: ../agents/interactive-planner.md
+    instructionsFile: ../agents/interactive-planner.md
     prompt: |
       User request:
       {{userPrompt}}
@@ -44,7 +44,7 @@ nodes:
   - id: spec
     agent: Codex CLI
     skills: [to-spec, domain-modeling]
-    promptFile: ../agents/matt-spec-writer.md
+    instructionsFile: ../agents/matt-spec-writer.md
     prompt: |
       User request:
       {{userPrompt}}
@@ -70,7 +70,7 @@ nodes:
   - id: tasks
     agent: Codex CLI
     skills: [to-tickets]
-    promptFile: ../agents/matt-ticket-planner.md
+    instructionsFile: ../agents/matt-ticket-planner.md
     prompt: |
       User request:
       {{userPrompt}}

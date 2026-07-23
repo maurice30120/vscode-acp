@@ -6,7 +6,7 @@ nodes:
   - id: implementation
     agent: Vibe
     skills: [implement]
-    promptFile: ../agents/matt-implementer.md
+    instructionsFile: ../agents/matt-implementer.md
     prompt: |
       Approved single-ticket delivery:
       {{userPrompt}}
