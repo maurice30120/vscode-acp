@@ -56,6 +56,14 @@ _Avoid_: réponse magique, approbation implicite, commande propre à un hôte
 Comportement d’orchestration commun exercé sans variation par toutes les surfaces hôtes.
 _Avoid_: runtime CLI, runtime Pi, runtime VS Code
 
+**Workspace ACP**:
+Package public et stable du monorepo qui découvre et assemble les agents, pipelines et skills d’un workspace ACP pour les surfaces hôtes.
+_Avoid_: package expérimental, acp-common, shared, configuration hôte
+
+**Sélection de connecteur workspace**:
+Décision du Workspace ACP qui associe une configuration d’agent à son connecteur ACP effectif, natif ou Sandcastle, sans exposer cette décision aux surfaces hôtes.
+_Avoid_: sélection hôte, choix runtime, branchement Sandcastle local
+
 **Parité hôte**:
 Invariant selon lequel une même configuration workspace et une même entrée produisent le même comportement observable sur chaque surface hôte, hors interactions propres à son interface utilisateur.
 _Avoid_: comportement similaire, compatibilité approximative

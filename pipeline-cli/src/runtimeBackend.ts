@@ -1,30 +1,16 @@
-import {
-  EphemeralAcpRunner,
-  getPipelinePrograms,
-  loadAgentCatalog,
-  type RuntimePermissionContext,
-} from '@acp-client/runtime';
-import { clearSandcastleLogs } from '@acp-client/sandcastle';
+import { createWorkspaceRuntime, type RuntimePermissionContext } from '@acp-client/workspace';
 import type { CliPipelineBackendFactory } from './host.js';
 
 export const createRuntimeCliBackend: CliPipelineBackendFactory = (workspaceCwd, context) => {
-  const catalog = loadAgentCatalog(workspaceCwd);
-  if (catalog.errors.length > 0) {
-    throw new Error(`Invalid workspace ACP configuration:\n- ${catalog.errors.join('\n- ')}`);
-  }
-
-  const runner = new EphemeralAcpRunner(workspaceCwd, {
-    getPermissionContext: (): RuntimePermissionContext => ({
+  const runtime = createWorkspaceRuntime({ workspaceCwd, host: {
+    permissionContext: (): RuntimePermissionContext => ({
       hasUI: true,
       ui: {
         select: (title, options) => context.terminal.select(title, options),
         confirm: (title, message) => context.terminal.confirm(title, message),
       },
     }),
-    getAgentConfigs: () => catalog.agents,
-    timeouts: catalog.native.pipeline.timeouts,
-    getSandcastlePromotion: () => catalog.sandcastle.promotion,
-    requestSandcastlePromotion: async request => {
+    requestPromotion: async request => {
       const selected = await context.terminal.select(
         [
           `Sandcastle promotion for ${request.agentName}`,
@@ -39,11 +25,11 @@ export const createRuntimeCliBackend: CliPipelineBackendFactory = (workspaceCwd,
       return 'cancelled';
     },
     logger: context.logger,
-  });
+  }});
 
   return {
-    programs: getPipelinePrograms(workspaceCwd, context.logger),
-    runAgent: runner.run,
-    clearRunLogs: () => clearSandcastleLogs(workspaceCwd),
+    programs: runtime.programs,
+    runAgent: runtime.runAgent,
+    clearRunLogs: () => runtime.clearRunLogs(),
   };
 };

@@ -2,11 +2,10 @@ import * as vscode from 'vscode';
 import { PipelineRuntimeAgentAdapter, PipelineService } from '@acp-client/pipeline';
 import {
   EphemeralAcpRunner,
-  loadAgentCatalog,
-  type AgentConfigEntry,
   type RuntimePermissionContext,
   type SandcastlePromotionRequest,
 } from '@acp-client/runtime';
+import { loadAgentCatalog, type AgentConfigEntry } from '@acp-client/workspace';
 import { clearSandcastleLogs } from '@acp-client/sandcastle';
 
 import { getAgentConfigs } from '../../config/AgentConfig';

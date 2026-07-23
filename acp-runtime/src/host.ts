@@ -2,21 +2,6 @@ export { EphemeralAcpRunner } from './acp/ephemeralRunner.js';
 export type { EphemeralAcpRunnerOptions, SandcastlePromotionDecision, SandcastlePromotionRequest } from './acp/ephemeralRunner.js';
 export { RunAbortedError } from './acp/runAbortedError.js';
 export { isRunAbortedError } from './acp/runAbortedError.js';
-export {
-  loadAcpConfig,
-  loadAgentCatalog,
-  loadSandcastleConfig,
-  parseAcpConfig,
-  parseSandcastleConfig,
-} from './catalog/config.js';
-export {
-  getPipelineProgramForAgent,
-  getPipelinePrograms,
-  loadPipelineProgramsFromRoot,
-  loadWorkspacePipelinePrograms,
-} from './catalog/pipelineCatalog.js';
-export { loadSkillCatalog, renderSkillsCatalog } from './catalog/skillCatalog.js';
-export type { SkillCatalogEntry, SkillCatalogOptions } from './catalog/skillCatalog.js';
 export { consoleLogger } from './types.js';
 export type {
   AcpRuntimeConfig,

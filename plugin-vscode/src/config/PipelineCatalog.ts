@@ -2,7 +2,7 @@ import {
   loadPipelineProgramsFromRoot,
   type AgentConfigEntry,
   type Logger,
-} from '@acp-client/runtime';
+} from '@acp-client/workspace';
 import type {
   CompiledPipelineProgram,
   PipelineV3CatalogResult,

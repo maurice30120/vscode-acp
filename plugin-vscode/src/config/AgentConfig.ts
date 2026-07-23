@@ -1,13 +1,13 @@
-import * as fs from 'fs';
 import * as path from 'path';
 import {
   loadAgentCatalog,
   parseAcpConfig,
   parseSandcastleConfig,
+  writeAgentConfigs as writeWorkspaceAgentConfigs,
   type AgentConfigEntry,
   type NativeAcpAgentConfig,
   type SandcastleAgentConfig,
-} from '@acp-client/runtime';
+} from '@acp-client/workspace';
 
 import { listSelectableAgentNames } from './VirtualAgentCatalog';
 import { resolveWorkspaceIdentity } from '../core/WorkspaceIdentity';
@@ -70,19 +70,7 @@ export async function writeAgentConfigs(
   agents: Record<string, AgentConfigEntry>,
   workspaceCwd: string = resolveWorkspaceIdentity().cwd,
 ): Promise<void> {
-  const filePath = getAgentConfigPath(workspaceCwd);
-  const nativeAgents: Record<string, AgentConfigEntry> = {};
-  const sandcastleAgents: Record<string, AgentConfigEntry> = {};
-  for (const [name, entry] of Object.entries(agents)) {
-    (isSandcastleAgentConfig(entry) ? sandcastleAgents : nativeAgents)[name] = entry;
-  }
-  const sandcastlePath = path.join(workspaceCwd, SANDCASTLE_CONFIG_RELATIVE_PATH);
-  const nativeEnvelope = readJsonObject(filePath);
-  const sandcastleEnvelope = readJsonObject(sandcastlePath);
-  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.promises.mkdir(path.dirname(sandcastlePath), { recursive: true });
-  await fs.promises.writeFile(filePath, `${JSON.stringify({ ...nativeEnvelope, agents: nativeAgents }, null, 2)}\n`, 'utf8');
-  await fs.promises.writeFile(sandcastlePath, `${JSON.stringify({ ...sandcastleEnvelope, agents: sandcastleAgents }, null, 2)}\n`, 'utf8');
+  writeWorkspaceAgentConfigs(agents, workspaceCwd);
 }
 
 export async function upsertAgentConfig(
@@ -118,17 +106,4 @@ export function getAgentConfig(
   workspaceCwd?: string,
 ): AgentConfigEntry | undefined {
   return getAgentConfigs(workspaceCwd)[name];
-}
-
-function readJsonObject(filePath: string): Record<string, unknown> {
-  try {
-    const parsed: unknown = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    return isPlainObject(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

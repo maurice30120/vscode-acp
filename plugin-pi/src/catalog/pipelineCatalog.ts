@@ -3,4 +3,4 @@ export {
   getPipelinePrograms,
   loadPipelineProgramsFromRoot,
   loadWorkspacePipelinePrograms,
-} from '@acp-client/runtime';
+} from '@acp-client/workspace';

@@ -521,12 +521,12 @@
   "scripts": {
     "vscode:prepublish": "npm run package",
     "clean": "node scripts/clean.mjs",
-    "compile": "npm run build -w @acp-client/pipeline && npm run build -w @acp-client/sandcastle && npm run build -w @acp-client/runtime && webpack",
-    "watch": "npm run build -w @acp-client/pipeline && npm run build -w @acp-client/sandcastle && npm run build -w @acp-client/runtime && webpack --watch",
-    "package": "npm run build -w @acp-client/pipeline && npm run build -w @acp-client/sandcastle && npm run build -w @acp-client/runtime && webpack --mode production --devtool hidden-source-map",
+    "compile": "npm run build -w @acp-client/workspace && webpack",
+    "watch": "npm run build -w @acp-client/workspace && webpack --watch",
+    "package": "npm run build -w @acp-client/workspace && webpack --mode production --devtool hidden-source-map",
     "vsx": "vsce package --no-dependencies",
     "clean-tests": "node scripts/clean.mjs out",
-    "compile-tests": "npm run clean-tests && npm run build -w @acp-client/pipeline && npm run build -w @acp-client/sandcastle && npm run build -w @acp-client/runtime && tsc -p tsconfig.compile-tests.json --incremental false",
+    "compile-tests": "npm run clean-tests && npm run build -w @acp-client/workspace && tsc -p tsconfig.compile-tests.json --incremental false",
     "lint": "cd .. && eslint -c plugin-vscode/eslint.config.mjs \"plugin-vscode/src/**/*.ts\" \"acp-pipeline/src/**/*.ts\" \"acp-sandcastle/src/**/*.ts\" \"plugin-pi/src/**/*.ts\" --max-warnings 0",
     "sandcastle:smoke:codex": "npm run compile && node scripts/sandcastle-smoke.mjs codex apply",
     "sandcastle:smoke:cursor": "npm run compile && node scripts/sandcastle-smoke.mjs cursor reject",
@@ -535,6 +535,7 @@
     "vscode:dts": "vscode-dts dev"
   },
   "dependencies": {
+    "@acp-client/workspace": "file:../acp-workspace",
     "@agentclientprotocol/sdk": "^0.21.1",
     "@acp-client/pipeline": "file:../acp-pipeline",
     "@acp-client/runtime": "file:../acp-runtime",

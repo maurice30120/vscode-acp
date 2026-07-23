@@ -7,4 +7,4 @@ export {
   parseAcpConfig,
   parseAcpConfig as parsePiAcpConfig,
   parseSandcastleConfig,
-} from '@acp-client/runtime';
+} from '@acp-client/workspace';

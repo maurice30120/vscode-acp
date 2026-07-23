@@ -5,6 +5,7 @@
     "acp-pipeline",
     "acp-runtime",
     "acp-sandcastle",
+    "acp-workspace",
     "pipeline-cli",
     "plugin-vscode",
     "plugin-pi"
@@ -15,7 +16,7 @@
     "watch": "npm run watch -w acp-client",
     "package": "npm run package -w acp-client",
     "test": "npm run test:common && npm run test:vscode && npm run test:pi && npm run test:cli",
-    "test:common": "npm run test -w @acp-client/pipeline && npm run test -w @acp-client/sandcastle && npm run test -w @acp-client/runtime",
+    "test:common": "npm run test -w @acp-client/pipeline && npm run test -w @acp-client/sandcastle && npm run test -w @acp-client/runtime && npm run test -w @acp-client/workspace",
     "test:vscode": "npm run test -w acp-client",
     "lint": "npm run lint -w acp-client",
     "compile-tests": "npm run compile-tests -w acp-client",
