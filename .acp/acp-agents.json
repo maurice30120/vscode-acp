@@ -30,7 +30,8 @@
     "enabled": true,
     "instructionsMaxBytes": 262144,
     "timeouts": {
-      "initializeMs": 120000
+      "initializeMs": 120000,
+      "promptMs": 1800000
     }
   }
 }
